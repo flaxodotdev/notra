@@ -74,6 +74,7 @@ beforeEach(() => {
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 15,
+      totalUsd: 0.125,
     },
   }));
   sequenceBatch.mockImplementation(async (_context, batch) => ({
@@ -233,7 +234,7 @@ describe("GEO scan workflow orchestration", () => {
           inputTokens: 20,
           outputTokens: 10,
           totalTokens: 30,
-          totalUsd: expect.closeTo(0.00006, 10),
+          totalUsd: 0.25,
         },
       },
       "completed",
