@@ -65,6 +65,7 @@ import type { Button } from "@/components/button";
 import type { TableColumn } from "@/components/motion/table";
 import type { GeoPromptDetailSurface } from "@/types/analytics/geo-events";
 import type { ChartConfig, ChartSeriesColors } from "@/types/charts";
+import type { GeoPromptDetailState } from "@/types/geo-prompt-detail";
 import type { TablePaginationState } from "@/types/table";
 
 export interface GeoProjectCreateInput {
@@ -212,6 +213,13 @@ export interface UseGeoSavedViewsResult {
   views: GeoPromptSavedView[];
   saveView: (name: string, query: GeoPromptTableFilters) => void;
   removeView: (viewId: string) => void;
+}
+
+export interface PromptTagsActionDialogProps {
+  target: PromptTagsDialogTarget | null;
+  suggestions: string[];
+  onConfirm: (tags: string[]) => void;
+  onClose: () => void;
 }
 
 export interface PromptTagsDialogProps {
@@ -921,6 +929,7 @@ export interface GeoTagListProps {
   /** When false, the field still has an accessible name via `label`. */
   labeled?: boolean;
   inputClassName?: string;
+  inline?: boolean;
 }
 
 export interface GeoEnginePickerProps {
@@ -1124,7 +1133,9 @@ export interface CompetitorPromptSummaryStripProps {
 }
 
 export interface ScanPreflightDialogProps {
+  confirmationOnly?: boolean;
   organizationId: string;
+  prompt?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (engines?: string[]) => void;
@@ -1133,6 +1144,13 @@ export interface ScanPreflightDialogProps {
   engines: readonly string[];
   languages: readonly string[];
   lastScanAt: string | null;
+}
+
+export interface PromptScanButtonProps {
+  organizationId: string;
+  row: GeoPromptTableRow;
+  compact?: boolean;
+  onPrepare?: () => void;
 }
 
 export interface GeoCompetitorDetailPoint {
@@ -1201,6 +1219,8 @@ export interface GeoRemoveDialogProps {
 }
 
 export interface PromptDetailDialogProps {
+  scanId?: string;
+  initialLanguage?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: GeoPromptTableRow | null;
@@ -1212,6 +1232,9 @@ export interface PromptDetailDialogProps {
 }
 
 export interface PromptAnswerPageProps {
+  scanId?: string;
+  initialLanguage?: string;
+  onPrepareScan?: () => void;
   row: GeoPromptTableRow;
   open: boolean;
   organizationId: string;
@@ -1253,6 +1276,8 @@ export interface PromptReceiptViewSwitchProps {
 }
 
 export interface PromptReceiptAnalysisProps {
+  scrollable?: boolean;
+  showHistory?: boolean;
   prompt: string;
   result: GeoPromptResult;
   history: GeoPromptHistoryCheck[];
@@ -1261,6 +1286,16 @@ export interface PromptReceiptAnalysisProps {
   competitors?: readonly GeoCompetitor[];
   /** Opens the answer captured by one scan from the history. */
   onSelectCheck?: (check: GeoPromptHistoryCheck) => void;
+}
+
+export interface PromptAnswerContentProps extends Omit<
+  PromptReceiptAnalysisProps,
+  "result" | "prompt"
+> {
+  state: GeoPromptDetailState;
+  view: GeoPromptReceiptView;
+  onRetry: () => void;
+  prompt?: string;
 }
 
 export interface PromptReceiptHistoryProps {
@@ -1278,6 +1313,7 @@ export interface GeoAnswerActionsProps {
 }
 
 export interface GeoPromptAnswerThreadProps {
+  scrollable?: boolean;
   prompt: string;
   result: GeoPromptResult;
 }

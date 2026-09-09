@@ -13,7 +13,12 @@ import {
   GEO_CHECK_GROUNDING_MAX_SOURCES,
 } from "@notra/db/constants/geo-checks";
 import { db } from "@notra/db/drizzle";
-import { geoPromptSequences, geoPrompts, geoSettings } from "@notra/db/schema";
+import {
+  geoPromptSequences,
+  geoPrompts,
+  geoScans,
+  geoSettings,
+} from "@notra/db/schema";
 import type { GeoCheckWrite } from "@notra/db/types/geo-checks";
 import { insertGeoMentionChecks } from "@notra/db/utils/geo-checks";
 import type { ModelMessage } from "ai";
@@ -93,6 +98,10 @@ import {
   isGeoScanRunning,
   summarizeGeoEngineAttempts,
 } from "../utils/geo-scan";
+import {
+  geoScanPlanSnapshot,
+  geoScanSequenceTasks,
+} from "../utils/geo-scan-plan";
 import { withGeoTiming } from "../utils/geo-timing";
 import { addAgentTokenUsage as addTokenUsage } from "../utils/token-usage";
 import { fetchGoogleAiOverview } from "./ai-overview";
@@ -130,6 +139,7 @@ import {
   renewGeoScanRun,
   withGeoScanRun,
 } from "./scan-status";
+import { updateGeoScanTaskStatus } from "./scan-task-status";
 import { resolveScanZdrPolicy } from "./zdr-policy";
 
 const MAX_JUDGE_COMPETITORS = 10;
@@ -1044,20 +1054,25 @@ const buildGeoScanProjectPlan = Effect.fn("geo.buildScanProjectPlan")(
       }
     }
 
-    const sequenceRows = yield* Effect.tryPromise({
-      try: () =>
-        db.query.geoPromptSequences.findMany({
-          columns: { id: true, steps: true },
-          where: and(
-            eq(geoPromptSequences.projectId, settingsRow.projectId),
-            eq(geoPromptSequences.enabled, true)
-          ),
-          orderBy: [asc(geoPromptSequences.createdAt)],
-          limit: GEO_MAX_SEQUENCES,
-        }),
-      catch: (cause) =>
-        new GeoScanError({ message: "Failed to load GEO sequences", cause }),
-    });
+    const sequenceRows = promptIds
+      ? []
+      : yield* Effect.tryPromise({
+          try: () =>
+            db.query.geoPromptSequences.findMany({
+              columns: { id: true, steps: true },
+              where: and(
+                eq(geoPromptSequences.projectId, settingsRow.projectId),
+                eq(geoPromptSequences.enabled, true)
+              ),
+              orderBy: [asc(geoPromptSequences.createdAt)],
+              limit: GEO_MAX_SEQUENCES,
+            }),
+          catch: (cause) =>
+            new GeoScanError({
+              message: "Failed to load GEO sequences",
+              cause,
+            }),
+        });
     const trackedCodingAgents = trackedEngines.filter(
       ({ engine }) =>
         engine === GEO_OPENCODE_ENGINE_ID || isGeoBoxCodingAgent(engine)
@@ -1121,6 +1136,22 @@ const buildGeoScanProjectPlan = Effect.fn("geo.buildScanProjectPlan")(
       engines,
     };
     const planned: GeoScanProjectPlanResult = { status: "planned", plan };
+    yield* Effect.tryPromise({
+      try: () =>
+        db
+          .update(geoScans)
+          .set({ plan: geoScanPlanSnapshot(plan) })
+          .where(
+            and(
+              eq(geoScans.id, scanId),
+              eq(geoScans.organizationId, organizationId),
+              eq(geoScans.projectId, settingsRow.projectId),
+              eq(geoScans.status, "running")
+            )
+          ),
+      catch: (cause) =>
+        new GeoScanError({ message: "Failed to store scan plan", cause }),
+    });
     return planned;
   }
 );
@@ -1166,6 +1197,7 @@ export const runGeoScanTaskBatch = Effect.fn("geo.runScanTaskBatch")(function* (
     const grounded = resolveGroundedEngineByKey(planned.groundedKey);
     if (!grounded) {
       unavailableGrounded += 1;
+      yield* updateGeoScanTaskStatus(context, planned, "failed");
       yield* geoLogWarn({
         event: "geo.check.failed",
         organizationId: context.organizationId,
@@ -1187,30 +1219,41 @@ export const runGeoScanTaskBatch = Effect.fn("geo.runScanTaskBatch")(function* (
     tasks,
     (task) => {
       const fields = checkFailureFields(checkContext, task);
-      return withGeoTiming(runGeoCheck(checkContext, task), {
-        ...fields,
-        event: "geo.check.attempt.completed",
-      }).pipe(
-        Effect.tapError((error) =>
-          (error._tag === "GeoScanError" || error._tag === "GeoJudgeError") &&
-          error.timedOut === true
-            ? geoLogWarn({
-                ...fields,
-                event: "geo.check.timeout",
-                detail: error.message,
-              })
-            : Effect.void
-        ),
-        Effect.retry({
-          times: 1,
-          while: (error) =>
-            (error._tag === "GeoScanError" || error._tag === "GeoJudgeError") &&
-            error.timedOut === true,
-        }),
-        Effect.catchTag("GeoEmptyAnswerError", (error) =>
-          Effect.sync(() => droppedCheckOutcome(fields, error))
-        ),
-        geoSkip("check failed", fields)
+      return updateGeoScanTaskStatus(context, task, "running").pipe(
+        Effect.andThen(
+          withGeoTiming(runGeoCheck(checkContext, task), {
+            ...fields,
+            event: "geo.check.attempt.completed",
+          }).pipe(
+            Effect.tapError((error) =>
+              (error._tag === "GeoScanError" ||
+                error._tag === "GeoJudgeError") &&
+              error.timedOut === true
+                ? geoLogWarn({
+                    ...fields,
+                    event: "geo.check.timeout",
+                    detail: error.message,
+                  })
+                : Effect.void
+            ),
+            Effect.retry({
+              times: 1,
+              while: (error) =>
+                (error._tag === "GeoScanError" ||
+                  error._tag === "GeoJudgeError") &&
+                error.timedOut === true,
+            }),
+            Effect.catchTag("GeoEmptyAnswerError", (error) =>
+              Effect.sync(() => droppedCheckOutcome(fields, error))
+            ),
+            geoSkip("check failed", fields),
+            Effect.tap((result) =>
+              result?.row
+                ? Effect.void
+                : updateGeoScanTaskStatus(context, task, "failed")
+            )
+          )
+        )
       );
     },
     { concurrency: GEO_SCAN_CONCURRENCY }
@@ -1276,56 +1319,87 @@ export const runGeoScanSequenceBatch = Effect.fn("geo.runScanSequenceBatch")(
 
     const outcomes = yield* Effect.forEach(
       plannedSequences,
-      (planned) => {
-        const sequence: GeoSequenceDefinition = {
-          id: planned.sequenceId,
-          steps: planned.steps,
-        };
-        if (!planned.groundedKey) {
-          return runGeoOpenCodeSequenceCheck(
+      (planned) =>
+        Effect.gen(function* () {
+          const sequence: GeoSequenceDefinition = {
+            id: planned.sequenceId,
+            steps: planned.steps,
+          };
+          for (const task of geoScanSequenceTasks(planned)) {
+            yield* updateGeoScanTaskStatus(
+              context,
+              {
+                ...task,
+                prompt: { id: task.promptId, text: task.prompt },
+              },
+              "running",
+              task.turn
+            );
+          }
+          if (!planned.groundedKey) {
+            return yield* runGeoOpenCodeSequenceCheck(
+              checkContext,
+              sequence,
+              planned.engine,
+              planned.zdr
+            ).pipe(
+              geoSkip(
+                "sequence failed",
+                sequenceFailureFields(
+                  checkContext,
+                  sequence,
+                  planned.engine,
+                  false
+                )
+              ),
+              Effect.map((result) => ({ sequence, result }))
+            );
+          }
+          const grounded = resolveGroundedEngineByKey(planned.groundedKey);
+          if (!grounded) {
+            return { sequence, result: null };
+          }
+          return yield* runGeoSequenceCheck(
             checkContext,
             sequence,
-            planned.engine,
+            grounded,
             planned.zdr
           ).pipe(
+            Effect.timeoutOrElse({
+              duration: GEO_SEQUENCE_PAIR_TIMEOUT_MS,
+              orElse: () =>
+                Effect.fail(
+                  new GeoScanError({
+                    message: `Sequence ${sequence.id} on ${grounded.key} timed out after ${GEO_SEQUENCE_PAIR_TIMEOUT_MS}ms`,
+                  })
+                ),
+            }),
             geoSkip(
               "sequence failed",
-              sequenceFailureFields(
-                checkContext,
-                sequence,
-                planned.engine,
-                false
-              )
+              sequenceFailureFields(checkContext, sequence, grounded.key, true)
             ),
             Effect.map((result) => ({ sequence, result }))
           );
-        }
-        const grounded = resolveGroundedEngineByKey(planned.groundedKey);
-        if (!grounded) {
-          return Effect.succeed({ sequence, result: null });
-        }
-        return runGeoSequenceCheck(
-          checkContext,
-          sequence,
-          grounded,
-          planned.zdr
-        ).pipe(
-          Effect.timeoutOrElse({
-            duration: GEO_SEQUENCE_PAIR_TIMEOUT_MS,
-            orElse: () =>
-              Effect.fail(
-                new GeoScanError({
-                  message: `Sequence ${sequence.id} on ${grounded.key} timed out after ${GEO_SEQUENCE_PAIR_TIMEOUT_MS}ms`,
-                })
+        }).pipe(
+          Effect.tap(({ result }) =>
+            Effect.forEach(
+              geoScanSequenceTasks(planned).filter(
+                (task) => !result?.rows.some((row) => row.turn === task.turn)
               ),
-          }),
-          geoSkip(
-            "sequence failed",
-            sequenceFailureFields(checkContext, sequence, grounded.key, true)
-          ),
-          Effect.map((result) => ({ sequence, result }))
-        );
-      },
+              (task) =>
+                updateGeoScanTaskStatus(
+                  context,
+                  {
+                    ...task,
+                    prompt: { id: task.promptId, text: task.prompt },
+                  },
+                  "failed",
+                  task.turn
+                ),
+              { discard: true }
+            )
+          )
+        ),
       { concurrency: GEO_SCAN_CONCURRENCY }
     );
 
