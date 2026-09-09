@@ -61,6 +61,7 @@ import {
 } from "@/utils/navigation";
 
 import { NotraMark, notraMarkSvgString } from "./notra-mark";
+import { SignedOutLandingRedirect } from "./signed-out-landing-redirect";
 import { ThemeToggle } from "./theme-toggle";
 import { TrackedSignupLink } from "./tracked-signup-link";
 
@@ -463,6 +464,10 @@ export function Navbar({ variant }: NavbarProps = {}) {
 
   return (
     <LazyMotion features={domAnimation} strict>
+      <SignedOutLandingRedirect
+        isAuthenticated={isAuthenticated}
+        isResolved={isResolved}
+      />
       <m.div
         animate={shellAnimate}
         className={`z-50 mx-auto ${positionClass}`}
