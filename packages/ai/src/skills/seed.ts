@@ -135,6 +135,7 @@ export async function ensureSystemSkillToneSections(
     return [
       {
         name: row.name,
+        originalContent: row.content,
         content: `${baseContent}\n\n${buildAppendix()}`,
       },
     ];
@@ -153,7 +154,11 @@ export async function ensureSystemSkillToneSections(
           and(
             eq(skills.organizationId, organizationId),
             eq(skills.isSystem, true),
-            eq(skills.name, item.name)
+            eq(skills.name, item.name),
+            // Optimistic-concurrency guard: skip rows edited after our read
+            // instead of overwriting a concurrent skill edit with stale
+            // content.
+            eq(skills.content, item.originalContent)
           )
         )
     )

@@ -27,11 +27,9 @@ export async function generateScheduledContent(
   outputType: string,
   ctx: ContentGenerationContext
 ): Promise<ContentGenerationResult> {
-  // Normalize once at the entrypoint so downstream handlers never depend on
-  // every caller having mirrored top-level tone into promptInput.tone.
-  const promptInput = ctx.promptInput.tone
-    ? ctx.promptInput
-    : { ...ctx.promptInput, tone: ctx.tone };
+  // Callers always set promptInput.tone, so promptInput is the source of
+  // truth downstream.
+  const promptInput = ctx.promptInput;
   const normalizedCtx: ContentGenerationContext = { ...ctx, promptInput };
   if (isAgentContentGenerationEnabled() && isScheduleOutputType(outputType)) {
     const taskType = AGENT_CONTENT_TASK_TYPES[outputType];

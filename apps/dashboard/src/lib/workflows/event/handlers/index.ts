@@ -37,12 +37,8 @@ export async function generateEventBasedContent(
   const agentTaskType = isAgentContentGenerationEnabled()
     ? AGENT_CONTENT_TASK_TYPES[outputType]
     : undefined;
-  // Normalized once so promptInput.tone is always the source of truth
-  // downstream, even if a future caller forgets to mirror ctx.tone.
-  const eventPromptInput = buildEventPromptInput(ctx);
-  const promptInput = eventPromptInput.tone
-    ? eventPromptInput
-    : { ...eventPromptInput, tone: ctx.tone };
+  // buildEventPromptInput always sets tone from ctx.tone.
+  const promptInput = buildEventPromptInput(ctx);
   if (agentTaskType) {
     const agentResult = await generateContentViaAgentTask({
       organizationId: ctx.organizationId,
