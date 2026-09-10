@@ -27,6 +27,12 @@ export async function generateScheduledContent(
   outputType: string,
   ctx: ContentGenerationContext
 ): Promise<ContentGenerationResult> {
+  // Normalize once at the entrypoint so downstream handlers never depend on
+  // every caller having mirrored top-level tone into promptInput.tone.
+  const promptInput = ctx.promptInput.tone
+    ? ctx.promptInput
+    : { ...ctx.promptInput, tone: ctx.tone };
+  const normalizedCtx: ContentGenerationContext = { ...ctx, promptInput };
   if (isAgentContentGenerationEnabled() && isScheduleOutputType(outputType)) {
     const taskType = AGENT_CONTENT_TASK_TYPES[outputType];
     if (taskType) {
@@ -38,7 +44,7 @@ export async function generateScheduledContent(
         brandAgentType: taskType.brandAgentType,
         repositories: ctx.repositories,
         linearIntegrations: ctx.linearIntegrations,
-        promptInput: ctx.promptInput,
+        promptInput,
         sourceMetadata: ctx.sourceMetadata,
         dataPointSettings: ctx.dataPointSettings,
         selectionFilters: ctx.selectionFilters,
@@ -64,7 +70,7 @@ export async function generateScheduledContent(
     };
   }
 
-  return handler(ctx);
+  return handler(normalizedCtx);
 }
 
 function isScheduleOutputType(value: string): value is ScheduleOutputType {

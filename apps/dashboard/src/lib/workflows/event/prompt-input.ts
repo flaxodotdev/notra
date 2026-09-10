@@ -115,5 +115,8 @@ export function buildEventPromptInput(ctx: EventGenerationContext) {
     customInstructions: ctx.brand.customInstructions
       ? `${ctx.brand.customInstructions}\n\n${eventInstructions}`
       : eventInstructions,
+    language: ctx.brand.language,
+    tone: ctx.tone,
+    customTone: ctx.brand.customTone,
   };
 }
