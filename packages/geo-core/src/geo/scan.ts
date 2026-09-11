@@ -1127,6 +1127,7 @@ const buildGeoScanProjectPlan = Effect.fn("geo.buildScanProjectPlan")(
         aliases: settings.aliases,
         gate,
         startedAtMs: Date.now(),
+        scoped: promptIds !== undefined,
       },
       claimedAt: claimedAt.toISOString(),
       tasks: interleaveGeoScanItemsByKey(tasks, (task) => task.engine),
@@ -1516,7 +1517,7 @@ export const finalizeGeoScanProject = Effect.fn("geo.finalizeScanProject")(
 
     if (claimedAt) {
       const endClaim =
-        status === "completed"
+        status === "completed" && !context.scoped
           ? markGeoScanFinished(context.projectId, claimedAt).pipe(
               geoSkip("scan finish stamp failed", {
                 event: "geo.scan.stamp_failed",
@@ -2044,7 +2045,15 @@ const runGeoSequenceNowProgram = Effect.fn("geo.runSequenceNow")(function* (
         });
         return { rows, usage };
       }),
-    claim ? { claimedAt: claim.claimedAt } : { skipStatusStamps: true as const }
+    claim
+      ? {
+          claimedAt: claim.claimedAt,
+          // A conversation replay does not cover the project's scheduled scan.
+          finishStatusStamp: releaseGeoScanRun(projectId, claim.claimedAt).pipe(
+            geoSkip("scan claim release failed")
+          ),
+        }
+      : { skipStatusStamps: true as const }
   );
 
   const confirmBilling = (units: number, usage: AgentTokenUsage) =>
