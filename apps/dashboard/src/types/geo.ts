@@ -310,11 +310,12 @@ export interface GeoSequenceEngineThread {
 
 export interface ConversationReplayThreadProps {
   engine: string;
+  organizationId: string;
   turns: GeoSequenceTurnResult[];
   progress: AnswerReplayProgress | null;
 }
 
-export type AnswerReplayStage = "user" | "thinking" | "typing";
+export type AnswerReplayStage = "user" | "typing";
 
 export interface AnswerReplayProgress {
   index: number;
@@ -1303,6 +1304,7 @@ export interface PromptAnswerContentProps extends Omit<
   PromptReceiptAnalysisProps,
   "result" | "prompt"
 > {
+  organizationId?: string;
   state: GeoPromptDetailState;
   view: GeoPromptReceiptView;
   onRetry: () => void;
@@ -1318,6 +1320,16 @@ export interface PromptReceiptHistoryProps {
   onSelect?: (check: GeoPromptHistoryCheck) => void;
 }
 
+export interface PromptHistoryBrandTokenProps {
+  name: string;
+  competitors: readonly GeoCompetitor[] | undefined;
+}
+
+export interface PromptHistoryNewCompetitorsCellProps {
+  names: readonly string[];
+  competitors: readonly GeoCompetitor[] | undefined;
+}
+
 export interface GeoAnswerActionsProps {
   text: string;
   sources: readonly GeoAnswerSource[];
@@ -1325,6 +1337,7 @@ export interface GeoAnswerActionsProps {
 
 export interface GeoPromptAnswerThreadProps {
   scrollable?: boolean;
+  organizationId?: string;
   prompt: string;
   result: GeoPromptResult;
 }
