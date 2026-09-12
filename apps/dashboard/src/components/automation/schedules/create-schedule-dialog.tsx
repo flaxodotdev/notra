@@ -121,8 +121,9 @@ export function CreateScheduleDialog({
   );
 
   const [addRepoOpen, setAddRepoOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] =
-    useState<SchedulePresetId | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<SchedulePresetId | null>(
+    null
+  );
   const dialogOpen = open && !addRepoOpen;
   const comboboxAnchor = useComboboxAnchor();
 
