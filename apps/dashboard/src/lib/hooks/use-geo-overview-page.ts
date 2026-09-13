@@ -1,11 +1,9 @@
 "use client";
 
-import { GEO_DEFAULT_TAB, GEO_TAB_VALUES } from "@notra/geo-core/constants/geo";
 import type { GeoTab } from "@notra/geo-core/types/geo";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { useReducedMotion } from "motion/react";
-import { parseAsStringLiteral, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
@@ -13,18 +11,18 @@ import { GEO_MODULES_REVEAL_MS } from "@/constants/geo-overview";
 import { trackEvent } from "@/lib/analytics/posthog-client";
 import {
   useGeoCompetitorShare,
-  useGeoCompetitors,
   useGeoLanguageShare,
   useGeoOverview,
   useGeoPromptResults,
-  useGeoPrompts,
   useGeoSettings,
   useGeoStartScan,
   useGeoTimeseries,
   useGeoTrafficJourneys,
   useIsGeoScanning,
 } from "@/lib/hooks/use-geo";
+import { useGeoCompetitorsDb, useGeoPromptsDb } from "@/lib/hooks/use-geo-db";
 import { useGeoRange } from "@/lib/hooks/use-geo-range";
+import { useGeoTab } from "@/lib/hooks/use-geo-tab";
 import type { GeoOverviewPageModel } from "@/types/geo";
 import { resolveOrganizationId } from "@/utils/geo-overview-organization";
 import {
@@ -104,20 +102,18 @@ export function useGeoOverviewPage(
     getOrganization(organizationSlug)
   );
   const geoRange = useGeoRange();
-  const [activeTab, setActiveTab] = useQueryState(
-    "tab",
-    parseAsStringLiteral(GEO_TAB_VALUES).withDefault(GEO_DEFAULT_TAB)
-  );
+  const { activeTab, setActiveTab } = useGeoTab();
 
   const { data: settingsData, isPending: isSettingsPending } =
     useGeoSettings(organizationId);
   const { data: overview } = useGeoOverview(organizationId, geoRange.query);
   const { data: timeseries } = useGeoTimeseries(organizationId, geoRange.query);
-  const { data: prompts } = useGeoPrompts(organizationId);
+  const { prompts, isLoading: isPromptsLoading } =
+    useGeoPromptsDb(organizationId);
   const { data: promptResults } = useGeoPromptResults(
     organizationId,
     geoRange.query,
-    activeTab === "visibility" || activeTab === "prompts"
+    activeTab === "visibility"
   );
   const { data: competitorShare } = useGeoCompetitorShare(
     organizationId,
@@ -125,7 +121,7 @@ export function useGeoOverviewPage(
     false,
     activeTab === "visibility"
   );
-  const { data: competitorList } = useGeoCompetitors(organizationId);
+  const { competitors } = useGeoCompetitorsDb(organizationId);
   const { data: languageShare } = useGeoLanguageShare(
     organizationId,
     geoRange.query,
@@ -175,10 +171,10 @@ export function useGeoOverviewPage(
     timeseriesPoints: timeseries?.points,
     competitorPoints: competitorShare?.points,
     competitorShareTimeseries: competitorShare?.timeseries,
-    competitors: competitorList?.competitors,
+    competitors,
     languagePoints: languageShare?.points,
     promptResults: promptResults?.results,
-    promptCount: prompts?.prompts.length,
+    promptCount: prompts.length,
     journeys: trafficJourneys?.journeys,
     isScanning,
     revealActive,
@@ -190,7 +186,9 @@ export function useGeoOverviewPage(
         setPreflightOpen(false);
       },
       isPending: startScan.isPending,
-      promptCount: countEnabledGeoPrompts(prompts?.prompts),
+      promptCount: countEnabledGeoPrompts(
+        isPromptsLoading ? undefined : prompts
+      ),
       lastScanAt: settings.lastScanAt,
     },
   });

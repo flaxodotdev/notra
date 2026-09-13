@@ -7,12 +7,8 @@ import { GeoProjectDeleteSection } from "@/components/geo/project-delete-section
 import { GeoProjectQueryProvider } from "@/components/providers/geo-project-provider";
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { SettingsPane } from "@/components/settings/settings-pane";
-import {
-  useGeoModelCatalog,
-  useGeoProjects,
-  useGeoPrompts,
-  useGeoSettings,
-} from "@/lib/hooks/use-geo";
+import { useGeoModelCatalog, useGeoSettings } from "@/lib/hooks/use-geo";
+import { useGeoProjectsDb, useGeoPromptsDb } from "@/lib/hooks/use-geo-db";
 import { useGeoProjectQueryState } from "@/lib/hooks/use-geo-project-query";
 import type { GeoSettingsFormSection } from "@/types/geo";
 import { countEnabledGeoPrompts } from "@/utils/geo-overview-page";
@@ -45,9 +41,8 @@ function GeoSettingsPaneContent({
 
   const { data: settingsData, isPending } = useGeoSettings(organizationId);
   const { data: catalog } = useGeoModelCatalog(organizationId);
-  const { data: projectsData } = useGeoProjects(organizationId);
-  const { data: promptsData } = useGeoPrompts(organizationId);
-  const projects = projectsData?.projects ?? [];
+  const { projects } = useGeoProjectsDb(organizationId);
+  const { prompts } = useGeoPromptsDb(organizationId);
   const activeProjectId =
     settingsData?.settings?.projectId ?? projectParam ?? projects.at(0)?.id;
   const activeProject = projects.find(
@@ -74,9 +69,7 @@ function GeoSettingsPaneContent({
         hideHeader
         key={activeProjectId}
         organizationId={organizationId}
-        promptCount={
-          promptsData ? countEnabledGeoPrompts(promptsData.prompts) : undefined
-        }
+        promptCount={countEnabledGeoPrompts(prompts)}
         section={section}
         settings={settingsData?.settings ?? null}
       />
