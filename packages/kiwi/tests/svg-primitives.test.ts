@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { SVG_GEOMETRY_SELECTOR } from "../src/constants/dom-to-scene";
+import type { PathSubpath } from "../src/types/svg-path";
+import type { SvgPrimitiveAttrs } from "../src/types/svg-primitive";
 import {
   svgPrimitiveToPathData,
   svgPrimitiveToSubpaths,
@@ -15,6 +17,22 @@ function bounds(points: Array<{ x: number; y: number }>) {
     minY: Math.min(...ys),
     maxY: Math.max(...ys),
   };
+}
+
+function onlySubpath(tag: string, attrs: SvgPrimitiveAttrs): PathSubpath {
+  const subpaths = svgPrimitiveToSubpaths(tag, attrs);
+  expect(subpaths).toHaveLength(1);
+  const sub = subpaths[0];
+  if (!sub) {
+    throw new Error(`expected one subpath for <${tag}>`);
+  }
+  return sub;
+}
+
+function hasPoint(sub: PathSubpath, x: number, y: number): boolean {
+  return sub.points.some(
+    (p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6
+  );
 }
 
 describe("svg primitive imports (#388)", () => {
@@ -35,16 +53,7 @@ describe("svg primitive imports (#388)", () => {
   });
 
   test("circle converts to a closed loop spanning its diameter", () => {
-    const subpaths = svgPrimitiveToSubpaths("circle", {
-      cx: "50",
-      cy: "50",
-      r: "10",
-    });
-    expect(subpaths).toHaveLength(1);
-    const sub = subpaths[0];
-    if (!sub) {
-      throw new Error("expected one subpath");
-    }
+    const sub = onlySubpath("circle", { cx: "50", cy: "50", r: "10" });
     expect(sub.closed).toBe(true);
     expect(sub.points.length).toBeGreaterThan(8);
     const b = bounds(sub.points);
@@ -55,17 +64,12 @@ describe("svg primitive imports (#388)", () => {
   });
 
   test("ellipse converts to a closed loop with rx/ry extents", () => {
-    const subpaths = svgPrimitiveToSubpaths("ellipse", {
+    const sub = onlySubpath("ellipse", {
       cx: "5",
       cy: "5",
       rx: "4",
       ry: "2",
     });
-    expect(subpaths).toHaveLength(1);
-    const sub = subpaths[0];
-    if (!sub) {
-      throw new Error("expected one subpath");
-    }
     expect(sub.closed).toBe(true);
     const b = bounds(sub.points);
     expect(b.minX).toBeCloseTo(1, 5);
@@ -75,17 +79,12 @@ describe("svg primitive imports (#388)", () => {
   });
 
   test("plain rect converts to four closed corners", () => {
-    const subpaths = svgPrimitiveToSubpaths("rect", {
+    const sub = onlySubpath("rect", {
       x: "0",
       y: "0",
       width: "20",
       height: "10",
     });
-    expect(subpaths).toHaveLength(1);
-    const sub = subpaths[0];
-    if (!sub) {
-      throw new Error("expected one subpath");
-    }
     expect(sub.closed).toBe(true);
     expect(sub.points).toEqual([
       { x: 0, y: 0 },
@@ -95,51 +94,53 @@ describe("svg primitive imports (#388)", () => {
     ]);
   });
 
-  test("rounded rect stays closed and keeps more points than a plain rect", () => {
-    const plain = svgPrimitiveToSubpaths("rect", {
+  test("rounded rect keeps rx on the x axis and ry on the y axis", () => {
+    const sub = onlySubpath("rect", {
       x: "0",
       y: "0",
       width: "20",
       height: "10",
-    });
-    const rounded = svgPrimitiveToSubpaths("rect", {
-      x: "0",
-      y: "0",
-      width: "20",
-      height: "10",
-      rx: "2",
+      rx: "4",
       ry: "2",
     });
-    expect(rounded).toHaveLength(1);
-    const roundedSub = rounded[0];
-    const plainSub = plain[0];
-    if (!roundedSub) {
-      throw new Error("expected rounded subpath");
-    }
-    if (!plainSub) {
-      throw new Error("expected plain subpath");
-    }
-    expect(roundedSub.closed).toBe(true);
-    expect(roundedSub.points.length).toBeGreaterThan(plainSub.points.length);
-    const b = bounds(roundedSub.points);
+    expect(sub.closed).toBe(true);
+    const b = bounds(sub.points);
     expect(b.minX).toBeCloseTo(0, 5);
     expect(b.maxX).toBeCloseTo(20, 5);
     expect(b.minY).toBeCloseTo(0, 5);
     expect(b.maxY).toBeCloseTo(10, 5);
+
+    for (const { x, y } of [
+      { x: 4, y: 0 },
+      { x: 16, y: 0 },
+      { x: 20, y: 2 },
+      { x: 20, y: 8 },
+      { x: 16, y: 10 },
+      { x: 4, y: 10 },
+      { x: 0, y: 8 },
+      { x: 0, y: 2 },
+    ]) {
+      expect(hasPoint(sub, x, y)).toBe(true);
+    }
+    for (const { x, y } of [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 10 },
+      { x: 0, y: 10 },
+      { x: 2, y: 0 },
+      { x: 20, y: 4 },
+    ]) {
+      expect(hasPoint(sub, x, y)).toBe(false);
+    }
   });
 
   test("line converts to a single open segment", () => {
-    const subpaths = svgPrimitiveToSubpaths("line", {
+    const sub = onlySubpath("line", {
       x1: "0",
       y1: "0",
       x2: "10",
       y2: "10",
     });
-    expect(subpaths).toHaveLength(1);
-    const sub = subpaths[0];
-    if (!sub) {
-      throw new Error("expected one subpath");
-    }
     expect(sub.closed).toBe(false);
     expect(sub.points).toEqual([
       { x: 0, y: 0 },
@@ -148,31 +149,17 @@ describe("svg primitive imports (#388)", () => {
   });
 
   test("polyline stays open, polygon closes", () => {
-    const open = svgPrimitiveToSubpaths("polyline", {
-      points: "0,0 10,0 10,10",
-    });
-    expect(open).toHaveLength(1);
-    const openSub = open[0];
-    if (!openSub) {
-      throw new Error("expected open subpath");
-    }
-    expect(openSub.closed).toBe(false);
-    expect(openSub.points).toEqual([
+    const open = onlySubpath("polyline", { points: "0,0 10,0 10,10" });
+    expect(open.closed).toBe(false);
+    expect(open.points).toEqual([
       { x: 0, y: 0 },
       { x: 10, y: 0 },
       { x: 10, y: 10 },
     ]);
 
-    const closed = svgPrimitiveToSubpaths("polygon", {
-      points: "0,0 10,0 10,10",
-    });
-    expect(closed).toHaveLength(1);
-    const closedSub = closed[0];
-    if (!closedSub) {
-      throw new Error("expected closed subpath");
-    }
-    expect(closedSub.closed).toBe(true);
-    expect(closedSub.points).toEqual(openSub.points);
+    const closed = onlySubpath("polygon", { points: "0,0 10,0 10,10" });
+    expect(closed.closed).toBe(true);
+    expect(closed.points).toEqual(open.points);
   });
 
   test("path data passes through, empty path drops", () => {
