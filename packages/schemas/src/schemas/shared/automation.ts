@@ -94,10 +94,16 @@ export function isUnsafeIgnoreCommitPattern(pattern: string): boolean {
         next === "+" ||
         next === "?" ||
         (next === "{" && /\{\d/.test(pattern.slice(index + 1, index + 3)));
-      // (a+)+, (a|b)*, (a{2}){2} — a quantifier applied to a group that
-      // already contains one.
+      // (a+)+, (a{2}){2} — a quantifier applied to a group that already
+      // contains one.
       if (hasInnerQuantifier && isQuantified) {
         return true;
+      }
+      if (hasInnerQuantifier) {
+        // A quantified group nested in another group (((a+))*, (a(x+))):
+        // the parent body now contains quantification, so an outer
+        // quantifier would nest.
+        markQuantifier();
       }
       continue;
     }

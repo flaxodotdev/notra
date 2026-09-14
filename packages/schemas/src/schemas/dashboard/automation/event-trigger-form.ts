@@ -20,14 +20,23 @@ export const eventTriggerFormSchema = z
     brandVoiceId: z.string(),
     autoPublish: z.boolean(),
     includePreReleases: z.boolean(),
-    ignoreCommitPatternsText: z
-      .string()
-      .max(IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH),
+    ignoreCommitPatternsText: z.string(),
   })
   .superRefine((value, ctx) => {
     // The patterns field is push-only (hidden and discarded for release),
-    // so it must not block release-trigger submission.
+    // so none of its checks may block release-trigger submission.
     if (value.eventType !== "push") {
+      return;
+    }
+    if (
+      value.ignoreCommitPatternsText.length >
+      IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Must be ${IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH} characters or less`,
+        path: ["ignoreCommitPatternsText"],
+      });
       return;
     }
     const lines = value.ignoreCommitPatternsText

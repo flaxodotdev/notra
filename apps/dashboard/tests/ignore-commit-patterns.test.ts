@@ -217,6 +217,13 @@ describe("isUnsafeIgnoreCommitPattern", () => {
     expect(isUnsafeIgnoreCommitPattern("(a?)?")).toBe(true);
   });
 
+  test("flags quantified groups nested in quantified groups", () => {
+    expect(isUnsafeIgnoreCommitPattern("^((a+))*$")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(x(a)+y)*")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("((ab))*")).toBe(false);
+    expect(isUnsafeIgnoreCommitPattern("((a+)b)")).toBe(false);
+  });
+
   test("flags lookarounds and backreferences", () => {
     expect(isUnsafeIgnoreCommitPattern("(?=.*a)b")).toBe(true);
     expect(isUnsafeIgnoreCommitPattern("a(?!b)")).toBe(true);
@@ -300,6 +307,25 @@ describe("eventTriggerFormSchema patterns gating", () => {
         ...base,
         eventType: "push",
         ignoreCommitPatternsText: "(a+)+$",
+      }).success
+    ).toBe(false);
+  });
+
+  test("ignores over-long patterns text for release triggers", () => {
+    expect(
+      eventTriggerFormSchema.safeParse({
+        ...base,
+        ignoreCommitPatternsText: "x".repeat(2000),
+      }).success
+    ).toBe(true);
+  });
+
+  test("rejects over-long patterns text for push triggers", () => {
+    expect(
+      eventTriggerFormSchema.safeParse({
+        ...base,
+        eventType: "push",
+        ignoreCommitPatternsText: "x".repeat(2000),
       }).success
     ).toBe(false);
   });
