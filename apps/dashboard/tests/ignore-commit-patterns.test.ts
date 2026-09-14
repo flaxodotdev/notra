@@ -1,4 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+
+import { eventTriggerFormSchema } from "@notra/schemas/dashboard/automation/event-trigger-form";
+import {
+  eventTriggerSourceConfigSchema,
+  isUnsafeIgnoreCommitPattern,
+} from "@notra/schemas/shared/automation";
 
 import type { GithubProcessedEvent } from "../src/types/webhooks/webhooks";
 import {
@@ -11,6 +17,13 @@ import {
   isCommitMessageIgnored,
   isPushEventIgnoredByPatterns,
 } from "../src/utils/ignore-commit-patterns";
+
+// Mocked before the dispatch module below is imported, so no workflow
+// runtime is touched: these tests only assert dispatch decisions.
+const startEventRun = mock(async (_payload: unknown) => ({ runId: "run-1" }));
+mock.module("@/lib/workflows/start", () => ({ startEventRun }));
+const { dispatchEventTriggers } =
+  await import("../src/lib/webhooks/dispatch-event-triggers");
 
 function pushEvent(messages: unknown[]): GithubProcessedEvent {
   return {
@@ -131,5 +144,163 @@ describe("parseIgnoreCommitPatternsText", () => {
       parseIgnoreCommitPatternsText(formatIgnoreCommitPatterns(patterns))
     ).toEqual(patterns);
     expect(formatIgnoreCommitPatterns(undefined)).toBe("");
+  });
+
+  test("drops ReDoS-prone patterns", () => {
+    expect(parseIgnoreCommitPatternsText("(a+)+$\n^fix")).toEqual(["^fix"]);
+  });
+});
+
+describe("dispatchEventTriggers fail-closed event-type matching", () => {
+  const push = pushEvent(["feat: add login"]);
+
+  beforeEach(() => {
+    startEventRun.mockClear();
+  });
+
+  test("does not start runs for triggers with missing eventTypes", async () => {
+    await dispatchEventTriggers({
+      triggers: [{ id: "trigger-1", sourceConfig: {} }],
+      processedEvent: push,
+      repositoryId: "repo-1",
+    });
+    expect(startEventRun).not.toHaveBeenCalled();
+  });
+
+  test("does not start runs for triggers with empty eventTypes", async () => {
+    await dispatchEventTriggers({
+      triggers: [{ id: "trigger-1", sourceConfig: { eventTypes: [] } }],
+      processedEvent: push,
+      repositoryId: "repo-1",
+    });
+    expect(startEventRun).not.toHaveBeenCalled();
+  });
+
+  test("does not start runs for triggers with invalid eventTypes", async () => {
+    await dispatchEventTriggers({
+      triggers: [
+        { id: "trigger-1", sourceConfig: { eventTypes: ["bogus"] } },
+        { id: "trigger-2", sourceConfig: null },
+      ],
+      processedEvent: push,
+      repositoryId: "repo-1",
+    });
+    expect(startEventRun).not.toHaveBeenCalled();
+  });
+
+  test("does not start runs for non-matching event types", async () => {
+    await dispatchEventTriggers({
+      triggers: [
+        { id: "trigger-1", sourceConfig: { eventTypes: ["release"] } },
+      ],
+      processedEvent: push,
+      repositoryId: "repo-1",
+    });
+    expect(startEventRun).not.toHaveBeenCalled();
+  });
+
+  test("starts runs for matching event types", async () => {
+    await dispatchEventTriggers({
+      triggers: [{ id: "trigger-1", sourceConfig: { eventTypes: ["push"] } }],
+      processedEvent: push,
+      repositoryId: "repo-1",
+    });
+    expect(startEventRun).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("isUnsafeIgnoreCommitPattern", () => {
+  test("flags nested quantifiers", () => {
+    expect(isUnsafeIgnoreCommitPattern("(a+)+$")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(a+)*")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(ab{2,3}){2}")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(a?)?")).toBe(true);
+  });
+
+  test("flags lookarounds and backreferences", () => {
+    expect(isUnsafeIgnoreCommitPattern("(?=.*a)b")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("a(?!b)")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(?<=a)b")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(?<!a)b")).toBe(true);
+    expect(isUnsafeIgnoreCommitPattern("(a)\\1")).toBe(true);
+  });
+
+  test("allows ordinary patterns", () => {
+    for (const pattern of [
+      "^chore(\\(|:)",
+      "^wip",
+      "fix:.*",
+      "(?:chore|wip):",
+      "(?<name>chore):",
+      "[+*] brackets",
+      "a\\+b",
+      "a{2}",
+      "\\d+\\.\\d+",
+    ]) {
+      expect(isUnsafeIgnoreCommitPattern(pattern)).toBe(false);
+    }
+  });
+});
+
+describe("compileIgnoreCommitPatterns safety", () => {
+  test("skips ReDoS-prone patterns", () => {
+    const compiled = compileIgnoreCommitPatterns(["(a+)+$", "^chore"]);
+    expect(compiled).toHaveLength(1);
+    expect(compiled[0]?.test("chore: bump")).toBe(true);
+  });
+});
+
+describe("eventTriggerSourceConfigSchema pattern validation", () => {
+  test("rejects unsafe and multi-line patterns", () => {
+    expect(
+      eventTriggerSourceConfigSchema.safeParse({
+        eventTypes: ["push"],
+        ignoreCommitPatterns: ["(a+)+$"],
+      }).success
+    ).toBe(false);
+    expect(
+      eventTriggerSourceConfigSchema.safeParse({
+        eventTypes: ["push"],
+        ignoreCommitPatterns: ["foo\nbar"],
+      }).success
+    ).toBe(false);
+    expect(
+      eventTriggerSourceConfigSchema.safeParse({
+        eventTypes: ["push"],
+        ignoreCommitPatterns: ["^chore"],
+      }).success
+    ).toBe(true);
+  });
+});
+
+describe("eventTriggerFormSchema patterns gating", () => {
+  const base = {
+    eventType: "release",
+    outputType: "changelog",
+    repositoryIds: ["repo-1"],
+    brandVoiceId: "",
+    autoPublish: false,
+    includePreReleases: true,
+    ignoreCommitPatternsText: "(unclosed",
+  } as const;
+
+  test("ignores invalid patterns text for release triggers", () => {
+    expect(eventTriggerFormSchema.safeParse(base).success).toBe(true);
+  });
+
+  test("rejects invalid patterns text for push triggers", () => {
+    expect(
+      eventTriggerFormSchema.safeParse({ ...base, eventType: "push" }).success
+    ).toBe(false);
+  });
+
+  test("rejects unsafe patterns text for push triggers", () => {
+    expect(
+      eventTriggerFormSchema.safeParse({
+        ...base,
+        eventType: "push",
+        ignoreCommitPatternsText: "(a+)+$",
+      }).success
+    ).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import {
+  isUnsafeIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
 } from "@notra/schemas/dashboard/integrations";
@@ -14,9 +15,10 @@ export const IGNORE_COMMIT_PATTERNS_PLACEHOLDER = "^chore(\\(|:)";
  * supported — use character classes).
  *
  * Patterns are org-trusted input, bounded by MAX_IGNORE_COMMIT_PATTERNS (10)
- * and MAX_IGNORE_COMMIT_PATTERN_LENGTH (120). A pathological pattern can
- * still cost CPU per commit per webhook; invalid patterns are skipped and
- * must never block dispatch.
+ * and MAX_IGNORE_COMMIT_PATTERN_LENGTH (120). Patterns with ReDoS-prone
+ * syntax are skipped (write-time validation rejects them; this covers
+ * legacy rows) so a pathological pattern can never stall dispatch.
+ * Invalid patterns are skipped and must never block dispatch.
  */
 export function compileIgnoreCommitPatterns(patterns: unknown): RegExp[] {
   if (!Array.isArray(patterns)) {
@@ -34,7 +36,8 @@ export function compileIgnoreCommitPatterns(patterns: unknown): RegExp[] {
     if (
       !trimmed ||
       trimmed.length > MAX_IGNORE_COMMIT_PATTERN_LENGTH ||
-      seen.has(trimmed)
+      seen.has(trimmed) ||
+      isUnsafeIgnoreCommitPattern(trimmed)
     ) {
       continue;
     }

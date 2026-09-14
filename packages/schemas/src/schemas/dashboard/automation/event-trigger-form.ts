@@ -1,5 +1,6 @@
 import "zod/compile";
 import {
+  isUnsafeIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
   SUPPORTED_AUTOMATION_OUTPUT_TYPES,
@@ -11,11 +12,25 @@ import * as z from "zod";
 export const IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH =
   MAX_IGNORE_COMMIT_PATTERNS * (MAX_IGNORE_COMMIT_PATTERN_LENGTH + 1);
 
-const ignoreCommitPatternsTextSchema = z
-  .string()
-  .max(IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH)
+export const eventTriggerFormSchema = z
+  .object({
+    eventType: z.enum(WEBHOOK_EVENT_TYPES),
+    outputType: z.enum(SUPPORTED_AUTOMATION_OUTPUT_TYPES),
+    repositoryIds: z.array(z.string()).min(1, "Select at least one repository"),
+    brandVoiceId: z.string(),
+    autoPublish: z.boolean(),
+    includePreReleases: z.boolean(),
+    ignoreCommitPatternsText: z
+      .string()
+      .max(IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH),
+  })
   .superRefine((value, ctx) => {
-    const lines = value
+    // The patterns field is push-only (hidden and discarded for release),
+    // so it must not block release-trigger submission.
+    if (value.eventType !== "push") {
+      return;
+    }
+    const lines = value.ignoreCommitPatternsText
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
@@ -23,6 +38,7 @@ const ignoreCommitPatternsTextSchema = z
       ctx.addIssue({
         code: "custom",
         message: `Use at most ${MAX_IGNORE_COMMIT_PATTERNS} patterns (one per line)`,
+        path: ["ignoreCommitPatternsText"],
       });
       return;
     }
@@ -31,6 +47,7 @@ const ignoreCommitPatternsTextSchema = z
         ctx.addIssue({
           code: "custom",
           message: `Each pattern must be ${MAX_IGNORE_COMMIT_PATTERN_LENGTH} characters or less`,
+          path: ["ignoreCommitPatternsText"],
         });
         return;
       }
@@ -40,20 +57,19 @@ const ignoreCommitPatternsTextSchema = z
         ctx.addIssue({
           code: "custom",
           message: `Invalid regular expression: ${line}`,
+          path: ["ignoreCommitPatternsText"],
+        });
+        return;
+      }
+      if (isUnsafeIgnoreCommitPattern(line)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Unsafe regular expression: ${line}`,
+          path: ["ignoreCommitPatternsText"],
         });
         return;
       }
     }
   });
-
-export const eventTriggerFormSchema = z.object({
-  eventType: z.enum(WEBHOOK_EVENT_TYPES),
-  outputType: z.enum(SUPPORTED_AUTOMATION_OUTPUT_TYPES),
-  repositoryIds: z.array(z.string()).min(1, "Select at least one repository"),
-  brandVoiceId: z.string(),
-  autoPublish: z.boolean(),
-  includePreReleases: z.boolean(),
-  ignoreCommitPatternsText: ignoreCommitPatternsTextSchema,
-});
 
 export type EventTriggerFormValues = z.infer<typeof eventTriggerFormSchema>;

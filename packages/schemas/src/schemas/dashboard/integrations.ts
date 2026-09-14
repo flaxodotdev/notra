@@ -15,12 +15,17 @@ import {
   cronFrequencySchema,
   cronIntervalDaysSchema as sharedCronIntervalDaysSchema,
   eventTriggerSourceConfigSchema,
+  isUnsafeIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
   webhookEventTypeSchema,
 } from "../shared/automation";
 
-export { MAX_IGNORE_COMMIT_PATTERN_LENGTH, MAX_IGNORE_COMMIT_PATTERNS };
+export {
+  isUnsafeIgnoreCommitPattern,
+  MAX_IGNORE_COMMIT_PATTERN_LENGTH,
+  MAX_IGNORE_COMMIT_PATTERNS,
+};
 
 export const INTEGRATION_CATEGORIES = ["input", "output"] as const;
 export type IntegrationCategory = (typeof INTEGRATION_CATEGORIES)[number];

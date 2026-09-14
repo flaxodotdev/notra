@@ -1,5 +1,6 @@
 import {
   type AutomationOutputType,
+  isUnsafeIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
   SUPPORTED_AUTOMATION_OUTPUT_TYPES,
@@ -70,12 +71,13 @@ export function parseIgnoreCommitPatternsText(value?: string): string[] {
   for (const line of value.split("\n")) {
     const trimmed = line.trim();
     // Lossy sanitizer for persistence: mirrors compileIgnoreCommitPatterns
-    // (drop blank/dupes/over-long/invalid) while the zod form schema rejects
-    // those inputs with explicit errors before this runs.
+    // (drop blank/dupes/over-long/invalid/unsafe) while the zod form schema
+    // rejects those inputs with explicit errors before this runs.
     if (
       !trimmed ||
       trimmed.length > MAX_IGNORE_COMMIT_PATTERN_LENGTH ||
-      seen.has(trimmed)
+      seen.has(trimmed) ||
+      isUnsafeIgnoreCommitPattern(trimmed)
     ) {
       continue;
     }
