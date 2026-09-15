@@ -9,6 +9,47 @@ import type { GithubProcessedEvent } from "@/types/webhooks/webhooks";
 export const IGNORE_COMMIT_PATTERNS_PLACEHOLDER = "^chore(\\(|:)";
 
 /**
+ * One-click conventional-commit prefixes for users who don't write regex.
+ * Each prefix maps to an anchored `^prefix(\(|:)` pattern matching both
+ * `prefix: ...` and `prefix(scope): ...` messages.
+ */
+export const IGNORE_COMMIT_PATTERN_PRESET_PREFIXES = [
+  "chore",
+  "docs",
+  "ci",
+  "test",
+  "style",
+  "build",
+  "refactor",
+] as const;
+
+export type IgnoreCommitPatternPresetPrefix =
+  (typeof IGNORE_COMMIT_PATTERN_PRESET_PREFIXES)[number];
+
+export function buildIgnoreCommitPrefixPattern(prefix: string): string {
+  return `^${prefix}(\\(|:)`;
+}
+
+/**
+ * Append a preset pattern to the textarea text. Returns the unchanged text
+ * when the pattern is already present or the pattern cap is reached, so
+ * callers can treat identity as "nothing to do".
+ */
+export function addIgnoreCommitPatternToText(
+  currentText: string,
+  pattern: string
+): string {
+  const lines = currentText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.includes(pattern) || lines.length >= MAX_IGNORE_COMMIT_PATTERNS) {
+    return currentText;
+  }
+  return [...lines, pattern].join("\n");
+}
+
+/**
  * Compile stored ignore-commit patterns to regexes. Matching is
  * case-sensitive, unanchored `RegExp.test` (substring unless the user
  * anchors with `^`/`$` or passes flags inline, e.g. `(?i)` is not

@@ -12,7 +12,10 @@ import {
   parseIgnoreCommitPatternsText,
 } from "../src/utils/event-trigger-form";
 import {
+  addIgnoreCommitPatternToText,
+  buildIgnoreCommitPrefixPattern,
   compileIgnoreCommitPatterns,
+  IGNORE_COMMIT_PATTERN_PRESET_PREFIXES,
   IGNORE_COMMIT_PATTERNS_PLACEHOLDER,
   isCommitMessageIgnored,
   isPushEventIgnoredByPatterns,
@@ -254,6 +257,36 @@ describe("compileIgnoreCommitPatterns safety", () => {
     const compiled = compileIgnoreCommitPatterns(["(a+)+$", "^chore"]);
     expect(compiled).toHaveLength(1);
     expect(compiled[0]?.test("chore: bump")).toBe(true);
+  });
+});
+
+describe("ignore-commit-pattern presets", () => {
+  test("builds anchored prefix patterns matching colon and paren forms", () => {
+    expect(buildIgnoreCommitPrefixPattern("chore")).toBe("^chore(\\(|:)");
+    for (const prefix of IGNORE_COMMIT_PATTERN_PRESET_PREFIXES) {
+      const compiled = compileIgnoreCommitPatterns([
+        buildIgnoreCommitPrefixPattern(prefix),
+      ]);
+      expect(compiled).toHaveLength(1);
+      expect(isCommitMessageIgnored(`${prefix}: bump`, compiled)).toBe(true);
+      expect(isCommitMessageIgnored(`${prefix}(scope): bump`, compiled)).toBe(
+        true
+      );
+      expect(isCommitMessageIgnored(`feat: bump`, compiled)).toBe(false);
+    }
+  });
+
+  test("appends presets without dupes and respects the pattern cap", () => {
+    expect(addIgnoreCommitPatternToText("", "^chore(\\(|:)")).toBe(
+      "^chore(\\(|:)"
+    );
+    expect(addIgnoreCommitPatternToText("^chore(\\(|:)", "^chore(\\(|:)")).toBe(
+      "^chore(\\(|:)"
+    );
+    const full = Array.from({ length: 10 }, (_, index) => `^p${index}`).join(
+      "\n"
+    );
+    expect(addIgnoreCommitPatternToText(full, "^overflow")).toBe(full);
   });
 });
 
