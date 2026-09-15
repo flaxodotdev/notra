@@ -108,7 +108,6 @@ export async function resolveManualBrandSettings(input: {
     id: result.brand.id,
     name: result.brand.name,
     toneProfile: result.brand.toneProfile,
-    customTone: result.brand.customTone,
     companyName: result.brand.companyName,
     companyDescription: result.brand.companyDescription,
     audience: result.brand.audience,

@@ -270,7 +270,6 @@ export async function fetchBrandSettingsData(input: {
     id: result.id,
     name: result.name,
     toneProfile: result.toneProfile,
-    customTone: result.customTone,
     companyName: result.companyName,
     companyDescription: result.companyDescription,
     audience: result.audience,

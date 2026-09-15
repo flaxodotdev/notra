@@ -1,8 +1,6 @@
-import type { ToneProfile } from "@notra/ai/schemas/tone";
+export type { TextSelection } from "./orchestration";
 
 import type { TextSelection } from "./orchestration";
-
-export type { TextSelection };
 
 export interface BaseTonePromptInput {
   sourceTargets: string;
@@ -15,8 +13,6 @@ export interface BaseTonePromptInput {
   audience?: string;
   customInstructions?: string | null;
   language?: string;
-  tone?: ToneProfile;
-  customTone?: string | null;
 }
 
 export type ChangelogTonePromptInput = BaseTonePromptInput;

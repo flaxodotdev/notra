@@ -5,11 +5,6 @@ import {
   PaintBoardIcon,
 } from "@hugeicons/core-free-icons";
 import { SUPPORTED_LANGUAGES } from "@notra/ai/constants/languages";
-import {
-  TONE_DETAILS,
-  TONE_ORDER,
-  TONE_SCOPE_NOTE,
-} from "@notra/ai/constants/tones";
 import type { ToneProfile } from "@notra/ai/schemas/tone";
 
 import type { BrandTab } from "@/types/brand-identity";
@@ -27,13 +22,31 @@ export const TONE_OPTIONS: {
   value: ToneProfile;
   label: string;
   description: string;
-}[] = TONE_ORDER.map((value) => ({
-  value,
-  label: TONE_DETAILS[value].label,
-  description: TONE_DETAILS[value].tagline,
-}));
+}[] = [
+  {
+    value: "Conversational",
+    label: "Conversational",
+    description: "Warm and direct, like a builder talking to peers.",
+  },
+  {
+    value: "Professional",
+    label: "Professional",
+    description: "Clear and confident, focused on outcomes.",
+  },
+  {
+    value: "Casual",
+    label: "Casual",
+    description: "Friendly and relaxed, light on formality.",
+  },
+  {
+    value: "Formal",
+    label: "Formal",
+    description: "Precise and structured, careful with terms.",
+  },
+];
 
-export { TONE_SCOPE_NOTE };
+export const TONE_SCOPE_NOTE =
+  "Tone changes wording, sentence rhythm, and examples only. It never changes structure, facts, audience filtering, language, length limits, or formatting rules.";
 
 export const LANGUAGE_OPTIONS = SUPPORTED_LANGUAGES;
 

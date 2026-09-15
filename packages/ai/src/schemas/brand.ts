@@ -1,8 +1,19 @@
-// Single source of truth for tone profiles lives in `./tone`.
-// This module re-exports it so existing `@notra/ai/schemas/brand` imports keep working.
-export {
-  TONE_PROFILES,
-  toneProfileSchema,
-  getValidToneProfile,
-  type ToneProfile,
-} from "./tone";
+// biome-ignore lint/performance/noNamespaceImport: Zod recommended way to import
+import * as z from "zod";
+
+export const toneProfileSchema = z.enum([
+  "Conversational",
+  "Professional",
+  "Casual",
+  "Formal",
+]);
+
+export type ToneProfile = z.infer<typeof toneProfileSchema>;
+
+export function getValidToneProfile(
+  value: unknown,
+  fallback: ToneProfile = "Conversational"
+): ToneProfile {
+  const parsed = toneProfileSchema.safeParse(value);
+  return parsed.success ? parsed.data : fallback;
+}
