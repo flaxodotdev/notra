@@ -23,6 +23,7 @@ import {
   LANGUAGE_OPTIONS,
   TONE_OPTIONS,
   TONE_SCOPE_NOTE,
+  TONE_SELECT_ITEMS,
 } from "@/constants/brand-identity";
 import type { ToneLanguageFieldsProps } from "@/types/brand-identity";
 import { getLanguageFlag } from "@/utils/brand-identity";
@@ -88,6 +89,7 @@ export function ToneLanguageFields({
                   </label>
                   <Select
                     disabled={useCustomToneField.state.value}
+                    items={TONE_SELECT_ITEMS}
                     onValueChange={(value) => {
                       if (value) {
                         toneProfileField.handleChange(value as ToneProfile);
@@ -96,10 +98,7 @@ export function ToneLanguageFields({
                     value={toneProfileField.state.value}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue
-                        className="[&_[data-item-desc]]:hidden"
-                        placeholder="Select tone"
-                      />
+                      <SelectValue placeholder="Select tone" />
                     </SelectTrigger>
                     <SelectContent alignItemWithTrigger={false}>
                       {TONE_OPTIONS.map((option) => (
@@ -110,10 +109,7 @@ export function ToneLanguageFields({
                         >
                           <span className="flex min-w-0 flex-col items-start gap-0.5">
                             <span>{option.label}</span>
-                            <span
-                              data-item-desc
-                              className="text-muted-foreground text-xs whitespace-normal"
-                            >
+                            <span className="text-muted-foreground text-xs whitespace-normal">
                               {option.description}
                             </span>
                           </span>
@@ -122,8 +118,7 @@ export function ToneLanguageFields({
                     </SelectContent>
                   </Select>
                   <p className="text-muted-foreground text-xs">
-                    {TONE_SCOPE_NOTE} Custom Tone adds your own notes on top of
-                    the profile.
+                    {TONE_SCOPE_NOTE}
                   </p>
                 </div>
               )}

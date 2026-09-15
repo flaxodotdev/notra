@@ -26,27 +26,31 @@ export const TONE_OPTIONS: {
   {
     value: "Conversational",
     label: "Conversational",
-    description: "Warm and direct, like a builder talking to peers.",
+    description: "Warm and direct, like talking to a peer.",
   },
   {
     value: "Professional",
     label: "Professional",
-    description: "Clear and confident, focused on outcomes.",
+    description: "Clear and confident without the fluff.",
   },
   {
     value: "Casual",
     label: "Casual",
-    description: "Friendly and relaxed, light on formality.",
+    description: "Relaxed, friendly, reads like a chat.",
   },
   {
     value: "Formal",
     label: "Formal",
-    description: "Precise and structured, careful with terms.",
+    description: "Precise and structured. No slang.",
   },
 ];
 
+export const TONE_SELECT_ITEMS = Object.fromEntries(
+  TONE_OPTIONS.map((option) => [option.value, option.label])
+);
+
 export const TONE_SCOPE_NOTE =
-  "Tone changes wording, sentence rhythm, and examples only. It never changes structure, facts, audience filtering, language, length limits, or formatting rules.";
+  "Tone only changes how things are phrased. Structure and facts stay the same. Pick Custom Tone to describe your own voice instead.";
 
 export const LANGUAGE_OPTIONS = SUPPORTED_LANGUAGES;
 
