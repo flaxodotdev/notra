@@ -54,14 +54,10 @@ export function getDefaultEventTriggerValues(
     brandVoiceId: normalizeBrandVoiceId(trigger.outputConfig?.brandVoiceId),
     autoPublish: trigger.autoPublish,
     includePreReleases: trigger.sourceConfig.includePreReleases ?? true,
-    ignoreCommitPatternsText: formatIgnoreCommitPatterns(
-      trigger.sourceConfig.ignoreCommitPatterns
+    ignoreCommitPatternsText: joinIgnoreCommitPatterns(
+      trigger.sourceConfig.ignoreCommitPatterns ?? []
     ),
   };
-}
-
-export function formatIgnoreCommitPatterns(patterns?: string[]): string {
-  return joinIgnoreCommitPatterns(patterns ?? []);
 }
 
 export function parseIgnoreCommitPatternsText(value?: string): string[] {

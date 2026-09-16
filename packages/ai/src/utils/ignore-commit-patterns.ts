@@ -95,26 +95,25 @@ export function isUnsafeIgnoreCommitPattern(pattern: string): boolean {
 
 export const IGNORE_COMMIT_PATTERNS_SEPARATOR = ", ";
 
-export function splitIgnoreCommitPatternsText(text: string): string[] {
-  const parts: string[] = [];
-  let current = "";
+function scanTopLevelCommas(
+  text: string,
+  onComma: (index: number) => void
+): void {
   let escaped = false;
   let inClass = false;
   let braceDepth = 0;
 
-  for (const char of text) {
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
     if (escaped) {
-      current += char;
       escaped = false;
       continue;
     }
     if (char === "\\") {
-      current += char;
       escaped = true;
       continue;
     }
     if (inClass) {
-      current += char;
       inClass = char !== "]";
       continue;
     }
@@ -125,24 +124,45 @@ export function splitIgnoreCommitPatternsText(text: string): string[] {
     } else if (char === "}") {
       braceDepth = Math.max(0, braceDepth - 1);
     } else if (char === "," && braceDepth === 0) {
-      parts.push(current);
-      current = "";
-      continue;
+      onComma(index);
     }
-    current += char;
   }
-  parts.push(current);
+}
 
+export function splitIgnoreCommitPatternsText(text: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  scanTopLevelCommas(text, (index) => {
+    parts.push(text.slice(start, index));
+    start = index + 1;
+  });
+  parts.push(text.slice(start));
   return parts.map((part) => part.trim()).filter(Boolean);
 }
 
+export function escapeIgnoreCommitPatternCommas(pattern: string): string {
+  const indices: number[] = [];
+  scanTopLevelCommas(pattern, (index) => indices.push(index));
+  let result = pattern;
+  for (const index of indices.reverse()) {
+    result = `${result.slice(0, index)}\\,${result.slice(index + 1)}`;
+  }
+  return result;
+}
+
 export function joinIgnoreCommitPatterns(patterns: string[]): string {
-  return patterns.join(IGNORE_COMMIT_PATTERNS_SEPARATOR);
+  return patterns
+    .map(escapeIgnoreCommitPatternCommas)
+    .join(IGNORE_COMMIT_PATTERNS_SEPARATOR);
+}
+
+export function toIgnoreCommitRegExp(pattern: string): RegExp {
+  return new RegExp(pattern, IGNORE_COMMIT_PATTERN_FLAGS);
 }
 
 export function isValidIgnoreCommitPattern(pattern: string): boolean {
   try {
-    new RegExp(pattern, IGNORE_COMMIT_PATTERN_FLAGS);
+    toIgnoreCommitRegExp(pattern);
     return true;
   } catch {
     return false;

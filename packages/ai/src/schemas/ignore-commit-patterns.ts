@@ -2,12 +2,11 @@
 import * as z from "zod";
 
 import {
-  IGNORE_COMMIT_PATTERN_FLAGS,
   isUnsafeIgnoreCommitPattern,
   isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
-  splitIgnoreCommitPatternsText,
+  toIgnoreCommitRegExp,
 } from "../utils/ignore-commit-patterns";
 
 const LINE_BREAK_PATTERN = /[\r\n]/;
@@ -20,10 +19,6 @@ export const ignoreCommitPatternSchema = z
   .refine(
     (value) => !LINE_BREAK_PATTERN.test(value),
     "Patterns can't span lines"
-  )
-  .refine(
-    (value) => splitIgnoreCommitPatternsText(value).length === 1,
-    "Escape commas inside a pattern as \\,"
   )
   .refine(isValidIgnoreCommitPattern, "Not a valid regex")
   .refine(
@@ -60,7 +55,7 @@ export const storedIgnoreCommitPatternsSchema = z
 
 export const compiledIgnoreCommitPatternsSchema =
   storedIgnoreCommitPatternsSchema.transform((patterns) =>
-    patterns.map((pattern) => new RegExp(pattern, IGNORE_COMMIT_PATTERN_FLAGS))
+    patterns.map(toIgnoreCommitRegExp)
   );
 
 export function normalizeIgnoreCommitPatterns(patterns: unknown): string[] {

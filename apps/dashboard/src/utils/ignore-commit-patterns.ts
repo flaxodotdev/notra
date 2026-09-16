@@ -47,13 +47,6 @@ export function removeIgnoreCommitPatternFromText(
   );
 }
 
-export function isCommitMessageIgnored(
-  message: string,
-  patterns: RegExp[]
-): boolean {
-  return patterns.some((pattern) => pattern.test(message));
-}
-
 export function isPushEventIgnoredByPatterns(
   processedEvent: GithubProcessedEvent,
   patterns: unknown
@@ -69,5 +62,7 @@ export function isPushEventIgnoredByPatterns(
   if (messages.length === 0) {
     return false;
   }
-  return messages.every((message) => isCommitMessageIgnored(message, compiled));
+  return messages.every((message) =>
+    compiled.some((pattern) => pattern.test(message))
+  );
 }

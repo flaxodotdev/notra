@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  IGNORE_COMMIT_PATTERN_FLAGS,
   isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERNS,
   splitIgnoreCommitPatternsText,
+  toIgnoreCommitRegExp,
 } from "@notra/ai/utils/ignore-commit-patterns";
 import { FieldError } from "@notra/ui/components/ui/field";
 import { Input } from "@notra/ui/components/ui/input";
@@ -39,7 +39,7 @@ function findMatchingPattern(
     lines.find(
       (line) =>
         isValidIgnoreCommitPattern(line) &&
-        new RegExp(line, IGNORE_COMMIT_PATTERN_FLAGS).test(trimmedSample)
+        toIgnoreCommitRegExp(line).test(trimmedSample)
     ) ?? null
   );
 }
