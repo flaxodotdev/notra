@@ -44,12 +44,14 @@ import {
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2Icon } from "lucide-react";
-import { useState } from "react";
+import { useQueryStates } from "nuqs";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { BrandVoiceCell } from "@/components/automation/brand-voice-cell";
 import { OnboardingSuggestions } from "@/components/automation/onboarding-suggestions";
 import { CreateScheduleDialog } from "@/components/automation/schedules/create-schedule-dialog";
+import { SchedulePresetQuickStart } from "@/components/automation/schedules/schedule-preset-quick-start";
 import { SourcesCell } from "@/components/automation/sources-cell";
 import { TriggerStatusBadge } from "@/components/automation/triggers/trigger-status-badge";
 import { Button } from "@/components/button";
@@ -62,8 +64,15 @@ import {
   EMPTY_STATE_TABLE_COLUMNS,
   EMPTY_STATE_TABLE_ROWS,
 } from "@/constants/empty-state";
+import type { SchedulePresetId } from "@/constants/schedule-presets";
 import { useCreateFromSuggestion } from "@/lib/hooks/use-onboarding";
 import { dashboardOrpc } from "@/lib/orpc/query";
+import {
+  hasSchedulePresetQueryConfig,
+  SCHEDULE_PRESET_QUERY_PARSERS,
+  schedulePresetQueryToValues,
+  schedulePresetToQuery,
+} from "@/lib/schedules/preset-query";
 import type { BrandSettings } from "@/types/hooks/brand-analysis";
 import type { Trigger } from "@/types/triggers/triggers";
 import { formatRelative } from "@/utils/format-relative";
@@ -124,6 +133,54 @@ export default function PageClient({ organizationSlug }: PageClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const { beginCreate, cancelCreate, handleCreateSuccess, pendingSuggestion } =
     useCreateFromSuggestion(organizationId);
+  // Preset state lives in the URL (nuqs), like the API key quick-start flow:
+  // selecting a preset writes its values to the query string and opens the
+  // dialog prefilled, so a preset is just a shareable link.
+  const [presetQuery, setPresetQuery] = useQueryStates(
+    SCHEDULE_PRESET_QUERY_PARSERS
+  );
+  const presetValues = useMemo(
+    () =>
+      schedulePresetQueryToValues({
+        outputType: presetQuery.outputType,
+        frequency: presetQuery.frequency,
+        hour: presetQuery.hour,
+        minute: presetQuery.minute,
+        dayOfWeek: presetQuery.dayOfWeek,
+        dayOfMonth: presetQuery.dayOfMonth,
+        intervalDays: presetQuery.intervalDays,
+        lookback: presetQuery.lookback,
+      }),
+    [
+      presetQuery.outputType,
+      presetQuery.frequency,
+      presetQuery.hour,
+      presetQuery.minute,
+      presetQuery.dayOfWeek,
+      presetQuery.dayOfMonth,
+      presetQuery.intervalDays,
+      presetQuery.lookback,
+    ]
+  );
+  const hasPresetQuery = hasSchedulePresetQueryConfig(presetQuery);
+
+  // Deep links carrying preset params open the dialog on load.
+  useEffect(() => {
+    if (hasPresetQuery && !createOpen) {
+      setCreateOpen(true);
+    }
+  }, [hasPresetQuery, createOpen]);
+
+  const handlePresetSelect = (id: SchedulePresetId) => {
+    setPresetQuery(schedulePresetToQuery(id));
+    setCreateOpen(true);
+  };
+
+  const clearPresetQuery = () => {
+    if (hasSchedulePresetQueryConfig(presetQuery)) {
+      setPresetQuery(null);
+    }
+  };
 
   useHotkey("C", () => setCreateOpen(true), { enabled: !createOpen });
 
@@ -388,6 +445,7 @@ export default function PageClient({ organizationSlug }: PageClientProps) {
               setCreateOpen(open);
               if (!open) {
                 cancelCreate(pendingSuggestion);
+                clearPresetQuery();
               }
             }}
             onSuccess={() => {
@@ -404,9 +462,11 @@ export default function PageClient({ organizationSlug }: PageClientProps) {
                 });
               }
               handleCreateSuccess(pendingSuggestion);
+              clearPresetQuery();
             }}
             open={createOpen}
             organizationId={organizationId ?? ""}
+            presetValues={presetValues}
             trigger={
               <Button className="w-fit gap-2">
                 <span className="inline-flex items-center gap-1.5">
@@ -423,6 +483,7 @@ export default function PageClient({ organizationSlug }: PageClientProps) {
           <OnboardingSuggestions
             onCreate={(suggestionId) => {
               beginCreate(suggestionId);
+              clearPresetQuery();
               setCreateOpen(true);
             }}
             organizationId={organizationId}
@@ -449,8 +510,10 @@ export default function PageClient({ organizationSlug }: PageClientProps) {
                       }),
                     });
                   }
+                  clearPresetQuery();
                 }}
                 organizationId={organizationId ?? ""}
+                presetValues={presetValues}
                 trigger={
                   <Button className="gap-1.5" variant="outline">
                     <HugeiconsIcon className="size-4" icon={Add01Icon} />
@@ -543,6 +606,8 @@ export default function PageClient({ organizationSlug }: PageClientProps) {
             </TabsContent>
           </Tabs>
         )}
+
+        <SchedulePresetQuickStart onSelect={handlePresetSelect} />
       </div>
 
       <ResponsiveAlertDialog

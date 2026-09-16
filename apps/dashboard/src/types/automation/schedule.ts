@@ -1,6 +1,7 @@
 import type { ScheduleCron } from "@notra/schemas/dashboard/automation/schedule-form";
 
 import type { Trigger } from "@/types/triggers/triggers";
+import type { PresetScheduleValues } from "@/utils/schedule-form";
 
 export type {
   ScheduleCron,
@@ -14,6 +15,11 @@ export interface CreateScheduleDialogProps {
   editTrigger?: Trigger;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Preset values from the URL quick-start flow (nuqs). Applied as the
+   * dialog's initial values when creating; ignored in edit mode.
+   */
+  presetValues?: PresetScheduleValues | null;
 }
 
 export interface ScheduleFrequencyTabsProps {
