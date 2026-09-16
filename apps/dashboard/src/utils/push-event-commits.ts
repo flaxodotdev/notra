@@ -1,11 +1,7 @@
-import { z } from "zod";
-
-const pushCommitsSchema = z.object({
-  commits: z.array(z.object({ message: z.string() }).loose()),
-});
+import { githubPushEventCommitsSchema } from "@notra/schemas/dashboard/github-webhook";
 
 export function getPushCommitMessages(data: unknown): string[] {
-  const parsed = pushCommitsSchema.safeParse(data);
+  const parsed = githubPushEventCommitsSchema.safeParse(data);
   if (!parsed.success) {
     return [];
   }

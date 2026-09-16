@@ -1,6 +1,6 @@
+import { normalizeIgnoreCommitPatterns } from "@notra/ai/schemas/ignore-commit-patterns";
 import {
   joinIgnoreCommitPatterns,
-  normalizeIgnoreCommitPatterns,
   splitIgnoreCommitPatternsText,
 } from "@notra/ai/utils/ignore-commit-patterns";
 import {

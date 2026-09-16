@@ -148,38 +148,3 @@ export function isValidIgnoreCommitPattern(pattern: string): boolean {
     return false;
   }
 }
-
-export function normalizeIgnoreCommitPatterns(patterns: unknown): string[] {
-  if (!Array.isArray(patterns)) {
-    return [];
-  }
-  const valid: string[] = [];
-  const seen = new Set<string>();
-  for (const pattern of patterns) {
-    if (typeof pattern !== "string") {
-      continue;
-    }
-    const trimmed = pattern.trim();
-    if (
-      !trimmed ||
-      trimmed.length > MAX_IGNORE_COMMIT_PATTERN_LENGTH ||
-      seen.has(trimmed) ||
-      isUnsafeIgnoreCommitPattern(trimmed) ||
-      !isValidIgnoreCommitPattern(trimmed)
-    ) {
-      continue;
-    }
-    seen.add(trimmed);
-    valid.push(trimmed);
-    if (valid.length >= MAX_IGNORE_COMMIT_PATTERNS) {
-      break;
-    }
-  }
-  return valid;
-}
-
-export function compileIgnoreCommitPatterns(patterns: unknown): RegExp[] {
-  return normalizeIgnoreCommitPatterns(patterns).map(
-    (pattern) => new RegExp(pattern, IGNORE_COMMIT_PATTERN_FLAGS)
-  );
-}

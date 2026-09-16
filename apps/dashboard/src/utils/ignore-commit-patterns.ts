@@ -1,5 +1,5 @@
+import { compileIgnoreCommitPatterns } from "@notra/ai/schemas/ignore-commit-patterns";
 import {
-  compileIgnoreCommitPatterns,
   joinIgnoreCommitPatterns,
   MAX_IGNORE_COMMIT_PATTERNS,
   splitIgnoreCommitPatternsText,

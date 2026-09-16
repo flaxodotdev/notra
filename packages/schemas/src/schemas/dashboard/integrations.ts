@@ -1,4 +1,5 @@
 import "zod/compile";
+import { storedIgnoreCommitPatternsSchema } from "@notra/ai/schemas/ignore-commit-patterns";
 import { organizationIdInputSchema } from "@notra/schemas/dashboard/auth/organization";
 // biome-ignore lint/performance/noNamespaceImport: Zod recommended way to import
 import * as z from "zod";
@@ -15,19 +16,8 @@ import {
   cronFrequencySchema,
   cronIntervalDaysSchema as sharedCronIntervalDaysSchema,
   eventTriggerSourceConfigSchema,
-  isUnsafeIgnoreCommitPattern,
-  isValidIgnoreCommitPattern,
-  MAX_IGNORE_COMMIT_PATTERN_LENGTH,
-  MAX_IGNORE_COMMIT_PATTERNS,
   webhookEventTypeSchema,
 } from "../shared/automation";
-
-export {
-  isUnsafeIgnoreCommitPattern,
-  isValidIgnoreCommitPattern,
-  MAX_IGNORE_COMMIT_PATTERN_LENGTH,
-  MAX_IGNORE_COMMIT_PATTERNS,
-};
 
 export const INTEGRATION_CATEGORIES = ["input", "output"] as const;
 export type IntegrationCategory = (typeof INTEGRATION_CATEGORIES)[number];
@@ -441,7 +431,7 @@ export const triggerSourceTypeSchema = z.enum([
 export const triggerSourceConfigSchema = z.object({
   eventTypes: z.array(z.enum(WEBHOOK_EVENT_TYPES)).optional(),
   includePreReleases: z.boolean().optional(),
-  ignoreCommitPatterns: z.array(z.string()).optional(),
+  ignoreCommitPatterns: storedIgnoreCommitPatternsSchema.optional(),
   cron: z
     .object({
       frequency: z.enum(CRON_FREQUENCIES),

@@ -1,10 +1,11 @@
 import "zod/compile";
-import { splitIgnoreCommitPatternsText } from "@notra/ai/utils/ignore-commit-patterns";
+import { ignoreCommitPatternsSchema } from "@notra/ai/schemas/ignore-commit-patterns";
 import {
-  isUnsafeIgnoreCommitPattern,
-  isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
+  splitIgnoreCommitPatternsText,
+} from "@notra/ai/utils/ignore-commit-patterns";
+import {
   SUPPORTED_AUTOMATION_OUTPUT_TYPES,
   WEBHOOK_EVENT_TYPES,
 } from "@notra/schemas/dashboard/integrations";
@@ -39,40 +40,15 @@ export const eventTriggerFormSchema = z
       });
       return;
     }
-    const lines = splitIgnoreCommitPatternsText(value.ignoreCommitPatternsText);
-    if (lines.length > MAX_IGNORE_COMMIT_PATTERNS) {
+    const parsed = ignoreCommitPatternsSchema.safeParse(
+      splitIgnoreCommitPatternsText(value.ignoreCommitPatternsText)
+    );
+    if (!parsed.success) {
       ctx.addIssue({
         code: "custom",
-        message: `Max ${MAX_IGNORE_COMMIT_PATTERNS} patterns`,
+        message: parsed.error.issues[0]?.message ?? "Invalid patterns",
         path: ["ignoreCommitPatternsText"],
       });
-      return;
-    }
-    for (const line of lines) {
-      if (line.length > MAX_IGNORE_COMMIT_PATTERN_LENGTH) {
-        ctx.addIssue({
-          code: "custom",
-          message: `Each pattern must be ${MAX_IGNORE_COMMIT_PATTERN_LENGTH} characters or less`,
-          path: ["ignoreCommitPatternsText"],
-        });
-        return;
-      }
-      if (!isValidIgnoreCommitPattern(line)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `Not a valid regex: ${line}`,
-          path: ["ignoreCommitPatternsText"],
-        });
-        return;
-      }
-      if (isUnsafeIgnoreCommitPattern(line)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `This regex could hang the server: ${line}`,
-          path: ["ignoreCommitPatternsText"],
-        });
-        return;
-      }
     }
   });
 

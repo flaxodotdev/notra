@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
 
 import { normalizeCronConfig } from "../qstash/triggers";
+import { normalizeIgnoreCommitPatterns as normalizeStoredIgnoreCommitPatterns } from "../schemas/ignore-commit-patterns";
 import type {
   TriggerConfigInput,
   TriggerHashInput,
 } from "../types/trigger-hash";
-import { normalizeIgnoreCommitPatterns as normalizeStoredIgnoreCommitPatterns } from "./ignore-commit-patterns";
 
 export function normalizeTriggerConfig({
   sourceConfig,

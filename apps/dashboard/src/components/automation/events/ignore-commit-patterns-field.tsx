@@ -2,6 +2,7 @@
 
 import {
   IGNORE_COMMIT_PATTERN_FLAGS,
+  isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERNS,
   splitIgnoreCommitPatternsText,
 } from "@notra/ai/utils/ignore-commit-patterns";
@@ -34,16 +35,13 @@ function findMatchingPattern(
   if (!trimmedSample) {
     return undefined;
   }
-  for (const line of lines) {
-    try {
-      if (new RegExp(line, IGNORE_COMMIT_PATTERN_FLAGS).test(trimmedSample)) {
-        return line;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
+  return (
+    lines.find(
+      (line) =>
+        isValidIgnoreCommitPattern(line) &&
+        new RegExp(line, IGNORE_COMMIT_PATTERN_FLAGS).test(trimmedSample)
+    ) ?? null
+  );
 }
 
 export function IgnoreCommitPatternsField({
