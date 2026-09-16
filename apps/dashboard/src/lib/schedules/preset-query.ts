@@ -1,3 +1,7 @@
+import {
+  CUSTOM_SCHEDULE_MAX_INTERVAL_DAYS,
+  CUSTOM_SCHEDULE_MIN_INTERVAL_DAYS,
+} from "@notra/ai/constants/schedule-interval";
 import { toUtcDateString } from "@notra/ai/utils/schedule-interval";
 import {
   CRON_FREQUENCIES,
@@ -80,7 +84,12 @@ function isValidDayOfMonth(value: number | null): value is number {
 }
 
 function isValidIntervalDays(value: number | null): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= CUSTOM_SCHEDULE_MIN_INTERVAL_DAYS &&
+    value <= CUSTOM_SCHEDULE_MAX_INTERVAL_DAYS
+  );
 }
 
 /** True when the URL carries enough state to prefill the create dialog. */

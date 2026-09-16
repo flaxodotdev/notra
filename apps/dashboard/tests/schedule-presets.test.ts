@@ -109,7 +109,13 @@ describe("schedule preset shareable URLs", () => {
     expect(values).not.toBeNull();
     expect(values?.outputType).toBe(expected.outputType);
     expect(values?.lookbackWindow).toBe(expected.lookbackWindow);
-    expect(values?.schedule).toMatchObject({ ...expected.schedule });
+    // anchorDate is stamped as "today" independently by each helper, so it
+    // can differ across a UTC-midnight rollover: compare stable fields only.
+    const { anchorDate: _actualAnchor, ...actualSchedule } =
+      values?.schedule ?? {};
+    const { anchorDate: _expectedAnchor, ...expectedSchedule } =
+      expected.schedule;
+    expect(actualSchedule).toMatchObject(expectedSchedule);
     if (values?.schedule.frequency === "custom") {
       expect(values.schedule.anchorDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
@@ -159,6 +165,14 @@ describe("schedule preset shareable URLs", () => {
     const biweekly = schedulePresetToQuery("biweekly-linkedin");
     expect(
       schedulePresetQueryToValues({ ...biweekly, intervalDays: null })
+    ).toBeNull();
+    // Shared custom-interval bounds are 2–90 days; stale URLs outside them
+    // must not reach the dialog.
+    expect(
+      schedulePresetQueryToValues({ ...biweekly, intervalDays: 1 })
+    ).toBeNull();
+    expect(
+      schedulePresetQueryToValues({ ...biweekly, intervalDays: 91 })
     ).toBeNull();
   });
 
