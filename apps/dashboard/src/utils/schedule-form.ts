@@ -1,19 +1,15 @@
 import { CUSTOM_SCHEDULE_DEFAULT_INTERVAL_DAYS } from "@notra/ai/constants/schedule-interval";
 import { toUtcDateString } from "@notra/ai/utils/schedule-interval";
-import type {
-  LookbackWindow,
-  ScheduleOutputType,
-} from "@notra/schemas/dashboard/integrations";
+import type { ScheduleOutputType } from "@notra/schemas/dashboard/integrations";
 
 import { FORMAT_CARD_META } from "@/constants/content-formats";
 import { DEFAULT_SCHEDULE, FREQUENCY_LABELS } from "@/constants/schedule";
-import {
-  SCHEDULE_PRESETS,
-  type SchedulePresetId,
-} from "@/constants/schedule-presets";
+import { SCHEDULE_PRESETS } from "@/constants/schedule-presets";
 import type {
   ScheduleCron,
   ScheduleFormValues,
+  SchedulePresetId,
+  SchedulePresetValues,
 } from "@/types/automation/schedule";
 import type { Trigger } from "@/types/triggers/triggers";
 
@@ -50,7 +46,8 @@ export function formatTimeValue(hour: number, minute: number): string {
 }
 
 export function getDefaultScheduleValues(
-  editTrigger?: Trigger
+  editTrigger?: Trigger,
+  presetId?: SchedulePresetId | null
 ): ScheduleFormValues {
   if (editTrigger) {
     const supportedType: ScheduleOutputType =
@@ -72,27 +69,22 @@ export function getDefaultScheduleValues(
       autoPublish: editTrigger.autoPublish ?? false,
     };
   }
+  const preset = presetId ? getPresetScheduleValues(presetId) : undefined;
   return {
     name: "",
-    outputType: "changelog",
+    outputType: preset?.outputType ?? "changelog",
     instructions: "",
-    schedule: DEFAULT_SCHEDULE,
+    schedule: preset?.schedule ?? DEFAULT_SCHEDULE,
     repositoryIds: [],
-    lookbackWindow: "last_7_days",
+    lookbackWindow: preset?.lookbackWindow ?? "last_7_days",
     brandVoiceId: "",
     autoPublish: false,
   };
 }
 
-export interface PresetScheduleValues {
-  outputType: ScheduleOutputType;
-  schedule: ScheduleCron;
-  lookbackWindow: LookbackWindow;
-}
-
-export function getPresetScheduleValues(
+function getPresetScheduleValues(
   presetId: SchedulePresetId
-): PresetScheduleValues {
+): SchedulePresetValues {
   const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId);
   if (!preset) {
     throw new Error(`Unknown schedule preset: ${presetId}`);

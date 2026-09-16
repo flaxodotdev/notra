@@ -1,30 +1,17 @@
-import type {
-  LookbackWindow,
-  ScheduleOutputType,
-} from "@notra/schemas/dashboard/integrations";
+import {
+  Calendar03Icon,
+  Linkedin01Icon,
+  NewTwitterIcon,
+  News01Icon,
+} from "@hugeicons/core-free-icons";
+import type { ConnectedCardItem } from "@notra/ui/components/shared/connected-cards";
 
-import type { ScheduleCron } from "@/types/automation/schedule";
-
-export type SchedulePresetId =
-  | "weekly-changelog"
-  | "daily-twitter"
-  | "monthly-blog"
-  | "biweekly-linkedin";
-
-export interface SchedulePreset {
-  id: SchedulePresetId;
-  label: string;
-  description: string;
-  values: {
-    outputType: ScheduleOutputType;
-    schedule: ScheduleCron;
-    lookbackWindow: LookbackWindow;
-  };
-}
+import type { SchedulePreset } from "@/types/automation/schedule";
 
 export const SCHEDULE_PRESETS: SchedulePreset[] = [
   {
     id: "weekly-changelog",
+    icon: Calendar03Icon,
     label: "Weekly changelog",
     description: "Summarize the week's activity every Monday morning.",
     values: {
@@ -35,6 +22,7 @@ export const SCHEDULE_PRESETS: SchedulePreset[] = [
   },
   {
     id: "daily-twitter",
+    icon: NewTwitterIcon,
     label: "Daily X post",
     description: "Share a short update from yesterday's activity.",
     values: {
@@ -45,6 +33,7 @@ export const SCHEDULE_PRESETS: SchedulePreset[] = [
   },
   {
     id: "monthly-blog",
+    icon: News01Icon,
     label: "Monthly blog post",
     description: "Turn the month's highlights into a long-form article.",
     values: {
@@ -55,14 +44,21 @@ export const SCHEDULE_PRESETS: SchedulePreset[] = [
   },
   {
     id: "biweekly-linkedin",
+    icon: Linkedin01Icon,
     label: "Bi-weekly LinkedIn post",
     description: "Post a professional update every two weeks.",
     values: {
       outputType: "linkedin_post",
-      // anchorDate is filled in by getPresetScheduleValues so the
-      // preset never goes stale.
       schedule: { frequency: "custom", intervalDays: 14, hour: 9, minute: 0 },
       lookbackWindow: "last_14_days",
     },
   },
 ];
+
+export const SCHEDULE_PRESET_CARD_ITEMS: ConnectedCardItem[] =
+  SCHEDULE_PRESETS.map((preset) => ({
+    id: preset.id,
+    icon: preset.icon,
+    title: preset.label,
+    description: preset.description,
+  }));
