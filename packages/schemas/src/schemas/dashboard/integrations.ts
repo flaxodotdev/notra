@@ -16,6 +16,7 @@ import {
   cronIntervalDaysSchema as sharedCronIntervalDaysSchema,
   eventTriggerSourceConfigSchema,
   isUnsafeIgnoreCommitPattern,
+  isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
   webhookEventTypeSchema,
@@ -23,6 +24,7 @@ import {
 
 export {
   isUnsafeIgnoreCommitPattern,
+  isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
 };

@@ -48,14 +48,9 @@ export function EventTriggerEventSection({
       {eventType === "push" && (
         <form.Field name="ignoreCommitPatternsText">
           {(field) => {
-            const error = field.state.meta.errors[0];
-            const errorMessage =
-              typeof error === "string"
-                ? error
-                : (error as { message?: string } | undefined)?.message;
             return (
               <IgnoreCommitPatternsField
-                errorMessage={errorMessage}
+                errors={field.state.meta.errors}
                 fieldName={field.name}
                 onBlur={field.handleBlur}
                 onChange={field.handleChange}

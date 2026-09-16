@@ -1,6 +1,8 @@
 import "zod/compile";
+import { splitIgnoreCommitPatternsText } from "@notra/ai/utils/ignore-commit-patterns";
 import {
   isUnsafeIgnoreCommitPattern,
+  isValidIgnoreCommitPattern,
   MAX_IGNORE_COMMIT_PATTERN_LENGTH,
   MAX_IGNORE_COMMIT_PATTERNS,
   SUPPORTED_AUTOMATION_OUTPUT_TYPES,
@@ -10,7 +12,7 @@ import {
 import * as z from "zod";
 
 export const IGNORE_COMMIT_PATTERNS_TEXT_MAX_LENGTH =
-  MAX_IGNORE_COMMIT_PATTERNS * (MAX_IGNORE_COMMIT_PATTERN_LENGTH + 1);
+  MAX_IGNORE_COMMIT_PATTERNS * (MAX_IGNORE_COMMIT_PATTERN_LENGTH + 2);
 
 export const eventTriggerFormSchema = z
   .object({
@@ -23,8 +25,6 @@ export const eventTriggerFormSchema = z
     ignoreCommitPatternsText: z.string(),
   })
   .superRefine((value, ctx) => {
-    // The patterns field is push-only (hidden and discarded for release),
-    // so none of its checks may block release-trigger submission.
     if (value.eventType !== "push") {
       return;
     }
@@ -39,14 +39,11 @@ export const eventTriggerFormSchema = z
       });
       return;
     }
-    const lines = value.ignoreCommitPatternsText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+    const lines = splitIgnoreCommitPatternsText(value.ignoreCommitPatternsText);
     if (lines.length > MAX_IGNORE_COMMIT_PATTERNS) {
       ctx.addIssue({
         code: "custom",
-        message: `Use at most ${MAX_IGNORE_COMMIT_PATTERNS} patterns (one per line)`,
+        message: `Max ${MAX_IGNORE_COMMIT_PATTERNS} patterns`,
         path: ["ignoreCommitPatternsText"],
       });
       return;
@@ -60,12 +57,10 @@ export const eventTriggerFormSchema = z
         });
         return;
       }
-      try {
-        new RegExp(line);
-      } catch {
+      if (!isValidIgnoreCommitPattern(line)) {
         ctx.addIssue({
           code: "custom",
-          message: `Invalid regular expression: ${line}`,
+          message: `Not a valid regex: ${line}`,
           path: ["ignoreCommitPatternsText"],
         });
         return;
@@ -73,7 +68,7 @@ export const eventTriggerFormSchema = z
       if (isUnsafeIgnoreCommitPattern(line)) {
         ctx.addIssue({
           code: "custom",
-          message: `Unsafe regular expression: ${line}`,
+          message: `This regex could hang the server: ${line}`,
           path: ["ignoreCommitPatternsText"],
         });
         return;

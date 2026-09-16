@@ -30,9 +30,6 @@ function shouldDispatchTrigger(
     ? (parsed.data.includePreReleases ?? true)
     : true;
 
-  // Fail closed: event triggers require at least one event type
-  // (enforced at creation by eventTriggerSourceConfigSchema), so an empty
-  // or unparseable list must never match.
   if (!eventTypes.some((eventType) => eventType === processedEvent.type)) {
     return false;
   }

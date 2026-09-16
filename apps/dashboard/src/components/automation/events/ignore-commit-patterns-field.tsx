@@ -1,9 +1,19 @@
 "use client";
 
-import { MAX_IGNORE_COMMIT_PATTERNS } from "@notra/schemas/dashboard/integrations";
+import {
+  IGNORE_COMMIT_PATTERN_FLAGS,
+  MAX_IGNORE_COMMIT_PATTERNS,
+  splitIgnoreCommitPatternsText,
+} from "@notra/ai/utils/ignore-commit-patterns";
+import { FieldError } from "@notra/ui/components/ui/field";
 import { Input } from "@notra/ui/components/ui/input";
 import { Label } from "@notra/ui/components/ui/label";
 import { Textarea } from "@notra/ui/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@notra/ui/components/ui/tooltip";
 import { cn } from "@notra/ui/lib/utils";
 import { useMemo, useState } from "react";
 
@@ -13,6 +23,7 @@ import {
   buildIgnoreCommitPrefixPattern,
   IGNORE_COMMIT_PATTERN_PRESET_PREFIXES,
   IGNORE_COMMIT_PATTERNS_PLACEHOLDER,
+  removeIgnoreCommitPatternFromText,
 } from "@/utils/ignore-commit-patterns";
 
 function findMatchingPattern(
@@ -25,7 +36,7 @@ function findMatchingPattern(
   }
   for (const line of lines) {
     try {
-      if (new RegExp(line).test(trimmedSample)) {
+      if (new RegExp(line, IGNORE_COMMIT_PATTERN_FLAGS).test(trimmedSample)) {
         return line;
       }
     } catch {
@@ -39,19 +50,13 @@ export function IgnoreCommitPatternsField({
   value,
   onChange,
   onBlur,
-  errorMessage,
+  errors,
   fieldName,
 }: IgnoreCommitPatternsFieldProps) {
+  const hasErrors = errors.length > 0;
   const [sampleMessage, setSampleMessage] = useState("");
 
-  const lines = useMemo(
-    () =>
-      value
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
-    [value]
-  );
+  const lines = useMemo(() => splitIgnoreCommitPatternsText(value), [value]);
   const atMaxPatterns = lines.length >= MAX_IGNORE_COMMIT_PATTERNS;
 
   const matchedPattern = useMemo(
@@ -63,20 +68,16 @@ export function IgnoreCommitPatternsField({
     if (matchedPattern === undefined) {
       return (
         <p className="text-muted-foreground text-xs">
-          Type a message above to see whether it would be skipped.
+          Type a commit message to check it.
         </p>
       );
     }
     if (matchedPattern === null) {
-      return (
-        <p className="text-xs">
-          Would turn into content — no pattern matches this message.
-        </p>
-      );
+      return <p className="text-xs">Not skipped. Nothing matches.</p>;
     }
     return (
       <p className="text-xs">
-        Would be skipped — matches{" "}
+        Skipped. Matches{" "}
         <code className="bg-muted rounded px-1 py-0.5 font-mono text-[11px]">
           {matchedPattern}
         </code>
@@ -94,52 +95,65 @@ export function IgnoreCommitPatternsField({
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-muted-foreground text-xs">
-          No regex needed — add a prefix:
-        </span>
+        <span className="text-muted-foreground text-xs">Add a prefix:</span>
         {IGNORE_COMMIT_PATTERN_PRESET_PREFIXES.map((prefix) => {
           const pattern = buildIgnoreCommitPrefixPattern(prefix);
           const added = lines.includes(pattern);
+          const disabled = !added && atMaxPatterns;
           return (
-            <button
-              className={cn(
-                "rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors",
-                added
-                  ? "border-foreground/40 bg-muted text-muted-foreground cursor-default"
-                  : "text-foreground hover:border-foreground/40 hover:bg-muted/60 cursor-pointer",
-                atMaxPatterns && !added && "cursor-not-allowed opacity-50"
-              )}
-              disabled={added || atMaxPatterns}
-              key={prefix}
-              onClick={() => {
-                onChange(addIgnoreCommitPatternToText(value, pattern));
-              }}
-              title={added ? `Already added: ${pattern}` : `Add ${pattern}`}
-              type="button"
-            >
-              {prefix}
-            </button>
+            <Tooltip key={prefix}>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-pressed={added}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors",
+                      added
+                        ? "border-foreground/40 bg-muted text-foreground hover:bg-muted/70"
+                        : "text-foreground hover:border-foreground/40 hover:bg-muted/60",
+                      disabled && "cursor-not-allowed opacity-50"
+                    )}
+                    disabled={disabled}
+                    onClick={() => {
+                      onChange(
+                        added
+                          ? removeIgnoreCommitPatternFromText(value, pattern)
+                          : addIgnoreCommitPatternToText(value, pattern)
+                      );
+                    }}
+                    type="button"
+                  >
+                    {prefix}
+                  </button>
+                }
+              />
+              <TooltipContent side="top">
+                <code className="font-mono">
+                  {added ? `Remove ${pattern}` : `Add ${pattern}`}
+                </code>
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
       <Textarea
         aria-label="Ignore commits matching"
-        aria-invalid={!!errorMessage}
+        aria-invalid={hasErrors}
         className="min-h-20 font-mono text-xs"
         id={fieldName}
         onBlur={onBlur}
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        placeholder={`e.g. ${IGNORE_COMMIT_PATTERNS_PLACEHOLDER}`}
+        placeholder={`e.g. ${IGNORE_COMMIT_PATTERNS_PLACEHOLDER} (separated by comma)`}
         value={value}
       />
-      {errorMessage ? (
-        <p className="text-destructive text-xs">{errorMessage}</p>
+      {hasErrors ? (
+        <FieldError className="text-xs" errors={errors} />
       ) : (
         <p className="text-muted-foreground text-xs">
-          Pushes where every commit message matches are skipped, so chores never
-          turn into content. One case-sensitive regex per line.
+          If every commit in a push matches one of these, the push is skipped.
+          Separate patterns with commas. Case doesn't matter.
         </p>
       )}
       <div className="space-y-1.5 rounded-lg border p-3">

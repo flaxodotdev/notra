@@ -33,7 +33,7 @@ export interface IgnoreCommitPatternsFieldProps {
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
-  errorMessage?: string;
+  errors: Array<{ message?: string } | undefined>;
   fieldName: string;
 }
 
