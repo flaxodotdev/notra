@@ -494,14 +494,24 @@ async function resolveAccountKeyAuth(
   ];
 
   if (memberOrgIds.length === 0) {
-    return { success: false, error: "Workspace access revoked", status: 403 };
+    return {
+      success: false,
+      error: "Workspace access revoked",
+      status: 403,
+      kind: API_AUTH_KINDS.UNKEY,
+    };
   }
 
   const requestedOrgId = getRequestedOrganizationId(c);
   const verifiedIdentity = verified.identity;
   if (requestedOrgId) {
     if (!memberOrgIds.includes(requestedOrgId)) {
-      return { success: false, error: "Workspace access revoked", status: 403 };
+      return {
+        success: false,
+        error: "Workspace access revoked",
+        status: 403,
+        kind: API_AUTH_KINDS.UNKEY,
+      };
     }
     const auth: AccountApiKeyAuthData = {
       ...verified,
@@ -531,6 +541,7 @@ async function resolveAccountKeyAuth(
     error:
       "Organization selection required: send X-Notra-Organization-Id for the workspace this request should act on",
     status: 403,
+    kind: API_AUTH_KINDS.UNKEY,
   };
 }
 

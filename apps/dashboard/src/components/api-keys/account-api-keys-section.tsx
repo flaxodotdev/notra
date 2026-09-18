@@ -184,6 +184,13 @@ export function AccountApiKeysSection() {
     },
   });
 
+  const resetCreateForm = () => {
+    setName("");
+    setAccessMode("restricted");
+    setScopes([...API_KEY_DEFAULT_SCOPES]);
+    setExpiration("30d");
+  };
+
   const handleCreateSubmit = () => {
     const result = createApiKeySchema.safeParse({
       name,
@@ -347,6 +354,7 @@ export function AccountApiKeysSection() {
           if (!open) {
             setCreatedKey(null);
             setCreateError(null);
+            resetCreateForm();
           }
         }}
         open={dialogOpen}
