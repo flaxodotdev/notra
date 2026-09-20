@@ -114,8 +114,6 @@ async function findKeyByExternalId(
   return keys.find((key) => key.keyId === keyId) ?? null;
 }
 
-// `user:<userId>` mirrors apps/api `ACCOUNT_KEY_EXTERNAL_ID_PREFIX`. Org keys
-// keep the bare organization id as externalId and are unaffected.
 function toAccountExternalId(userId: string): string {
   return `user:${userId}`;
 }
@@ -392,9 +390,6 @@ export const apiKeysRouter = {
     create: authorizedProcedure
       .input(createApiKeySchema)
       .handler(async ({ context, input }) => {
-        // Intentionally no assertActiveSubscription: account keys are personal
-        // credentials, not org-billed. Entitlements are enforced per request
-        // when the key acts in an org.
         const { apiId, client } = requireUnkeyConfig();
         const expiresMs = API_KEY_EXPIRATION_MS[input.expiration];
         const expires = expiresMs ? Date.now() + expiresMs : undefined;
@@ -447,7 +442,6 @@ export const apiKeysRouter = {
     update: authorizedProcedure
       .input(updateAccountKeyInputSchema)
       .handler(async ({ context, input }) => {
-        // Mirrors account.create: no subscription gate (see above).
         const { apiId, client } = requireUnkeyConfig();
 
         if (input.payload.keyId !== input.keyIdParam) {

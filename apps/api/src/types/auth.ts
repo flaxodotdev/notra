@@ -41,9 +41,6 @@ export function isIngestAuth(auth: AuthData): auth is IngestAuthData {
   return "type" in auth && auth.type === "ingest";
 }
 
-// Account-wide Unkey keys are namespaced as `user:<userId>` so they can never
-// collide with org ids (org keys keep the bare org id). The dashboard mirrors
-// this in `apps/dashboard/src/lib/orpc/routers/api-keys.ts`.
 const ACCOUNT_KEY_EXTERNAL_ID_PREFIX = "user:";
 
 export const ACCOUNT_ORG_HEADERS = [

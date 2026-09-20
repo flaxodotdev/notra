@@ -455,8 +455,6 @@ function getRecovery(status: AuthFailureStatus) {
   return "The authentication service is temporarily unavailable. Retry with exponential backoff.";
 }
 
-// Account keys select their workspace via header only. Query params are
-// deliberately ignored so `?organizationId=` filters can't silently rebind auth.
 function getRequestedOrganizationId(c: Context): string | null {
   for (const header of ACCOUNT_ORG_HEADERS) {
     const value = c.req.header(header)?.trim();
@@ -467,13 +465,6 @@ function getRequestedOrganizationId(c: Context): string | null {
   return null;
 }
 
-/**
- * Account-wide keys carry `externalId: "user:<userId>"` (see
- * `toAccountExternalId`). Membership is resolved live from the DB so revocation
- * takes effect immediately; the key's own Unkey permissions still cap scopes in
- * every org. The resolved org is written back onto `identity.externalId` so all
- * downstream `getOrganizationId` callers keep working unchanged.
- */
 async function resolveAccountKeyAuth(
   c: Context,
   verified: V2KeysVerifyKeyResponseData & { identity: Identity },

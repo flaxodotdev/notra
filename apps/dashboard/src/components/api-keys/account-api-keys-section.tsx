@@ -121,8 +121,6 @@ export function AccountApiKeysSection() {
   const [name, setName] = useState("");
   const [accessMode, setAccessMode] = useState<ApiKeyAccessMode>("restricted");
   const [scopes, setScopes] = useState<string[]>([...API_KEY_DEFAULT_SCOPES]);
-  // Account-wide keys default to 30 days: a leaked credential can act in every
-  // org the user belongs to, so it should not live forever unless asked to.
   const [expiration, setExpiration] = useState<ApiKeyExpiration>("30d");
   const [editingKey, setEditingKey] = useState<AccountKeyItem | null>(null);
   const [editValues, setEditValues] = useState({
@@ -326,11 +324,9 @@ export function AccountApiKeysSection() {
 
       <Alert variant="info">
         <AlertDescription>
-          Account keys act in any of your organizations. Send{" "}
-          <span className="font-mono">X-Notra-Organization-Id</span> with each
-          request to choose the workspace; without it, single-organization
-          accounts just work and multi-organization requests are rejected. Use
-          them for personal automation — prefer single-organization keys for
+          One key for every organization you belong to. Send{" "}
+          <span className="font-mono">X-Notra-Organization-Id</span> to choose a
+          workspace. Best for personal automation — use organization keys for
           shared systems.
         </AlertDescription>
       </Alert>
