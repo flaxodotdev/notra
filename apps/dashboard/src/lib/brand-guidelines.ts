@@ -19,7 +19,7 @@ import {
   brandGuidelineTokens,
 } from "@notra/db/schema";
 import { MAX_BRAND_GUIDELINE_PDF_FILE_SIZE } from "@notra/schemas/constants/dashboard/upload";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import {
   BRAND_GUIDELINE_DESKTOP_SCREENSHOT_CONFIG,
@@ -650,12 +650,14 @@ export async function attachBrandGuidelineSourcePdf(input: {
         set: values,
       });
   } catch (error) {
-    await deleteStoredGuidelinePdf(input.key).catch((cleanupError) => {
-      console.error("Failed to delete guideline PDF after DB failure", {
-        key: input.key,
-        error: cleanupError,
-      });
-    });
+    await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
+      (cleanupError) => {
+        console.error("Failed to delete guideline PDF after DB failure", {
+          key: input.key,
+          error: cleanupError,
+        });
+      }
+    );
     throw error;
   }
 
@@ -707,7 +709,10 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
     return getBrandGuidelines(brandSettingsId);
   }
 
-  await db
+  const stillStoredKey = existing.sourcePdfStorageKey
+    ? eq(brandGuidelines.sourcePdfStorageKey, existing.sourcePdfStorageKey)
+    : isNull(brandGuidelines.sourcePdfStorageKey);
+  const cleared = await db
     .update(brandGuidelines)
     .set({
       sourcePdfFilename: null,
@@ -717,7 +722,11 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
       sourcePdfUrl: null,
       updatedAt: new Date(),
     })
-    .where(eq(brandGuidelines.id, existing.id));
+    .where(and(eq(brandGuidelines.id, existing.id), stillStoredKey))
+    .returning({ id: brandGuidelines.id });
+  if (cleared.length === 0) {
+    return getBrandGuidelines(brandSettingsId);
+  }
   // DB is already cleared: a flaky R2 delete must not surface as a failed
   // removal. Log and return success like the attach-path cleanups. Skip the
   // delete when another voice still references the same key.
@@ -749,7 +758,7 @@ export async function discardBrandGuidelineSourcePdf(input: {
   });
 }
 
-export async function loadBrandGuidelineSourceInstructions(
+async function loadBrandGuidelineSourceInstructions(
   brandSettingsId: string | undefined
 ) {
   if (!brandSettingsId) {
@@ -761,4 +770,18 @@ export async function loadBrandGuidelineSourceInstructions(
     columns: { sourcePdfText: true },
   });
   return formatBrandGuidelineSourceInstructions(row?.sourcePdfText);
+}
+
+export async function loadBrandGuidelineSourceInstructionsSafely(
+  brandSettingsId: string | undefined
+) {
+  try {
+    return await loadBrandGuidelineSourceInstructions(brandSettingsId);
+  } catch (error) {
+    console.error("Failed to load brand guideline source", {
+      brandSettingsId,
+      error,
+    });
+    return "";
+  }
 }

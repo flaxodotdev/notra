@@ -85,8 +85,16 @@ export function GuidelinesSourcePdfSection({
       // Best-effort discard so failures don't accumulate orphans. Tab-close
       // between PUT and attach is still possible: consider an R2 lifecycle
       // prefix rule on organization/*/brand-guidelines/ as a backstop.
-      if (uploadedKey) {
-        discard.mutateAsync({ key: uploadedKey }).catch(() => undefined);
+      const orphanKey =
+        uploadedKey ??
+        (typeof error === "object" &&
+        error !== null &&
+        "uploadKey" in error &&
+        typeof error.uploadKey === "string"
+          ? error.uploadKey
+          : null);
+      if (orphanKey) {
+        discard.mutateAsync({ key: orphanKey }).catch(() => undefined);
       }
       toast.error(
         error instanceof Error ? error.message : "Failed to save the PDF"

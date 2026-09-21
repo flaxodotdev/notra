@@ -94,7 +94,17 @@ export async function uploadFile({
 
   const mimeType = resolveUploadMimeType(file, type);
   const { url, key, publicUrl } = await getPresignedUrl(file, type);
-  await uploadToR2(url, file, mimeType);
+  try {
+    await uploadToR2(url, file, mimeType);
+  } catch (error) {
+    if (type === "brand_guideline_pdf") {
+      throw Object.assign(
+        error instanceof Error ? error : new Error("R2 upload failed"),
+        { uploadKey: key }
+      );
+    }
+    throw error;
+  }
 
   if (
     type === "chat" &&

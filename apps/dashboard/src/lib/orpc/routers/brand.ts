@@ -1025,7 +1025,6 @@ export const brandRouter = {
           headers: context.headers,
           organizationId: input.organizationId,
         });
-        await assertActiveSubscription(input.organizationId);
         await verifyVoiceOwnership(input.organizationId, input.voiceId);
         await discardBrandGuidelineSourcePdf({
           key: input.key,

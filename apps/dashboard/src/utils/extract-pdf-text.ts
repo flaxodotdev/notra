@@ -33,11 +33,24 @@ export async function extractPdfText(data: Uint8Array) {
       `Brand guideline PDF must be less than ${MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024}MB`
     );
   }
-  const document = await withTimeout(
-    getDocumentProxy(data),
-    PDF_TEXT_EXTRACTION_TIMEOUT_MS,
-    "PDF parsing"
-  );
+  const loading = getDocumentProxy(data);
+  let document: Awaited<typeof loading> | undefined;
+  try {
+    document = await withTimeout(
+      loading,
+      PDF_TEXT_EXTRACTION_TIMEOUT_MS,
+      "PDF parsing"
+    );
+  } catch (error) {
+    loading
+      .then((lateDocument) => lateDocument.destroy())
+      .catch((destroyError) => {
+        console.error("Failed to destroy timed-out PDF document", {
+          error: destroyError,
+        });
+      });
+    throw error;
+  }
   try {
     const numPages = (document as { numPages?: unknown }).numPages;
     if (
