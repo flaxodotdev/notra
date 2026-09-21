@@ -42,13 +42,20 @@ export async function extractPdfText(data: Uint8Array) {
       "PDF parsing"
     );
   } catch (error) {
-    loading
-      .then((lateDocument) => lateDocument.destroy())
-      .catch((destroyError) => {
-        console.error("Failed to destroy timed-out PDF document", {
-          error: destroyError,
+    const timedOut =
+      error instanceof Error && error.message.endsWith("timed out");
+    if (timedOut) {
+      loading
+        .then((lateDocument) => {
+          const destroy = (lateDocument as { destroy?: () => unknown }).destroy;
+          return destroy?.call(lateDocument);
+        })
+        .catch((destroyError) => {
+          console.error("Failed to destroy timed-out PDF document", {
+            error: destroyError,
+          });
         });
-      });
+    }
     throw error;
   }
   try {
