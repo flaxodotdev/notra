@@ -5,6 +5,7 @@ import type { PostSourceMetadata } from "@notra/db/schema";
 import { flushPostHogServer } from "@notra/posthog/server";
 import { createRequestLogger } from "evlog";
 
+import { loadBrandGuidelineSourceInstructions } from "@/lib/brand-guidelines";
 import { buildDataPointRestrictionInstructions } from "@/lib/workflows/on-demand/helpers";
 import { generateScheduledContent } from "@/lib/workflows/schedule/handlers";
 import { buildScheduleInstructions } from "@/lib/workflows/schedule/instructions";
@@ -56,8 +57,12 @@ export async function runScheduledGeneration(
   const scheduleInstructions = buildScheduleInstructions(
     parseTriggerOutputConfig(trigger.outputConfig)?.instructions
   );
+  const guidelineInstructions = await loadBrandGuidelineSourceInstructions(
+    brand?.id
+  );
   const customInstructions = [
     brand?.customInstructions?.trim() ?? "",
+    guidelineInstructions,
     scheduleInstructions ?? "",
     restrictionInstructions ?? "",
   ]
