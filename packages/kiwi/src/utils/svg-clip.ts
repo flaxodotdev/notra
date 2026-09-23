@@ -79,11 +79,21 @@ export function subpathBounds(
   let maxY = Number.NEGATIVE_INFINITY;
   for (const sub of subpaths) {
     for (const p of sub.points) {
-      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      if (p.x < minX) {
+        minX = p.x;
+      }
+      if (p.y < minY) {
+        minY = p.y;
+      }
+      if (p.x > maxX) {
+        maxX = p.x;
+      }
+      if (p.y > maxY) {
+        maxY = p.y;
+      }
     }
   }
   if (
@@ -125,7 +135,9 @@ function isClosedRectLoop(
     let hit = -1;
     for (let i = 0; i < corners.length; i += 1) {
       const corner = corners[i];
-      if (!corner || used.has(i)) continue;
+      if (!corner || used.has(i)) {
+        continue;
+      }
       if (
         Math.abs(p.x - (corner[0] ?? 0)) <= tolerance &&
         Math.abs(p.y - (corner[1] ?? 0)) <= tolerance
@@ -246,11 +258,17 @@ function splitCssFunctions(value: string): Array<{ name: string; args: string }>
   const out: Array<{ name: string; args: string }> = [];
   let i = 0;
   while (i < value.length) {
-    while (i < value.length && /\s/.test(value[i] ?? "")) i += 1;
+    while (i < value.length && /\s/.test(value[i] ?? "")) {
+      i += 1;
+    }
     const nameStart = i;
-    while (i < value.length && /[a-zA-Z-]/.test(value[i] ?? "")) i += 1;
+    while (i < value.length && /[a-zA-Z-]/.test(value[i] ?? "")) {
+      i += 1;
+    }
     const name = value.slice(nameStart, i);
-    while (i < value.length && /\s/.test(value[i] ?? "")) i += 1;
+    while (i < value.length && /\s/.test(value[i] ?? "")) {
+      i += 1;
+    }
     if (!name || value[i] !== "(") {
       i += 1;
       continue;
@@ -260,8 +278,11 @@ function splitCssFunctions(value: string): Array<{ name: string; args: string }>
     const argsStart = i;
     while (i < value.length && depth > 0) {
       const c = value[i];
-      if (c === "(") depth += 1;
-      else if (c === ")") depth -= 1;
+      if (c === "(") {
+        depth += 1;
+      } else if (c === ")") {
+        depth -= 1;
+      }
       i += 1;
     }
     if (depth === 0) {
@@ -336,7 +357,9 @@ function transformNumbers(args: string): number[] {
   SVG_TRANSFORM_NUM_RE.lastIndex = 0;
   while ((m = SVG_TRANSFORM_NUM_RE.exec(args)) !== null) {
     const n = Number.parseFloat(m[0]);
-    if (Number.isFinite(n)) out.push(n);
+    if (Number.isFinite(n)) {
+      out.push(n);
+    }
   }
   SVG_TRANSFORM_NUM_RE.lastIndex = 0;
   return out;
@@ -347,7 +370,9 @@ function transformNumbers(args: string): number[] {
  * Supports matrix/translate/scale/rotate/skewX/skewY; unknown functions are ignored.
  */
 export function parseSvgTransformAttr(value: string | null | undefined): Affine {
-  if (!value || value.trim() === "") return { ...IDENTITY_AFFINE };
+  if (!value || value.trim() === "") {
+    return { ...IDENTITY_AFFINE };
+  }
   let acc: Affine = { ...IDENTITY_AFFINE };
   let m: RegExpExecArray | null;
   SVG_TRANSFORM_FN_RE.lastIndex = 0;
@@ -383,7 +408,9 @@ export function parseSvgTransformAttr(value: string | null | undefined): Affine 
     } else if (name === "skewy" && nums.length >= 1) {
       next = { ...IDENTITY_AFFINE, b: Math.tan(((nums[0] ?? 0) * Math.PI) / 180) };
     }
-    if (next) acc = multiplyAffine(acc, next);
+    if (next) {
+      acc = multiplyAffine(acc, next);
+    }
   }
   SVG_TRANSFORM_FN_RE.lastIndex = 0;
   return acc;

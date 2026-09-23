@@ -852,13 +852,17 @@ function svgShapeBlendMode(
     (style as unknown as { mixBlendMode?: string } | null)?.mixBlendMode ||
     "";
   let normalized = normalizeBlendMode(own);
-  if (normalized !== "NORMAL") return normalized;
+  if (normalized !== "NORMAL") {
+    return normalized;
+  }
   // Nearest ancestor with a blend wins (group blend applies to children).
   let node = el.parentElement;
   while (node && node.tagName.toLowerCase() !== "svg") {
     const mode = getStyle(node)?.getPropertyValue("mix-blend-mode") || "";
     normalized = normalizeBlendMode(mode);
-    if (normalized !== "NORMAL") return normalized;
+    if (normalized !== "NORMAL") {
+      return normalized;
+    }
     node = node.parentElement;
   }
   return undefined;
@@ -1340,7 +1344,9 @@ function extractLayout(node: Node): LayoutNode | null {
     // clip/opacity/blend/filter helpers below.
     const styleCache = new Map<Element, CSSStyleDeclaration | null>();
     const getStyle: StyleGetter = (target) => {
-      if (styleCache.has(target)) return styleCache.get(target) ?? null;
+      if (styleCache.has(target)) {
+        return styleCache.get(target) ?? null;
+      }
       const cs = safeStyle(target);
       styleCache.set(target, cs);
       return cs;
@@ -1452,9 +1458,9 @@ function extractLayout(node: Node): LayoutNode | null {
         // the wrapper sits outside the clip containers only when the filtered
         // ancestor contains every clip reference; otherwise it wraps the
         // shapes directly (correct for a filter+clip on the same element).
-        filterGroupOutside =
-          clipRefs.length === 0 ||
-          clipRefs.every(({ ref }) => group.ancestor.contains(ref));
+        filterGroupOutside = clipRefs.every(({ ref }) =>
+          group.ancestor.contains(ref)
+        );
       }
       shapes.push({
         subpaths: transformed,
@@ -1824,7 +1830,9 @@ function emitSvgSubpaths(
   let maxY = Number.NEGATIVE_INFINITY;
   for (const sub of subpaths) {
     for (const p of sub.points) {
-      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
       if (p.x < minX) {
         minX = p.x;
       }
