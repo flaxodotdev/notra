@@ -27,6 +27,7 @@ import type {
   ElementInfo,
   LayoutNode,
   SvgClip,
+  SvgFilterGroup,
   SvgInfo,
   SvgShape,
 } from "../types/dom-to-scene";
@@ -36,6 +37,7 @@ import { normalizeCssColorWithContext } from "../utils/css-color";
 import {
   type Affine,
   applyAffine,
+  clipSubpathToRect,
   multiplyAffine,
   normalizeBlendMode,
   parseClipRef,
@@ -44,6 +46,7 @@ import {
   parseSvgTransformAttr,
   rectClipBounds,
   subpathBounds,
+  withWinding,
 } from "../utils/svg-clip";
 import { svgPrimitiveToSubpaths } from "../utils/svg-primitive";
 import { inlineSvgUses } from "../utils/svg-use";
@@ -235,30 +238,6 @@ function safeStyle(el: Element): CSSStyleDeclaration | null {
   }
 }
 
-function svgScreenSubpaths(el: Element): PathSubpath[] {
-  if (!(el instanceof SVGGraphicsElement)) {
-    return [];
-  }
-  const ctm = el.getScreenCTM();
-  if (!ctm) {
-    return [];
-  }
-  const subpaths = svgPrimitiveToSubpaths(
-    el.tagName.toLowerCase(),
-    svgGeometryAttrs(el)
-  );
-  if (subpaths.length === 0) {
-    return [];
-  }
-  return subpaths.map((sub) => ({
-    closed: sub.closed,
-    points: sub.points.map((p) => ({
-      x: ctm.a * p.x + ctm.c * p.y + ctm.e,
-      y: ctm.b * p.x + ctm.d * p.y + ctm.f,
-    })),
-  }));
-}
-
 function svgRootScreenAffine(svg: SVGSVGElement): Affine {
   try {
     const ctm = svg.getScreenCTM();
@@ -294,23 +273,25 @@ function clipLocalMatrix(child: Element, container: Element): Affine {
 
 // clipPath/mask children are never rendered, so getScreenCTM() is null for
 // them in browsers. Resolve geometry from attributes instead and map through
-// the svg root CTM (which already includes viewBox + page layout).
-// ponytail: clips under a transformed referencing <g> use svg-root user space,
-// not the referencing element's user space; per-ref transform if needed.
-function clipChildScreenSubpaths(
+// the svg root CTM (which already includes viewBox + page layout), the
+// referencing element's user-space transform (userSpaceOnUse clip content
+// lives in the referencing element's user space), and the container→child
+// `transform` attributes.
+function mapClipChild(
+  subs: PathSubpath[],
   child: Element,
   container: Element,
-  root: Affine
+  root: Affine,
+  ref: Affine
 ): PathSubpath[] {
-  const subpaths = svgPrimitiveToSubpaths(
-    child.tagName.toLowerCase(),
-    svgGeometryAttrs(child)
-  );
-  if (subpaths.length === 0) {
+  if (subs.length === 0) {
     return [];
   }
-  const total = multiplyAffine(root, clipLocalMatrix(child, container));
-  return subpaths.map((sub) => ({
+  const total = multiplyAffine(
+    root,
+    multiplyAffine(ref, clipLocalMatrix(child, container))
+  );
+  return subs.map((sub) => ({
     closed: sub.closed,
     points: sub.points.map((p) => applyAffine(total, p)),
   }));
@@ -341,72 +322,144 @@ function clipChildFillRule(
   return "nonzero";
 }
 
-function svgClipChain(el: Element, getStyle: StyleGetter = safeStyle): string[] {
-  const chain: string[] = [];
+interface ClipRef {
+  id: string;
+  /** Element whose clip-path/mask attribute references the id. */
+  ref: Element;
+}
+
+function clipAttrRef(node: Element, style: CSSStyleDeclaration | null): string | null {
+  return (
+    parseClipRef(node.getAttribute("clip-path")) ??
+    (style
+      ? (parseClipRef(style.getPropertyValue("clip-path")) ??
+        parseClipRef(
+          (style as unknown as { clipPath?: string }).clipPath ?? null
+        ))
+      : null)
+  );
+}
+
+function maskAttrRef(node: Element, style: CSSStyleDeclaration | null): string | null {
+  return (
+    parseClipRef(node.getAttribute("mask")) ??
+    (style
+      ? (parseClipRef(style.getPropertyValue("mask-image")) ??
+        parseClipRef(style.getPropertyValue("mask")))
+      : null)
+  );
+}
+
+// clip-path accumulates through ancestors (outermost first); mask applies from
+// the nearest self-or-ancestor only. Each entry keeps its referencing element
+// so clip geometry resolves in the referencing element's user space.
+function svgClipRefs(
+  el: Element,
+  style: CSSStyleDeclaration | null,
+  getStyle: StyleGetter = safeStyle
+): ClipRef[] {
+  const refs: ClipRef[] = [];
+  let maskRef: ClipRef | null = null;
   let node: Element | null = el;
+  let first = true;
   while (node && node.tagName.toLowerCase() !== "svg") {
+    // Passed style is the self element's computed style (avoids a recompute).
+    const cs = first ? style : getStyle(node);
+    first = false;
     if (node instanceof SVGGraphicsElement || node instanceof SVGGElement) {
-      let id: string | null = null;
-      const cs = getStyle(node);
-      id =
-        parseClipRef(node.getAttribute("clip-path")) ??
-        (cs
-          ? (parseClipRef(cs.getPropertyValue("clip-path")) ??
-            parseClipRef(
-              (cs as unknown as { clipPath?: string }).clipPath ?? null
-            ))
-          : null);
-      if (id) {
-        chain.unshift(id);
+      const clipId = clipAttrRef(node, cs);
+      if (clipId) {
+        refs.unshift({ id: clipId, ref: node });
+      }
+      if (!maskRef) {
+        const maskId = maskAttrRef(node, cs);
+        if (maskId) {
+          maskRef = { id: maskId, ref: node };
+        }
       }
     } else if (node instanceof Element) {
-      const id = parseClipRef(node.getAttribute("clip-path"));
-      if (id) {
-        chain.unshift(id);
+      const clipId = parseClipRef(node.getAttribute("clip-path"));
+      if (clipId) {
+        refs.unshift({ id: clipId, ref: node });
+      }
+      if (!maskRef) {
+        const maskId = maskAttrRef(node, cs);
+        if (maskId) {
+          maskRef = { id: maskId, ref: node };
+        }
       }
     }
     node = node.parentElement;
   }
-  return chain;
-}
-
-function svgMaskRef(
-  el: Element,
-  style: CSSStyleDeclaration | null,
-  getStyle: StyleGetter = safeStyle
-): string | null {
-  const own =
-    parseClipRef(el.getAttribute("mask")) ??
-    (style
-      ? (parseClipRef(style.getPropertyValue("mask-image")) ??
-        parseClipRef(style.getPropertyValue("mask")))
-      : null);
-  if (own) return own;
-  // mask on an ancestor <g> applies to its children.
-  let node = el.parentElement;
-  while (node && node.tagName.toLowerCase() !== "svg") {
-    const id = parseClipRef(node.getAttribute("mask"));
-    if (id) return id;
-    const cs = getStyle(node);
-    const parsed = cs
-      ? (parseClipRef(cs.getPropertyValue("mask-image")) ??
-        parseClipRef(cs.getPropertyValue("mask")))
-      : null;
-    if (parsed) return parsed;
-    node = node.parentElement;
+  const foundMask = maskRef;
+  if (foundMask && !refs.some((r) => r.id === foundMask.id)) {
+    refs.push(foundMask);
   }
-  return null;
+  return refs;
 }
 
-function collectSvgClips(
+interface ClipChildSource {
+  el: Element;
+  /** Geometry in the container's local space (mapped per reference later). */
+  subs: PathSubpath[];
+  /** clipPath only: this child forces evenodd for the whole clip. */
+  evenOdd: boolean;
+  /** mask only: dark content cuts out instead of filling. */
+  dark: boolean;
+}
+
+interface ClipSource {
+  id: string;
+  kind: "clip" | "mask";
+  container: Element;
+  children: ClipChildSource[];
+}
+
+// How one mask child contributes: gradients cannot be approximated and empty
+// fills contribute nothing, so both are skipped; dark content cuts out.
+function maskChildKind(
+  child: Element,
+  getStyle: StyleGetter
+): "skip" | "light" | "dark" {
+  let maskFill: string | null = child.getAttribute("fill");
+  let fillOpacity = parseOpacityValue(child.getAttribute("fill-opacity"));
+  let nodeOpacity = parseOpacityValue(child.getAttribute("opacity"));
+  const cs = getStyle(child);
+  if (cs) {
+    maskFill ??= cs.getPropertyValue("fill") || null;
+    fillOpacity ??= parseOpacityValue(cs.getPropertyValue("fill-opacity"));
+    nodeOpacity ??= parseOpacityValue(cs.getPropertyValue("opacity"));
+  }
+  if (!maskFill || maskFill.trim() === "") {
+    return "light";
+  }
+  const trimmed = maskFill.trim();
+  if (trimmed === "none" || trimmed.startsWith("url(")) {
+    return "skip";
+  }
+  const c = parseColor(trimmed);
+  if (!c) {
+    return "light";
+  }
+  const lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const alpha = c[3] * (fillOpacity ?? 1) * (nodeOpacity ?? 1);
+  if (alpha <= 0) {
+    return "skip";
+  }
+  return lum < 0.5 ? "dark" : "light";
+}
+
+// Collect clip/mask content once per svg in container-local space. Screen
+// mapping needs the referencing element's user space, which varies per
+// reference, so mapping happens per shape in resolveClipKey.
+function collectSvgClipSources(
   svg: SVGSVGElement,
   getStyle: StyleGetter = safeStyle
-): Map<string, SvgClip> {
-  const clips = new Map<string, SvgClip>();
-  const root = svgRootScreenAffine(svg);
+): Map<string, ClipSource> {
+  const sources = new Map<string, ClipSource>();
   for (const clipEl of svg.querySelectorAll("clipPath")) {
     const id = clipEl.getAttribute("id");
-    if (!id || clips.has(id)) {
+    if (!id || sources.has(id)) {
       continue;
     }
     if (
@@ -416,32 +469,36 @@ function collectSvgClips(
       // No userSpaceOnUse mapping: shapes using this clip render unclipped.
       continue;
     }
-    const subpaths: PathSubpath[] = [];
-    let fillRule: "nonzero" | "evenodd" = "nonzero";
+    const children: ClipChildSource[] = [];
     for (const child of clipEl.querySelectorAll(SVG_GEOMETRY_SELECTOR)) {
       if (!(child instanceof Element)) {
         continue;
       }
-      const childSubs = clipChildScreenSubpaths(child, clipEl, root);
-      if (childSubs.length === 0) {
+      const subs = svgPrimitiveToSubpaths(
+        child.tagName.toLowerCase(),
+        svgGeometryAttrs(child)
+      );
+      if (subs.length === 0) {
         continue;
       }
-      if (clipChildFillRule(child, clipEl, getStyle) === "evenodd") {
-        fillRule = "evenodd";
-      }
-      subpaths.push(...childSubs);
+      children.push({
+        el: child,
+        subs,
+        evenOdd: clipChildFillRule(child, clipEl, getStyle) === "evenodd",
+        dark: false,
+      });
     }
-    if (subpaths.length > 0) {
-      clips.set(id, { id, subpaths, fillRule });
+    if (children.length > 0) {
+      sources.set(id, { id, kind: "clip", container: clipEl, children });
     }
   }
   // <mask> fallback: approximate as an alpha clip when content units allow it.
-  // Luminance is NOT preserved: dark shapes are cutouts, so skip them instead
-  // of unioning (which would invert them into solids).
+  // Luminance is NOT preserved: dark shapes become cutout holes (see
+  // resolveClipKey) instead of unioning, which would invert them into solids.
   // ponytail: luminance threshold, full luminance-mask support if needed.
   for (const maskEl of svg.querySelectorAll("mask")) {
     const id = maskEl.getAttribute("id");
-    if (!id || clips.has(id)) {
+    if (!id || sources.has(id)) {
       continue;
     }
     if (
@@ -451,47 +508,117 @@ function collectSvgClips(
       // No userSpaceOnUse mapping: shapes using this mask render unmasked.
       continue;
     }
-    const subpaths: PathSubpath[] = [];
+    const children: ClipChildSource[] = [];
     for (const child of maskEl.querySelectorAll(SVG_GEOMETRY_SELECTOR)) {
       if (!(child instanceof Element)) {
         continue;
       }
-      // Dark mask content cuts out; skipping keeps the alpha approximation correct.
-      // Read computed fill (catches style=/inherited fills) and fold in
-      // fill-opacity/opacity; gradient fills can't be approximated, so skip them.
-      let maskFill: string | null = child.getAttribute("fill");
-      let fillOpacity = parseOpacityValue(child.getAttribute("fill-opacity"));
-      let nodeOpacity = parseOpacityValue(child.getAttribute("opacity"));
-      const cs = getStyle(child);
-      if (cs) {
-        maskFill ??= cs.getPropertyValue("fill") || null;
-        fillOpacity ??= parseOpacityValue(cs.getPropertyValue("fill-opacity"));
-        nodeOpacity ??= parseOpacityValue(cs.getPropertyValue("opacity"));
+      const kind = maskChildKind(child, getStyle);
+      if (kind === "skip") {
+        continue;
       }
-      if (maskFill && maskFill.trim() !== "") {
-        const trimmed = maskFill.trim();
-        if (trimmed === "none") {
-          continue;
-        }
-        if (trimmed.startsWith("url(")) {
-          continue;
-        }
-        const c = parseColor(trimmed);
-        if (c) {
-          const lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-          const alpha = c[3] * (fillOpacity ?? 1) * (nodeOpacity ?? 1);
-          if (alpha <= 0 || lum < 0.5) {
-            continue;
-          }
-        }
+      const subs = svgPrimitiveToSubpaths(
+        child.tagName.toLowerCase(),
+        svgGeometryAttrs(child)
+      );
+      if (subs.length === 0) {
+        continue;
       }
-      subpaths.push(...clipChildScreenSubpaths(child, maskEl, root));
+      children.push({ el: child, subs, evenOdd: false, dark: kind === "dark" });
     }
-    if (subpaths.length > 0) {
-      clips.set(id, { id, subpaths, fillRule: "nonzero" });
+    if (children.length > 0) {
+      sources.set(id, { id, kind: "mask", container: maskEl, children });
     }
   }
-  return clips;
+  return sources;
+}
+
+function refMatrixFingerprint(m: Affine): string {
+  const r = (n: number): number => Math.round(n * 1000) / 1000;
+  return `${r(m.a)},${r(m.b)},${r(m.c)},${r(m.d)},${r(m.e)},${r(m.f)}`;
+}
+
+// Map one clip/mask source to screen space for a single referencing element
+// and cache it. The cache key folds in the reference transform, so the same
+// clip under different transformed ancestors resolves independently.
+function resolveClipKey(
+  source: ClipSource,
+  ref: Element,
+  svg: SVGSVGElement,
+  root: Affine,
+  resolved: Map<string, SvgClip>
+): string | null {
+  const refMatrix = clipLocalMatrix(ref, svg);
+  const key = `${source.id}|${refMatrixFingerprint(refMatrix)}`;
+  if (resolved.has(key)) {
+    return key;
+  }
+  if (source.kind === "clip") {
+    const subpaths: PathSubpath[] = [];
+    let fillRule: "nonzero" | "evenodd" = "nonzero";
+    for (const child of source.children) {
+      const mapped = mapClipChild(
+        child.subs,
+        child.el,
+        source.container,
+        root,
+        refMatrix
+      );
+      if (mapped.length === 0) {
+        continue;
+      }
+      if (child.evenOdd) {
+        fillRule = "evenodd";
+      }
+      subpaths.push(...mapped);
+    }
+    if (subpaths.length === 0) {
+      return null;
+    }
+    resolved.set(key, { id: key, subpaths, fillRule });
+    return key;
+  }
+  const lights: PathSubpath[] = [];
+  const darks: PathSubpath[] = [];
+  for (const child of source.children) {
+    const mapped = mapClipChild(
+      child.subs,
+      child.el,
+      source.container,
+      root,
+      refMatrix
+    );
+    if (mapped.length === 0) {
+      continue;
+    }
+    if (child.dark) {
+      darks.push(...mapped);
+    } else {
+      lights.push(...mapped);
+    }
+  }
+  if (lights.length === 0) {
+    return null;
+  }
+  // Normalize light winding so holes punch reliably, then encode each dark
+  // contour (clipped to the lit bounds) with opposite winding.
+  const lit = lights.map((sub) => withWinding(sub, true));
+  const subpaths = [...lit];
+  const litBounds = subpathBounds(lit);
+  if (litBounds) {
+    for (const dark of darks) {
+      if (!dark.closed || dark.points.length < 3) {
+        continue;
+      }
+      const cut = clipSubpathToRect(dark, litBounds);
+      if (!cut) {
+        continue;
+      }
+      subpaths.push(withWinding(cut, false));
+    }
+  }
+  resolved.set(key, { id: key, subpaths, fillRule: "nonzero" });
+  return key;
 }
 
 function svgFilterChild(
@@ -567,13 +694,37 @@ function cssFilterEffects(css: string): FigmaEffect[] {
   return effects;
 }
 
-function svgShapeEffects(
+function queryFilterElement(
+  svg: SVGSVGElement,
+  ref: string
+): Element | null {
+  try {
+    const id =
+      typeof CSS !== "undefined" && CSS.escape ? CSS.escape(ref) : ref;
+    const found = svg.querySelector(`filter#${id}`);
+    return found instanceof Element ? found : null;
+  } catch {
+    return null;
+  }
+}
+
+interface ShapeFilterGroup {
+  ancestor: Element;
+  effects: FigmaEffect[];
+}
+
+// SVG filters run after group compositing, so a filter on an ancestor <g>
+// must be emitted once on a wrapper around the whole group — not duplicated
+// onto every child vector. Self filters stay on the shape; ancestor filters
+// (nearest filtering ancestor defines the group, outer levels stack into it)
+// are returned for the run wrapper in emitSvg.
+function svgShapeFilter(
   el: Element,
   style: CSSStyleDeclaration | null,
   svg: SVGSVGElement,
   getStyle: StyleGetter = safeStyle
-): FigmaEffect[] {
-  const effects: FigmaEffect[] = [];
+): { self: FigmaEffect[]; group: ShapeFilterGroup | null } {
+  const self: FigmaEffect[] = [];
   // Walk self + ancestors: a <g filter> / <g style="filter:..."> applies to the whole group.
   const chain: Element[] = [];
   let node: Element | null = el;
@@ -582,12 +733,15 @@ function svgShapeEffects(
     node = node.parentElement;
   }
   const seenFilters = new Set<string>();
-  const cssFilters: string[] = [];
+  const groupEffects: FigmaEffect[] = [];
+  let groupAncestor: Element | null = null;
   // Passed style is the self element's computed style (avoids a recompute).
   const selfCss = style?.getPropertyValue("filter") || "";
   for (let idx = 0; idx < chain.length; idx += 1) {
     const item = chain[idx];
-    if (!item) continue;
+    if (!item) {
+      continue;
+    }
     const isSelf = idx === chain.length - 1;
     let cssFilter = isSelf && selfCss ? selfCss : "";
     if (!cssFilter) {
@@ -602,23 +756,32 @@ function svgShapeEffects(
     }
     const ref =
       parseClipRef(item.getAttribute("filter")) ?? parseClipRef(cssFilter);
+    let refEffects: FigmaEffect[] = [];
     if (ref && !seenFilters.has(ref)) {
       seenFilters.add(ref);
-      const filterEl = svg.querySelector(`filter#${CSS.escape(ref)}`);
-      if (filterEl instanceof Element) {
-        effects.push(...filterElementEffects(filterEl));
+      const filterEl = queryFilterElement(svg, ref);
+      if (filterEl) {
+        refEffects = filterElementEffects(filterEl);
       }
     }
-    if (cssFilter) {
-      cssFilters.push(cssFilter);
+    const cssEffects = cssFilter ? cssFilterEffects(cssFilter) : [];
+    // Each ancestor level applies its own filter; identical values on different
+    // elements intentionally stack, so no string dedupe here.
+    const level = [...refEffects, ...cssEffects];
+    if (isSelf) {
+      self.push(...level);
+    } else if (level.length > 0) {
+      groupAncestor = item;
+      groupEffects.push(...level);
     }
   }
-  // Each ancestor level applies its own filter; identical values on different
-  // elements intentionally stack, so no string dedupe here.
-  for (const css of cssFilters) {
-    effects.push(...cssFilterEffects(css));
-  }
-  return effects;
+  return {
+    self,
+    group:
+      groupAncestor && groupEffects.length > 0
+        ? { ancestor: groupAncestor, effects: groupEffects }
+        : null,
+  };
 }
 
 // Opacity / blend / filter set on the <svg> element itself apply to the whole
@@ -633,8 +796,8 @@ function svgElementEffects(
   const ref =
     parseClipRef(svg.getAttribute("filter")) ?? parseClipRef(css);
   if (ref) {
-    const filterEl = svg.querySelector(`filter#${CSS.escape(ref)}`);
-    if (filterEl instanceof Element) {
+    const filterEl = queryFilterElement(svg, ref);
+    if (filterEl) {
       effects.push(...filterElementEffects(filterEl));
     }
   }
@@ -1189,7 +1352,11 @@ function extractLayout(node: Node): LayoutNode | null {
 
     const shapes: SvgShape[] = [];
     const restoreUses = inlineSvgUses(svg);
-    const clips = collectSvgClips(svg, getStyle);
+    const clipSources = collectSvgClipSources(svg, getStyle);
+    const clipRoot = svgRootScreenAffine(svg);
+    const resolvedClips = new Map<string, SvgClip>();
+    const filterGroupIds = new Map<Element, string>();
+    const filterGroups: SvgFilterGroup[] = [];
     const geomEls = svg.querySelectorAll(SVG_GEOMETRY_SELECTOR);
     for (const geomEl of geomEls) {
       if (!(geomEl instanceof SVGGraphicsElement)) {
@@ -1245,14 +1412,49 @@ function extractLayout(node: Node): LayoutNode | null {
         })),
       }));
       const strokeScale = Math.hypot(ctm.a, ctm.b) || 1;
-      // objectBoundingBox clips/masks are skipped in collectSvgClips, so the
-      // filter below intentionally drops those refs (no userSpaceOnUse mapping).
-      const clipChain = svgClipChain(geomEl, getStyle).filter((id) =>
-        clips.has(id),
+      // objectBoundingBox clips/masks have no source, so the resolve below
+      // intentionally drops those refs (no userSpaceOnUse mapping).
+      const clipRefs = svgClipRefs(geomEl, geomStyle, getStyle);
+      const clipChain: string[] = [];
+      for (const { id, ref } of clipRefs) {
+        const source = clipSources.get(id);
+        if (!source) {
+          continue;
+        }
+        const key = resolveClipKey(
+          source,
+          ref,
+          svg,
+          clipRoot,
+          resolvedClips
+        );
+        if (key) {
+          clipChain.push(key);
+        }
+      }
+      const { self: selfEffects, group } = svgShapeFilter(
+        geomEl,
+        geomStyle,
+        svg,
+        getStyle
       );
-      const maskRef = svgMaskRef(geomEl, geomStyle, getStyle);
-      if (maskRef && clips.has(maskRef) && !clipChain.includes(maskRef)) {
-        clipChain.push(maskRef);
+      let filterGroup: string | null = null;
+      let filterGroupOutside = false;
+      if (group) {
+        let gid = filterGroupIds.get(group.ancestor);
+        if (!gid) {
+          gid = `filter-group-${filterGroupIds.size + 1}`;
+          filterGroupIds.set(group.ancestor, gid);
+          filterGroups.push({ id: gid, effects: group.effects });
+        }
+        filterGroup = gid;
+        // SVG applies an outer filter after inner clipping and vice versa, so
+        // the wrapper sits outside the clip containers only when the filtered
+        // ancestor contains every clip reference; otherwise it wraps the
+        // shapes directly (correct for a filter+clip on the same element).
+        filterGroupOutside =
+          clipRefs.length === 0 ||
+          clipRefs.every(({ ref }) => group.ancestor.contains(ref));
       }
       shapes.push({
         subpaths: transformed,
@@ -1279,9 +1481,11 @@ function extractLayout(node: Node): LayoutNode | null {
               ""
           ) * strokeScale,
         clipChain,
+        filterGroup,
+        filterGroupOutside,
         opacity: svgShapeOpacity(geomEl, geomStyle, getStyle),
         blendMode: svgShapeBlendMode(geomEl, geomStyle, getStyle),
-        effects: svgShapeEffects(geomEl, geomStyle, svg, getStyle),
+        effects: selfEffects,
       });
     }
     restoreUses();
@@ -1311,7 +1515,8 @@ function extractLayout(node: Node): LayoutNode | null {
       background: style?.backgroundColor ?? "rgba(0, 0, 0, 0)",
       color: fallbackColor,
       shapes,
-      clips: [...clips.values()],
+      clips: [...resolvedClips.values()],
+      filterGroups,
       opacity: svgOpacity,
       blendMode: svgBlendMode,
       effects: svgElementEffects(svg, style),
@@ -1401,20 +1606,43 @@ function emitSvg(
   });
 
   const clips = new Map<string, SvgClip>(svgNode.clips.map((c) => [c.id, c]));
-  // Emit in document order: consecutive shapes sharing a clip chain share one
-  // clip container, but a repeated chain later gets a fresh container so paint
-  // order is preserved (grouping by chain would reorder overlapping shapes).
-  const chainKey = (shape: SvgShape): string =>
-    shape.clipChain.filter((id) => clips.has(id)).join("|");
+  const groupEffects = new Map<string, FigmaEffect[]>(
+    svgNode.filterGroups.map((g) => [g.id, g.effects])
+  );
+  // Emit in document order: consecutive shapes sharing a clip chain AND filter
+  // group share one clip container (+ one filter wrapper), but a repeated key
+  // later gets fresh containers so paint order is preserved (grouping by key
+  // would reorder overlapping shapes).
+  const runKey = (shape: SvgShape): string =>
+    `${shape.clipChain.filter((id) => clips.has(id)).join("|")}\n${shape.filterGroup ?? ""}`;
   const chainOf = (shape: SvgShape): string[] =>
     shape.clipChain.filter((id) => clips.has(id));
+  const groupOf = (shape: SvgShape): FigmaEffect[] | null => {
+    if (!shape.filterGroup) {
+      return null;
+    }
+    const effects = groupEffects.get(shape.filterGroup);
+    return effects && effects.length > 0 ? effects : null;
+  };
 
   const buildContainer = (
-    chain: string[]
-  ): { guid: Guid; x: number; y: number; emitMasks?: () => void } => {
-    let container = frameGuid;
-    let originX = svgNode.x;
-    let originY = svgNode.y;
+    chain: string[],
+    parent: Guid,
+    originX: number,
+    originY: number
+  ): {
+    guid: Guid;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    emitMasks?: () => void;
+  } => {
+    let container = parent;
+    let x = originX;
+    let y = originY;
+    let w = svgNode.width;
+    let h = svgNode.height;
     const pendingMasks: Array<() => void> = [];
     for (const clipId of chain) {
       const clip = clips.get(clipId);
@@ -1432,20 +1660,22 @@ function emitSvg(
         container = sb.addFrame({
           parent: container,
           name: `${svgNode.name} Clip`,
-          x: rect.minX - originX,
-          y: rect.minY - originY,
+          x: rect.minX - x,
+          y: rect.minY - y,
           width: Math.max(1, rect.maxX - rect.minX),
           height: Math.max(1, rect.maxY - rect.minY),
           clipsContent: true,
         });
-        originX = rect.minX;
-        originY = rect.minY;
+        x = rect.minX;
+        y = rect.minY;
+        w = Math.max(1, rect.maxX - rect.minX);
+        h = Math.max(1, rect.maxY - rect.minY);
       } else {
         const maskFrame = sb.addFrame({
           parent: container,
           name: `${svgNode.name} Clip`,
-          x: bounds.minX - originX,
-          y: bounds.minY - originY,
+          x: bounds.minX - x,
+          y: bounds.minY - y,
           width,
           height,
         });
@@ -1468,6 +1698,8 @@ function emitSvg(
               strokeDasharray: null,
               strokeWidth: 0,
               clipChain: [],
+              filterGroup: null,
+              filterGroupOutside: false,
               opacity: undefined,
               blendMode: undefined,
               effects: [],
@@ -1481,21 +1713,25 @@ function emitSvg(
           )
         );
         container = maskFrame;
-        originX = bounds.minX;
-        originY = bounds.minY;
+        x = bounds.minX;
+        y = bounds.minY;
+        w = width;
+        h = height;
       }
     }
     const emitMasks =
       pendingMasks.length > 0
         ? () => {
-            for (const emit of pendingMasks) emit();
+            for (const emit of pendingMasks) {
+              emit();
+            }
           }
         : undefined;
-    return { guid: container, x: originX, y: originY, emitMasks };
+    return { guid: container, x, y, w, h, emitMasks };
   };
 
-  // Contiguous runs share a container; each run gets a fresh one so document
-  // paint order is preserved across interleaved clip chains.
+  // Contiguous runs share a container (+ filter wrapper); each run gets fresh
+  // ones so document paint order is preserved across interleaved keys.
   let shapeIndex = 0;
   let i = 0;
   while (i < svgNode.shapes.length) {
@@ -1504,21 +1740,52 @@ function emitSvg(
       i += 1;
       continue;
     }
-    const key = chainKey(first);
+    const key = runKey(first);
     let j = i + 1;
     while (j < svgNode.shapes.length) {
       const next = svgNode.shapes[j];
-      if (!next || chainKey(next) !== key) {
+      if (!next || runKey(next) !== key) {
         break;
       }
       j += 1;
     }
+    const effects = groupOf(first);
+    // An outer filter wraps the clip containers; a same-element (or inner)
+    // filter wraps the shapes inside them — mirroring SVG filter/clip order.
+    let runParent = frameGuid;
+    const runX = svgNode.x;
+    const runY = svgNode.y;
+    if (effects && first.filterGroupOutside) {
+      runParent = sb.addFrame({
+        parent: frameGuid,
+        name: `${svgNode.name} Filter`,
+        x: 0,
+        y: 0,
+        width: svgNode.width,
+        height: svgNode.height,
+        effects,
+      });
+    }
     const {
-      guid: container,
+      guid: innerContainer,
       x: originX,
       y: originY,
+      w: containerW,
+      h: containerH,
       emitMasks,
-    } = buildContainer(chainOf(first));
+    } = buildContainer(chainOf(first), runParent, runX, runY);
+    let container = innerContainer;
+    if (effects && !first.filterGroupOutside) {
+      container = sb.addFrame({
+        parent: innerContainer,
+        name: `${svgNode.name} Filter`,
+        x: 0,
+        y: 0,
+        width: containerW,
+        height: containerH,
+        effects,
+      });
+    }
     for (let k = i; k < j; k += 1) {
       const shape = svgNode.shapes[k];
       if (!shape) {

@@ -1,4 +1,4 @@
-import type { PathSubpath } from "./svg-path";
+import type { PathPoint, PathSubpath } from "./svg-path";
 
 // Fallback policy (issue #386 / NOT-75):
 // - clipPath with path/rect (userSpaceOnUse) -> real Figma clipping:
@@ -72,6 +72,7 @@ export interface ClipBounds {
 export function subpathBounds(
   subpaths: PathSubpath[]
 ): ClipBounds | null {
+
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -386,4 +387,107 @@ export function parseSvgTransformAttr(value: string | null | undefined): Affine 
   }
   SVG_TRANSFORM_FN_RE.lastIndex = 0;
   return acc;
+}
+
+/** Signed polygon area (shoelace); sign encodes winding orientation. */
+export function signedSubpathArea(sub: PathSubpath): number {
+  let sum = 0;
+  const pts = sub.points;
+  for (let i = 0; i < pts.length; i += 1) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    if (!p || !q) {
+      continue;
+    }
+    sum += p.x * q.y - q.x * p.y;
+  }
+  return sum / 2;
+}
+
+/**
+ * Return the subpath with the requested winding orientation (reverses point
+ * order when needed). Mask cutouts must wind opposite to the filled contours
+ * so they punch holes under the NONZERO rule.
+ */
+export function withWinding(sub: PathSubpath, positive: boolean): PathSubpath {
+  const area = signedSubpathArea(sub);
+  if (area === 0) {
+    return sub;
+  }
+  const isPositive = area > 0;
+  if (isPositive === positive) {
+    return sub;
+  }
+  return { closed: sub.closed, points: [...sub.points].reverse() };
+}
+
+/**
+ * Intersect a closed polygon subpath with an axis-aligned rect
+ * (Sutherland–Hodgman). Returns null when nothing survives. Mask cutouts are
+ * clipped to the lit bounds so a dark shape hanging over the edge cannot add
+ * fill outside the mask.
+ */
+export function clipSubpathToRect(
+  sub: PathSubpath,
+  bounds: ClipBounds
+): PathSubpath | null {
+  if (!sub.closed || sub.points.length < 3) {
+    return null;
+  }
+  const vIntersect = (
+    edge: number,
+    a: PathPoint,
+    b: PathPoint
+  ): PathPoint => {
+    const t = b.x === a.x ? 0 : (edge - a.x) / (b.x - a.x);
+    return { x: edge, y: a.y + t * (b.y - a.y) };
+  };
+  const hIntersect = (
+    edge: number,
+    a: PathPoint,
+    b: PathPoint
+  ): PathPoint => {
+    const t = b.y === a.y ? 0 : (edge - a.y) / (b.y - a.y);
+    return { x: a.x + t * (b.x - a.x), y: edge };
+  };
+  const clipEdge = (
+    pts: PathPoint[],
+    inside: (p: PathPoint) => boolean,
+    intersect: (a: PathPoint, b: PathPoint) => PathPoint
+  ): PathPoint[] => {
+    const out: PathPoint[] = [];
+    for (let i = 0; i < pts.length; i += 1) {
+      const cur = pts[i];
+      const prev = pts[(i + pts.length - 1) % pts.length];
+      if (!cur || !prev) {
+        continue;
+      }
+      if (inside(cur)) {
+        if (!inside(prev)) {
+          out.push(intersect(prev, cur));
+        }
+        out.push(cur);
+      } else if (inside(prev)) {
+        out.push(intersect(prev, cur));
+      }
+    }
+    return out;
+  };
+  let pts: PathPoint[] = sub.points.map((p) => ({ x: p.x, y: p.y }));
+  pts = clipEdge(pts, (p) => p.x >= bounds.minX, (a, b) =>
+    vIntersect(bounds.minX, a, b)
+  );
+  pts = clipEdge(pts, (p) => p.x <= bounds.maxX, (a, b) =>
+    vIntersect(bounds.maxX, a, b)
+  );
+  pts = clipEdge(pts, (p) => p.y >= bounds.minY, (a, b) =>
+    hIntersect(bounds.minY, a, b)
+  );
+  pts = clipEdge(pts, (p) => p.y <= bounds.maxY, (a, b) =>
+    hIntersect(bounds.maxY, a, b)
+  );
+  if (pts.length < 3) {
+    return null;
+  }
+  return { closed: true, points: pts };
 }

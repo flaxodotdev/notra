@@ -84,7 +84,8 @@ export function dropShadowEffect(options: {
 
 export function layerBlurEffect(radius: number): FigmaEffect {
   return {
-    type: "LAYER_BLUR",
+    // The bundled Figma schema has no LAYER_BLUR — a layer blur is FOREGROUND_BLUR.
+    type: "FOREGROUND_BLUR",
     visible: true,
     radius: Math.max(0, finiteOr(radius, 0)),
   };
@@ -273,7 +274,7 @@ export class SceneBuilder {
       stackCounterAlignItems: "MIN",
       stackReverseZIndex: false,
       stackCounterSizing: "FIXED",
-      frameMaskDisabled: options.clipsContent ? false : true,
+      frameMaskDisabled: !options.clipsContent,
     };
 
     applyNodeExtras(node, options);
