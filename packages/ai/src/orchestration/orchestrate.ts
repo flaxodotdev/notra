@@ -122,6 +122,11 @@ export async function orchestrateChat(
 
   const messagesForModel = normalizeMarkdownFileAttachments(messages);
 
+  const thinkingProviderOptions = getThinkingProviderOptions(
+    routingDecision.model,
+    true,
+    routingDecision.thinkingLevel ?? "low"
+  );
   const stream = streamText({
     model: modelWithMemory,
     instructions: systemPrompt,
@@ -132,11 +137,10 @@ export async function orchestrateChat(
     stopWhen: isStepCount(maxSteps),
     abortSignal,
     providerOptions: withRouterDefaults(
-      getThinkingProviderOptions(
-        routingDecision.model,
-        true,
-        routingDecision.thinkingLevel ?? "low"
-      ),
+      {
+        ...thinkingProviderOptions,
+        gateway: { tags: ["content-chat"] },
+      },
       {
         modelId: routingDecision.model,
       }
