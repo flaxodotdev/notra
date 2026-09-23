@@ -1,0 +1,389 @@
+import type { PathSubpath } from "./svg-path";
+
+// Fallback policy (issue #386 / NOT-75):
+// - clipPath with path/rect (userSpaceOnUse) -> real Figma clipping:
+//   rect clips become a clipping Frame, path clips become a mask Vector.
+// - <mask> -> approximated as an alpha clip when its content units are
+//   userSpaceOnUse; luminance masks degrade to alpha.
+// - filters -> feDropShadow / CSS drop-shadow(...) become DROP_SHADOW
+//   effects and blur becomes a layer blur; anything else is skipped.
+// - mix-blend-mode -> mapped when Figma has the same mode, else NORMAL.
+
+const CLIP_URL_RE = /url\(\s*["']?#([^"')\s]+)["']?\s*\)/i;
+
+export function parseClipRef(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "none") {
+    return null;
+  }
+  const match = CLIP_URL_RE.exec(trimmed);
+  return match?.[1]?.trim() ? match[1].trim() : null;
+}
+
+const BLEND_MODE_MAP: Record<string, string> = {
+  normal: "NORMAL",
+  multiply: "MULTIPLY",
+  screen: "SCREEN",
+  overlay: "OVERLAY",
+  darken: "DARKEN",
+  lighten: "LIGHTEN",
+  "color-dodge": "COLOR_DODGE",
+  "color-burn": "COLOR_BURN",
+  "hard-light": "HARD_LIGHT",
+  "soft-light": "SOFT_LIGHT",
+  difference: "DIFFERENCE",
+  exclusion: "EXCLUSION",
+  hue: "HUE",
+  saturation: "SATURATION",
+  color: "COLOR",
+  luminosity: "LUMINOSITY",
+  // CSS plus-lighter ≈ Figma LINEAR_DODGE (Figma BlendMode enum has LINEAR_DODGE).
+  "plus-lighter": "LINEAR_DODGE",
+};
+
+export function normalizeBlendMode(value: string | null | undefined): string {
+  const key = (value ?? "").trim().toLowerCase();
+  return BLEND_MODE_MAP[key] ?? "NORMAL";
+}
+
+export function parseOpacityValue(
+  value: string | null | undefined
+): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(value.trim());
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return Math.max(0, Math.min(1, parsed));
+}
+
+export interface ClipBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export function subpathBounds(
+  subpaths: PathSubpath[]
+): ClipBounds | null {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const sub of subpaths) {
+    for (const p of sub.points) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  if (
+    !Number.isFinite(minX) ||
+    !Number.isFinite(minY) ||
+    !Number.isFinite(maxX) ||
+    !Number.isFinite(maxY)
+  ) {
+    return null;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function isClosedRectLoop(
+  points: Array<{ x: number; y: number }>,
+  tolerance = 0.5
+): ClipBounds | null {
+  if (points.length !== 4) {
+    return null;
+  }
+  const [a, b, c, d] = points;
+  if (!a || !b || !c || !d) {
+    return null;
+  }
+  const xs = [a.x, b.x, c.x, d.x];
+  const ys = [a.y, b.y, c.y, d.y];
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const corners = [
+    [minX, minY],
+    [maxX, minY],
+    [maxX, maxY],
+    [minX, maxY],
+  ];
+  const used = new Set<number>();
+  for (const p of points) {
+    let hit = -1;
+    for (let i = 0; i < corners.length; i += 1) {
+      const corner = corners[i];
+      if (!corner || used.has(i)) continue;
+      if (
+        Math.abs(p.x - (corner[0] ?? 0)) <= tolerance &&
+        Math.abs(p.y - (corner[1] ?? 0)) <= tolerance
+      ) {
+        hit = i;
+        break;
+      }
+    }
+    if (hit === -1) {
+      return null;
+    }
+    used.add(hit);
+  }
+  if (maxX - minX <= 0 || maxY - minY <= 0) {
+    return null;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** A clip is a "rect clip" when it is exactly one closed 4-point loop forming an axis-aligned rect. */
+export function rectClipBounds(
+  subpaths: PathSubpath[]
+): ClipBounds | null {
+  if (subpaths.length !== 1) {
+    return null;
+  }
+  const sub = subpaths[0];
+  if (!sub || sub.closed !== true) {
+    return null;
+  }
+  return isClosedRectLoop(sub.points);
+}
+
+const CSS_LENGTH_RE = /^(-?\d*\.?\d+(?:[eE][+-]?\d+)?)(px)?$/;
+
+function parseCssLength(token: string | undefined): number | null {
+  if (!token) {
+    return null;
+  }
+  const match = CSS_LENGTH_RE.exec(token.trim());
+  if (!match?.[1]) {
+    return null;
+  }
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export interface ParsedDropShadow {
+  dx: number;
+  dy: number;
+  blur: number;
+  color: string | null;
+}
+
+/**
+ * Parse one CSS `drop-shadow(dx dy blur color)` argument list.
+ * Color may lead or trail (CSS allows both); returns null when unmappable.
+ */
+export function parseDropShadowArgs(args: string): ParsedDropShadow | null {
+  const parts = args.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+  // Fast path: dx dy [blur] [color]
+  const dxFast = parseCssLength(parts[0]);
+  const dyFast = parseCssLength(parts[1]);
+  if (dxFast !== null && dyFast !== null) {
+    let blur = 0;
+    let color: string | null = null;
+    const rest = parts.slice(2);
+    if (rest.length > 0) {
+      const maybeBlur = parseCssLength(rest[0]);
+      if (maybeBlur !== null) {
+        blur = Math.max(0, maybeBlur);
+        color = rest.slice(1).join(" ") || null;
+      } else {
+        color = rest.join(" ") || null;
+      }
+    }
+    return { dx: dxFast, dy: dyFast, blur, color };
+  }
+  // Slow path: leading color, e.g. `drop-shadow(red 2px 4px)`.
+  // Find the first two consecutive lengths; tokens before are the color.
+  for (let k = 0; k + 1 < parts.length; k += 1) {
+    const dx = parseCssLength(parts[k]);
+    const dy = parseCssLength(parts[k + 1]);
+    if (dx === null || dy === null) {
+      continue;
+    }
+    const leading = parts.slice(0, k).join(" ") || null;
+    const rest = parts.slice(k + 2);
+    let blur = 0;
+    let trailingColor: string | null = null;
+    if (rest.length > 0) {
+      const maybeBlur = parseCssLength(rest[0]);
+      if (maybeBlur !== null) {
+        blur = Math.max(0, maybeBlur);
+        trailingColor = rest.slice(1).join(" ") || null;
+      } else {
+        trailingColor = rest.join(" ") || null;
+      }
+    }
+    if (leading && trailingColor) {
+      return null;
+    }
+    return { dx, dy, blur, color: leading ?? trailingColor };
+  }
+  return null;
+}
+
+export interface ParsedCssFilter {
+  dropShadows: ParsedDropShadow[];
+  blur: number | null;
+}
+
+/** Split a CSS `filter` value into top-level `name(args)` functions, handling nested parens. */
+function splitCssFunctions(value: string): Array<{ name: string; args: string }> {
+  const out: Array<{ name: string; args: string }> = [];
+  let i = 0;
+  while (i < value.length) {
+    while (i < value.length && /\s/.test(value[i] ?? "")) i += 1;
+    const nameStart = i;
+    while (i < value.length && /[a-zA-Z-]/.test(value[i] ?? "")) i += 1;
+    const name = value.slice(nameStart, i);
+    while (i < value.length && /\s/.test(value[i] ?? "")) i += 1;
+    if (!name || value[i] !== "(") {
+      i += 1;
+      continue;
+    }
+    i += 1; // consume (
+    let depth = 1;
+    const argsStart = i;
+    while (i < value.length && depth > 0) {
+      const c = value[i];
+      if (c === "(") depth += 1;
+      else if (c === ")") depth -= 1;
+      i += 1;
+    }
+    if (depth === 0) {
+      out.push({ name, args: value.slice(argsStart, i - 1) });
+    }
+  }
+  return out;
+}
+
+/** Parse a CSS `filter` value, keeping only what maps to Figma effects.
+ * Stacked `blur()`s keep only the first (documented approximation). */
+export function parseCssFilter(value: string | null | undefined): ParsedCssFilter {
+  const out: ParsedCssFilter = { dropShadows: [], blur: null };
+  if (!value || value.trim() === "" || value.trim() === "none") {
+    return out;
+  }
+  for (const fn of splitCssFunctions(value)) {
+    const name = fn.name.toLowerCase();
+    const args = fn.args;
+    if (name === "drop-shadow") {
+      const parsed = parseDropShadowArgs(args);
+      if (parsed) {
+        out.dropShadows.push(parsed);
+      }
+    } else if (name === "blur" && out.blur === null) {
+      const radius = parseCssLength(args.trim());
+      if (radius !== null) {
+        out.blur = Math.max(0, radius);
+      }
+    }
+  }
+  return out;
+}
+
+export interface Affine {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+}
+
+export const IDENTITY_AFFINE: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+
+/** m1 * m2 (apply m2, then m1). */
+export function multiplyAffine(m1: Affine, m2: Affine): Affine {
+  return {
+    a: m1.a * m2.a + m1.c * m2.b,
+    b: m1.b * m2.a + m1.d * m2.b,
+    c: m1.a * m2.c + m1.c * m2.d,
+    d: m1.b * m2.c + m1.d * m2.d,
+    e: m1.a * m2.e + m1.c * m2.f + m1.e,
+    f: m1.b * m2.e + m1.d * m2.f + m1.f,
+  };
+}
+
+export function applyAffine(
+  m: Affine,
+  p: { x: number; y: number }
+): { x: number; y: number } {
+  return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f };
+}
+
+const SVG_TRANSFORM_FN_RE = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
+const SVG_TRANSFORM_NUM_RE =
+  /-?\d*\.?\d+(?:[eE][+-]?\d+)?/g;
+
+function transformNumbers(args: string): number[] {
+  const out: number[] = [];
+  let m: RegExpExecArray | null;
+  SVG_TRANSFORM_NUM_RE.lastIndex = 0;
+  while ((m = SVG_TRANSFORM_NUM_RE.exec(args)) !== null) {
+    const n = Number.parseFloat(m[0]);
+    if (Number.isFinite(n)) out.push(n);
+  }
+  SVG_TRANSFORM_NUM_RE.lastIndex = 0;
+  return out;
+}
+
+/**
+ * Parse an SVG `transform` attribute into an affine matrix.
+ * Supports matrix/translate/scale/rotate/skewX/skewY; unknown functions are ignored.
+ */
+export function parseSvgTransformAttr(value: string | null | undefined): Affine {
+  if (!value || value.trim() === "") return { ...IDENTITY_AFFINE };
+  let acc: Affine = { ...IDENTITY_AFFINE };
+  let m: RegExpExecArray | null;
+  SVG_TRANSFORM_FN_RE.lastIndex = 0;
+  while ((m = SVG_TRANSFORM_FN_RE.exec(value)) !== null) {
+    const name = (m[1] ?? "").toLowerCase();
+    const nums = transformNumbers(m[2] ?? "");
+    let next: Affine | null = null;
+    if (name === "matrix" && nums.length === 6) {
+      const [a, b, c, d, e, f] = nums as [number, number, number, number, number, number];
+      next = { a, b, c, d, e, f };
+    } else if (name === "translate" && nums.length >= 1) {
+      next = { ...IDENTITY_AFFINE, e: nums[0] ?? 0, f: nums[1] ?? 0 };
+    } else if (name === "scale" && nums.length >= 1) {
+      const sx = nums[0] ?? 1;
+      next = { ...IDENTITY_AFFINE, a: sx, d: nums[1] ?? sx };
+    } else if (name === "rotate" && nums.length >= 1) {
+      const rad = (((nums[0] ?? 0) * Math.PI) / 180);
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const rot: Affine = { a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 };
+      if (nums.length >= 3) {
+        const cx = nums[1] ?? 0;
+        const cy = nums[2] ?? 0;
+        next = multiplyAffine(
+          { ...IDENTITY_AFFINE, e: cx, f: cy },
+          multiplyAffine(rot, { ...IDENTITY_AFFINE, e: -cx, f: -cy })
+        );
+      } else {
+        next = rot;
+      }
+    } else if (name === "skewx" && nums.length >= 1) {
+      next = { ...IDENTITY_AFFINE, c: Math.tan(((nums[0] ?? 0) * Math.PI) / 180) };
+    } else if (name === "skewy" && nums.length >= 1) {
+      next = { ...IDENTITY_AFFINE, b: Math.tan(((nums[0] ?? 0) * Math.PI) / 180) };
+    }
+    if (next) acc = multiplyAffine(acc, next);
+  }
+  SVG_TRANSFORM_FN_RE.lastIndex = 0;
+  return acc;
+}
