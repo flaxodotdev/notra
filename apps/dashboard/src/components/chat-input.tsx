@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
 import Link from "next/link";
+import { useId } from "react";
 
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview";
 import {
@@ -40,6 +41,8 @@ import { ChatContextConnectSuggestions } from "@/components/chat/chat-context-co
 import { ChatContextOptionContent } from "@/components/chat/chat-context-option-content";
 import { ChatInputContextRow } from "@/components/chat/chat-input-context-row";
 import { ChatQueue } from "@/components/chat/chat-queue";
+import { ChatSkillSlashMenu } from "@/components/chat/chat-skill-slash-menu";
+import { ChatSkillTagChips } from "@/components/chat/chat-skill-tag-chips";
 import { Composer } from "@/components/composer/composer-shell";
 import { useContentChatInput } from "@/lib/hooks/use-content-chat-input";
 import type {
@@ -53,11 +56,13 @@ const ChatInput = (props: ChatInputProps) => (
 );
 
 function ContentChatInputComposer(props: ChatInputProps) {
+  const slashListId = useId();
   const {
     acceptedFileTypesLabel,
     allowedChatMimeTypes,
     attachments,
     attachmentTooltipText,
+    closeSlashMenu,
     connectedTop,
     context,
     contextOptions,
@@ -65,17 +70,23 @@ function ContentChatInputComposer(props: ChatInputProps) {
     contextPickerId,
     dragHandlers,
     fileInputRef,
+    filteredSkills,
     handlePaste,
     handleSend,
     hasAttachmentChips,
     hasContextChips,
+    insertSlashSkill,
     isContextPickerOpen,
     isDraggingFile,
     isInContext,
     isInputLocked,
     isLoading,
+    isSlashMenuOpen,
     onAttach,
     onClearSelection,
+    onComposerKeyDown,
+    onComposerSelect,
+    onComposerValueChange,
     onEditQueued,
     onFileInputChange,
     onRemoveContext,
@@ -97,12 +108,16 @@ function ContentChatInputComposer(props: ChatInputProps) {
     setIsContextPickerOpen,
     setIsFocused,
     setPreviewAttachment,
-    setValue,
     shouldShowLowCredits,
     showComposerNudge,
     showStop,
+    skillCount,
+    slashIndex,
+    slashListRef,
+    taggedSkills,
     textareaRef,
     toggleContextItem,
+    untagSkill,
     usageLimitError,
     value,
   } = useContentChatInput(props);
@@ -114,7 +129,17 @@ function ContentChatInputComposer(props: ChatInputProps) {
           acceptedFileTypesLabel={acceptedFileTypesLabel}
         />
       ) : null}
-      <div {...dragHandlers}>
+      <div className="relative w-full min-w-0" {...dragHandlers}>
+        {isSlashMenuOpen ? (
+          <ChatSkillSlashMenu
+            filteredSkills={filteredSkills}
+            listboxId={slashListId}
+            onSelect={insertSlashSkill}
+            skillCount={skillCount}
+            slashIndex={slashIndex}
+            slashListRef={slashListRef}
+          />
+        ) : null}
         <Composer.Frame
           connectedTop={connectedTop}
           nudge={
@@ -137,6 +162,8 @@ function ContentChatInputComposer(props: ChatInputProps) {
                 selection={selection}
                 setPreviewAttachment={setPreviewAttachment}
                 shouldShowLowCredits={shouldShowLowCredits}
+                taggedSkills={taggedSkills}
+                untagSkill={untagSkill}
                 usageLimitError={usageLimitError}
               />
             ) : null
@@ -152,22 +179,44 @@ function ContentChatInputComposer(props: ChatInputProps) {
               type="file"
             />
             <Textarea
+              aria-activedescendant={
+                isSlashMenuOpen && filteredSkills[slashIndex]
+                  ? `chat-skill-slash-option-${filteredSkills[slashIndex].name}`
+                  : undefined
+              }
+              aria-autocomplete={isSlashMenuOpen ? "list" : undefined}
+              aria-controls={isSlashMenuOpen ? slashListId : undefined}
+              aria-expanded={isSlashMenuOpen}
+              aria-haspopup={isSlashMenuOpen ? "listbox" : undefined}
               aria-label="Send a message"
               className="text-foreground caret-foreground block field-sizing-fixed max-h-50 min-h-12 w-full min-w-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 py-2 text-sm leading-6 whitespace-pre-wrap shadow-none ring-0 outline-none focus-visible:border-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-50 dark:bg-transparent dark:disabled:bg-transparent"
               disabled={isInputLocked}
-              onBlur={() => setIsFocused(false)}
+              onBlur={() => {
+                setIsFocused(false);
+                window.setTimeout(() => {
+                  if (!slashListRef.current?.contains(document.activeElement)) {
+                    closeSlashMenu();
+                  }
+                }, 150);
+              }}
               onChange={(event) => {
-                setValue(event.target.value);
+                onComposerValueChange(
+                  event.target.value,
+                  event.target.selectionStart
+                );
               }}
               onFocus={() => setIsFocused(true)}
               onInput={resizeTextarea}
+              onKeyDown={onComposerKeyDown}
               onPaste={handlePaste}
+              onSelect={onComposerSelect}
               placeholder={
                 isLoading
                   ? "Queue a message..."
-                  : (placeholder ?? "Send a message...")
+                  : (placeholder ?? "Send a message... (type / for skills)")
               }
               ref={textareaRef}
+              role="combobox"
               rows={1}
               value={value}
             />
@@ -236,6 +285,8 @@ function ChatInputComposerNudge({
   selection,
   setPreviewAttachment,
   shouldShowLowCredits,
+  taggedSkills,
+  untagSkill,
   usageLimitError,
 }: ChatInputComposerNudgeProps) {
   return (
@@ -269,6 +320,7 @@ function ChatInputComposerNudge({
             onRemove={onRemoveQueued}
             onSteer={onSteerQueued}
           />
+          <ChatSkillTagChips onRemove={untagSkill} skills={taggedSkills} />
           <ChatInputContextRow
             context={context}
             onClearSelection={onClearSelection}

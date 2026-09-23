@@ -82,6 +82,7 @@ import { McpIcon } from "@/components/integrations/mcp-icon";
 import { CHAT_COMPOSER_DRAFT_PERSIST_MS } from "@/constants/chat-composer";
 import { useAutumnRefreshListener } from "@/lib/hooks/use-autumn-refresh-listener";
 import { useBillingCustomer } from "@/lib/hooks/use-billing-customer";
+import { useChatSkillSlash } from "@/lib/hooks/use-chat-skill-slash";
 import { dashboardOrpc } from "@/lib/orpc/query";
 import {
   dragEventHasFiles,
@@ -99,6 +100,7 @@ import {
 import type { ChatMessageAuthor } from "@/types/chat";
 import type { ChatContextOption } from "@/types/components/chat-input";
 import type { GitHubRepository } from "@/types/integrations";
+import type { SkillSlashOption } from "@/types/skills/slash";
 import { hasIncludedChatPlan } from "@/utils/chat-billing";
 import {
   CHAT_INPUT_LIMIT_MESSAGE,
@@ -110,6 +112,14 @@ import {
   getIntegrationReferenceValue,
   getReferenceDisplay,
 } from "@/utils/integration-reference";
+import {
+  extractSkillDraftTokens,
+  parseSkillDraftNames,
+  skillDraftStorageKey,
+  getSlashSkillQuery,
+  handleSlashMenuKeyDown,
+  prependTaggedSkills,
+} from "@/utils/slash-skill-query";
 
 import { AttachmentPreviewDialog } from "./attachment-preview";
 import {
@@ -119,6 +129,8 @@ import {
 import { ChatContextConnectSuggestions } from "./chat-context-connect-suggestions";
 import { ChatContextOptionContent } from "./chat-context-option-content";
 import { ChatQueue, type QueuedMessage } from "./chat-queue";
+import { ChatSkillSlashMenu } from "./chat-skill-slash-menu";
+import { ChatSkillTagChips } from "./chat-skill-tag-chips";
 import {
   serializeEditorWithReferences,
   serializeFragmentWithReferences,
@@ -446,6 +458,7 @@ function getComposerNudgeVisibility({
   pendingUploadCount,
   queuedCount,
   shouldShowLowCredits,
+  skillTagCount,
   usageLimitError,
 }: {
   attachmentCount: number;
@@ -453,11 +466,13 @@ function getComposerNudgeVisibility({
   pendingUploadCount: number;
   queuedCount: number;
   shouldShowLowCredits: boolean;
+  skillTagCount: number;
   usageLimitError: string | null;
 }) {
   return (
     queuedCount > 0 ||
     contextCount > 0 ||
+    skillTagCount > 0 ||
     attachmentCount > 0 ||
     pendingUploadCount > 0 ||
     shouldShowLowCredits ||
@@ -485,6 +500,7 @@ function ChatMentionMenu({
   filteredMentionItems,
   insertMention,
   isInContext,
+  listboxId,
   mentionIndex,
   mentionListRef,
   organizationSlug,
@@ -493,6 +509,7 @@ function ChatMentionMenu({
   filteredMentionItems: ChatContextOption[];
   insertMention: (option: ChatContextOption) => void;
   isInContext: (item: ContextItem) => boolean;
+  listboxId: string;
   mentionIndex: number;
   mentionListRef: Ref<HTMLDivElement>;
   organizationSlug?: string;
@@ -502,60 +519,69 @@ function ChatMentionMenu({
       className="absolute bottom-full left-1 z-50 mb-1 w-72"
       ref={mentionListRef}
     >
-      <div className="border-border bg-popover text-popover-foreground max-h-64 overflow-y-auto rounded-md border p-1 shadow-md">
-        {filteredMentionItems.length > 0 ? (
-          <>
-            {filteredMentionItems.map((option, idx) => {
-              const inContext = isInContext(option.contextItem);
-              const previousOption = filteredMentionItems[idx - 1];
-              const startsGroup =
-                idx === 0 ||
-                (previousOption?.kind === "mcp") !== (option.kind === "mcp");
-              return (
-                <div key={option.id}>
-                  {startsGroup ? (
-                    <div className="px-2 py-1.5 text-xs font-semibold">
-                      {option.kind === "mcp" ? "MCP tools" : "Context"}
-                    </div>
-                  ) : null}
-                  <button
-                    className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors outline-none ${
-                      idx === mentionIndex
-                        ? "bg-accent text-accent-foreground"
-                        : "text-popover-foreground hover:bg-accent hover:text-accent-foreground"
-                    }`}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      insertMention(option);
-                    }}
-                    type="button"
-                  >
-                    <ChatContextOptionContent option={option} />
-                    {inContext ? (
-                      <span className="text-success shrink-0 text-xs">
-                        Added
-                      </span>
-                    ) : null}
-                  </button>
-                </div>
-              );
-            })}
-            {organizationSlug ? (
-              <>
-                <div className="bg-border -mx-1 my-1 h-px" />
-                <Link
-                  className="hover:bg-accent hover:text-accent-foreground flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors outline-none"
-                  href={`/${organizationSlug}/integrations`}
+      <div className="border-border bg-popover text-popover-foreground overflow-hidden rounded-md border shadow-md">
+        <div
+          aria-label="Context"
+          className={
+            filteredMentionItems.length > 0
+              ? "max-h-64 overflow-y-auto p-1"
+              : undefined
+          }
+          id={listboxId}
+          role="listbox"
+        >
+          {filteredMentionItems.map((option, idx) => {
+            const inContext = isInContext(option.contextItem);
+            const previousOption = filteredMentionItems[idx - 1];
+            const startsGroup =
+              idx === 0 ||
+              (previousOption?.kind === "mcp") !== (option.kind === "mcp");
+            const selected = idx === mentionIndex;
+            return (
+              <div key={option.id}>
+                {startsGroup ? (
+                  <div className="px-2 py-1.5 text-xs font-semibold">
+                    {option.kind === "mcp" ? "MCP tools" : "Context"}
+                  </div>
+                ) : null}
+                <button
+                  aria-selected={selected}
+                  className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors outline-none ${
+                    selected
+                      ? "bg-accent text-accent-foreground"
+                      : "text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                  id={`chat-mention-option-${option.id}`}
                   onMouseDown={(event) => {
-                    event.stopPropagation();
+                    event.preventDefault();
+                    insertMention(option);
                   }}
+                  role="option"
+                  type="button"
                 >
-                  Manage integrations
-                </Link>
-              </>
-            ) : null}
-          </>
-        ) : (
+                  <ChatContextOptionContent option={option} />
+                  {inContext ? (
+                    <span className="text-success shrink-0 text-xs">Added</span>
+                  ) : null}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {filteredMentionItems.length > 0 && organizationSlug ? (
+          <div className="border-border border-t p-1">
+            <Link
+              className="hover:bg-accent hover:text-accent-foreground flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors outline-none"
+              href={`/${organizationSlug}/integrations`}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              Manage integrations
+            </Link>
+          </div>
+        ) : null}
+        {filteredMentionItems.length === 0 ? (
           <div className="flex flex-col items-center gap-1 px-3 py-4 text-center">
             <span className="text-muted-foreground text-xs">
               {contextOptionsCount === 0
@@ -571,7 +597,7 @@ function ChatMentionMenu({
               </Link>
             ) : null}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -594,6 +620,8 @@ function ChatComposerNudge({
   setPreviewAttachment,
   shouldShowLowCredits,
   showAuthorAvatars,
+  taggedSkills,
+  untagSkill,
   usageLimitError,
 }: {
   attachments: ChatAttachment[];
@@ -612,10 +640,12 @@ function ChatComposerNudge({
   setPreviewAttachment: (attachment: ChatAttachment) => void;
   shouldShowLowCredits: boolean;
   showAuthorAvatars?: boolean;
+  taggedSkills: SkillSlashOption[];
+  untagSkill?: (name: string) => void;
   usageLimitError: string | null;
 }) {
   const hasQueuedChips = queuedMessages.length > 0;
-  const hasContextChips = context.length > 0;
+  const hasContextChips = context.length > 0 || taggedSkills.length > 0;
   const hasAttachmentChips =
     attachments.length > 0 || pendingUploads.length > 0;
   return (
@@ -651,6 +681,10 @@ function ChatComposerNudge({
             onRemove={onRemoveQueued}
             onSteer={onSteerQueued}
             showAuthorAvatars={showAuthorAvatars}
+          />
+          <ChatSkillTagChips
+            onRemove={isQueued ? undefined : untagSkill}
+            skills={taggedSkills}
           />
           {context.map((item) => {
             const label = getReferenceDisplay(item);
@@ -1151,11 +1185,11 @@ function sendOrQueueComposer({
   isUsageBlocked,
   onSend,
   performSend,
-  readEditorText,
   setInternalError,
   setPendingSend,
   attachments,
   pendingUploads,
+  taggedSkillNames,
 }: {
   attachments: ChatAttachment[];
   chatIncludedInPlan: boolean;
@@ -1174,14 +1208,17 @@ function sendOrQueueComposer({
   onSend?: (value: string, attachments: ChatAttachment[]) => void;
   performSend: () => boolean;
   pendingUploads: PendingUploadItem[];
-  readEditorText: () => string;
   setInternalError: Dispatch<SetStateAction<string | null>>;
   setPendingSend: Dispatch<SetStateAction<QueuedSendSnapshot | null>>;
+  taggedSkillNames: readonly string[];
 }) {
   if (isLoading) {
-    const hasText = readEditorText().trim().length > 0;
+    const outbound = prependTaggedSkills(
+      serializeEditorWithReferences(editor),
+      taggedSkillNames
+    );
     const hasAttachments = attachments.length > 0 || pendingUploads.length > 0;
-    if (!hasText || hasAttachments) {
+    if (!outbound || hasAttachments) {
       return;
     }
     clearError();
@@ -1199,14 +1236,19 @@ function sendOrQueueComposer({
         return;
       }
     }
-    onSend?.(serializeEditorWithReferences(editor).trim(), []);
+    onSend?.(outbound, []);
     clearComposer();
     return;
   }
   if (isUploading) {
-    const hasText = readEditorText().trim().length > 0;
+    const outbound = prependTaggedSkills(
+      serializeEditorWithReferences(editor),
+      taggedSkillNames
+    );
     const hasContent =
-      hasText || attachments.length > 0 || pendingUploads.length > 0;
+      outbound.length > 0 ||
+      attachments.length > 0 ||
+      pendingUploads.length > 0;
     if (!hasContent) {
       return;
     }
@@ -1219,7 +1261,7 @@ function sendOrQueueComposer({
     }
     clearError();
     setPendingSend({
-      value: serializeEditorWithReferences(editor).trim(),
+      value: outbound,
       attachments: [...attachments],
       pendingUploadIds: pendingUploads.map((pending) => pending.id),
     });
@@ -1257,6 +1299,8 @@ export function ChatInputAdvanced({
   ref,
 }: ChatInputAdvancedProps) {
   const contextPickerId = useId();
+  const slashListId = useId();
+  const mentionListId = useId();
   const currentModel =
     AVAILABLE_MODELS.find((availableModel) => availableModel.id === model) ??
     AVAILABLE_MODELS[0];
@@ -1267,6 +1311,27 @@ export function ChatInputAdvanced({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const mentionAnchorRef = useRef<{ node: Node; offset: number } | null>(null);
+  const slashAnchorRef = useRef<{ node: Node; offset: number } | null>(null);
+  const {
+    skills,
+    isSkillsReady,
+    filteredSkills,
+    slashIndex,
+    isSlashMenuOpen,
+    slashListRef,
+    taggedSkillsRef,
+    closeSlashMenu,
+    syncSlashQuery,
+    moveSlashIndex,
+    taggedSkills,
+    tagSkill,
+    untagSkill,
+    clearTaggedSkills,
+  } = useChatSkillSlash(organizationId);
+  const taggedSkillNames = useMemo(
+    () => taggedSkills.map((skill) => skill.name),
+    [taggedSkills]
+  );
   const editorRef = useRef<HTMLDivElement | null>(null);
   const persistDraftTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -1581,10 +1646,10 @@ export function ChatInputAdvanced({
     externalError,
     internalError,
   });
-  const chatIncludedInPlan = chatUsage.chatIncludedInPlan;
+  const chatIncludedInPlan = chatUsage.chatIncludedInPlan === true;
   const remainingChatCredits = chatUsage.remainingChatCredits;
-  const shouldShowLowCredits = chatUsage.shouldShowLowCredits;
-  const isUsageBlocked = chatUsage.isUsageBlocked;
+  const shouldShowLowCredits = chatUsage.shouldShowLowCredits === true;
+  const isUsageBlocked = chatUsage.isUsageBlocked === true;
   const usageLimitError = chatUsage.usageLimitError;
 
   const clearError = useCallback(() => {
@@ -1809,10 +1874,17 @@ export function ChatInputAdvanced({
           .map(getIntegrationReferenceValue)
           .join("\n");
         const draft = [text, references].filter(Boolean).join("\n");
+        const skillKey = skillDraftStorageKey(draftStorageKey);
+        const skillNames = taggedSkillsRef.current.map((skill) => skill.name);
         if (draft) {
           window.localStorage.setItem(draftStorageKey, draft);
         } else {
           window.localStorage.removeItem(draftStorageKey);
+        }
+        if (skillNames.length > 0) {
+          window.localStorage.setItem(skillKey, JSON.stringify(skillNames));
+        } else {
+          window.localStorage.removeItem(skillKey);
         }
       } catch {
         // noop
@@ -1864,18 +1936,34 @@ export function ChatInputAdvanced({
     if (!sel || sel.rangeCount === 0) {
       setMentionQuery(null);
       mentionAnchorRef.current = null;
+      slashAnchorRef.current = null;
+      closeSlashMenu();
       return;
     }
     const range = sel.getRangeAt(0);
     if (!editor.contains(range.startContainer)) {
       setMentionQuery(null);
       mentionAnchorRef.current = null;
+      slashAnchorRef.current = null;
+      closeSlashMenu();
       return;
     }
 
     if (range.startContainer.nodeType === Node.TEXT_NODE) {
       const nodeText = range.startContainer.textContent ?? "";
       const textBefore = nodeText.slice(0, range.startOffset);
+      const slash = getSlashSkillQuery(textBefore, textBefore.length);
+
+      if (slash) {
+        slashAnchorRef.current = {
+          node: range.startContainer,
+          offset: slash.start,
+        };
+        syncSlashQuery(textBefore, textBefore.length);
+        setMentionQuery(null);
+        mentionAnchorRef.current = null;
+        return;
+      }
 
       const atIndex = textBefore.lastIndexOf("@");
       if (atIndex !== -1) {
@@ -1900,6 +1988,8 @@ export function ChatInputAdvanced({
             };
             setMentionQuery(query);
             setMentionIndex(0);
+            slashAnchorRef.current = null;
+            closeSlashMenu();
             return;
           }
         }
@@ -1908,7 +1998,9 @@ export function ChatInputAdvanced({
 
     mentionAnchorRef.current = null;
     setMentionQuery(null);
-  }, [schedulePersistDraft, readEditorText]);
+    slashAnchorRef.current = null;
+    closeSlashMenu();
+  }, [closeSlashMenu, schedulePersistDraft, readEditorText, syncSlashQuery]);
 
   const restoredDraftKeyRef = useRef<string | null>(null);
 
@@ -1916,27 +2008,58 @@ export function ChatInputAdvanced({
     if (!draftStorageKey || restoredDraftKeyRef.current === draftStorageKey) {
       return;
     }
+    if (!isSkillsReady) {
+      return;
+    }
     restoredDraftKeyRef.current = draftStorageKey;
     const editor = editorRef.current;
     if (!editor || initialValue || readEditorText().trim().length > 0) {
       return;
     }
+    let draft: string | null = null;
+    let storedSkillNames: string[] = [];
     try {
-      const draft = window.localStorage.getItem(draftStorageKey);
-      if (!draft) {
-        return;
-      }
-      const restoredDraft = extractIntegrationReferences(draft);
-      for (const referencedItem of restoredDraft.items) {
-        onAddContext?.(referencedItem);
-      }
-      const restoredText = restoredDraft.text.trim();
-      editor.textContent = restoredText;
-      setIsEmpty(restoredText.length === 0);
+      draft = window.localStorage.getItem(draftStorageKey);
+      storedSkillNames = parseSkillDraftNames(
+        window.localStorage.getItem(skillDraftStorageKey(draftStorageKey))
+      );
     } catch {
-      // noop
+      return;
     }
-  }, [draftStorageKey, initialValue, onAddContext, readEditorText]);
+    if (!draft && storedSkillNames.length === 0) {
+      return;
+    }
+    const restoredDraft = extractIntegrationReferences(draft ?? "");
+    const restoredSkills =
+      storedSkillNames.length > 0
+        ? { names: storedSkillNames, text: restoredDraft.text }
+        : extractSkillDraftTokens(restoredDraft.text);
+    for (const referencedItem of restoredDraft.items) {
+      onAddContext?.(referencedItem);
+    }
+    const skillsByName = new Map(
+      skills.map((skill) => [skill.name, skill] as const)
+    );
+    for (const name of restoredSkills.names) {
+      const skill = skillsByName.get(name);
+      if (skill) {
+        tagSkill(skill);
+      }
+    }
+    const restoredText = restoredSkills.text.trim();
+    editor.textContent = restoredText;
+    setIsEmpty(restoredText.length === 0);
+    persistDraft(restoredDraft.items);
+  }, [
+    draftStorageKey,
+    initialValue,
+    isSkillsReady,
+    onAddContext,
+    persistDraft,
+    readEditorText,
+    skills,
+    tagSkill,
+  ]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -1954,6 +2077,8 @@ export function ChatInputAdvanced({
     setIsEmpty(!(initialValue?.trim().length ?? 0));
     setMentionQuery(null);
     mentionAnchorRef.current = null;
+    slashAnchorRef.current = null;
+    closeSlashMenu();
 
     if (!initialValue) {
       return;
@@ -1966,7 +2091,7 @@ export function ChatInputAdvanced({
     range.collapse(false);
     selection?.removeAllRanges();
     selection?.addRange(range);
-  }, [initialValue]);
+  }, [closeSlashMenu, initialValue]);
 
   const insertMention = useCallback(
     (option: ChatContextOption) => {
@@ -2009,6 +2134,48 @@ export function ChatInputAdvanced({
       editor.focus();
     },
     [onAddContext, persistDraft]
+  );
+
+  const insertSlashSkill = useCallback(
+    (skill: SkillSlashOption) => {
+      const editor = editorRef.current;
+      const anchor = slashAnchorRef.current;
+      if (!editor || !anchor) {
+        return;
+      }
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        return;
+      }
+      const cursor = sel.getRangeAt(0);
+      if (!editor.contains(cursor.startContainer)) {
+        return;
+      }
+
+      const replaceRange = document.createRange();
+      replaceRange.setStart(anchor.node, anchor.offset);
+      replaceRange.setEnd(cursor.startContainer, cursor.startOffset);
+      replaceRange.deleteContents();
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(replaceRange);
+
+      tagSkill(skill);
+      slashAnchorRef.current = null;
+      closeSlashMenu();
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      persistDraft(contextRef.current);
+      editor.focus();
+    },
+    [closeSlashMenu, persistDraft, tagSkill]
+  );
+
+  const handleUntagSkill = useCallback(
+    (name: string) => {
+      untagSkill(name);
+      persistDraft(contextRef.current);
+    },
+    [persistDraft, untagSkill]
   );
 
   const addContext = useCallback(
@@ -2093,6 +2260,7 @@ export function ChatInputAdvanced({
     if (draftStorageKey) {
       try {
         window.localStorage.removeItem(draftStorageKey);
+        window.localStorage.removeItem(skillDraftStorageKey(draftStorageKey));
       } catch {
         // noop
       }
@@ -2105,7 +2273,8 @@ export function ChatInputAdvanced({
     for (const item of contextRef.current) {
       onRemoveContext?.(item);
     }
-  }, [draftStorageKey, onRemoveContext]);
+    clearTaggedSkills();
+  }, [clearTaggedSkills, draftStorageKey, onRemoveContext]);
 
   const sendSnapshot = useCallback(
     (value: string, snapshotAttachments: ChatAttachment[]) => {
@@ -2163,14 +2332,16 @@ export function ChatInputAdvanced({
     if (!editor || isLoading) {
       return false;
     }
-    const hasText = readEditorText().trim().length > 0;
+    const outbound = prependTaggedSkills(
+      serializeEditorWithReferences(editor).trim(),
+      taggedSkillNames
+    );
     const currentAttachments = attachmentsRef.current;
-    if (!hasText && currentAttachments.length === 0) {
+    if (!outbound && currentAttachments.length === 0) {
       return false;
     }
-    const outbound = serializeEditorWithReferences(editor).trim();
     return sendSnapshot(outbound, currentAttachments);
-  }, [isLoading, readEditorText, sendSnapshot]);
+  }, [isLoading, sendSnapshot, taggedSkillNames]);
 
   const handleSend = useCallback(() => {
     const editor = editorRef.current;
@@ -2192,9 +2363,9 @@ export function ChatInputAdvanced({
       onSend,
       pendingUploads: pendingUploadsRef.current,
       performSend,
-      readEditorText,
       setInternalError,
       setPendingSend,
+      taggedSkillNames,
     });
   }, [
     check,
@@ -2204,11 +2375,11 @@ export function ChatInputAdvanced({
     chatIncludedInPlan,
     isLoading,
     isUploading,
-    readEditorText,
     hasUnsupportedAttachmentsForModel,
     isUsageBlocked,
     onSend,
     performSend,
+    taggedSkillNames,
   ]);
 
   useEffect(() => {
@@ -2348,6 +2519,25 @@ export function ChatInputAdvanced({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      const slashHandled = handleSlashMenuKeyDown(event, {
+        isOpen: isSlashMenuOpen,
+        matchCount: filteredSkills.length,
+        onMove: moveSlashIndex,
+        onSelect: () => {
+          const selected = filteredSkills[slashIndex];
+          if (selected) {
+            insertSlashSkill(selected);
+          }
+        },
+        onClose: () => {
+          slashAnchorRef.current = null;
+          closeSlashMenu();
+        },
+      });
+      if (slashHandled) {
+        return;
+      }
+
       handleComposerEditorKeyDown(event, {
         editor: editorRef.current,
         filteredMentionItems,
@@ -2361,11 +2551,17 @@ export function ChatInputAdvanced({
       });
     },
     [
+      closeSlashMenu,
       filteredMentionItems,
+      filteredSkills,
       handleSend,
       insertMention,
+      insertSlashSkill,
+      isSlashMenuOpen,
       mentionIndex,
       mentionQuery,
+      moveSlashIndex,
+      slashIndex,
     ]
   );
 
@@ -2375,8 +2571,29 @@ export function ChatInputAdvanced({
     pendingUploadCount: pendingUploads.length,
     queuedCount: queuedMessages.length,
     shouldShowLowCredits,
+    skillTagCount: taggedSkills.length,
     usageLimitError,
   });
+  const isMentionMenuOpen = mentionQuery !== null;
+  const isComposerPopupOpen = isSlashMenuOpen || isMentionMenuOpen;
+  const selectedSlashOption = isSlashMenuOpen
+    ? filteredSkills[slashIndex]
+    : undefined;
+  const selectedMentionOption = isMentionMenuOpen
+    ? filteredMentionItems[mentionIndex]
+    : undefined;
+  let composerActiveDescendant: string | undefined;
+  if (selectedSlashOption) {
+    composerActiveDescendant = `chat-skill-slash-option-${selectedSlashOption.name}`;
+  } else if (selectedMentionOption) {
+    composerActiveDescendant = `chat-mention-option-${selectedMentionOption.id}`;
+  }
+  let composerListboxId: string | undefined;
+  if (isSlashMenuOpen) {
+    composerListboxId = slashListId;
+  } else if (isMentionMenuOpen) {
+    composerListboxId = mentionListId;
+  }
 
   return (
     <>
@@ -2392,11 +2609,22 @@ export function ChatInputAdvanced({
             filteredMentionItems={filteredMentionItems}
             insertMention={insertMention}
             isInContext={isInContext}
+            listboxId={mentionListId}
             mentionIndex={mentionIndex}
             mentionListRef={mentionListRef}
             organizationSlug={organizationSlug}
           />
         )}
+        {isSlashMenuOpen ? (
+          <ChatSkillSlashMenu
+            filteredSkills={filteredSkills}
+            listboxId={slashListId}
+            onSelect={insertSlashSkill}
+            skillCount={skills.length}
+            slashIndex={slashIndex}
+            slashListRef={slashListRef}
+          />
+        ) : null}
         <Composer.Frame
           connectedTop={connectedTop}
           nudge={
@@ -2418,6 +2646,8 @@ export function ChatInputAdvanced({
                 setPreviewAttachment={setPreviewAttachment}
                 shouldShowLowCredits={shouldShowLowCredits}
                 showAuthorAvatars={showAuthorAvatars}
+                taggedSkills={taggedSkills}
+                untagSkill={isQueued ? undefined : handleUntagSkill}
                 usageLimitError={usageLimitError}
               />
             ) : null
@@ -2437,26 +2667,34 @@ export function ChatInputAdvanced({
                 <div className="relative flex min-w-0 flex-1 cursor-text transition-colors [--lh:1lh]">
                   {/* biome-ignore lint/a11y/useSemanticElements: rich mention editor requires a contentEditable host instead of a native textarea. */}
                   <div
+                    aria-activedescendant={composerActiveDescendant}
+                    aria-autocomplete={isComposerPopupOpen ? "list" : undefined}
+                    aria-controls={composerListboxId}
                     aria-disabled={isQueued}
+                    aria-expanded={isComposerPopupOpen}
+                    aria-haspopup={isComposerPopupOpen ? "listbox" : undefined}
                     aria-label="Send a message"
-                    aria-multiline="true"
                     className="text-foreground caret-foreground data-[empty=true]:before:text-muted-foreground relative max-h-50 min-h-12 w-full min-w-0 overflow-y-auto rounded-t-[12px] px-3 py-2 text-sm leading-6 wrap-anywhere whitespace-pre-wrap outline-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 data-[empty=true]:before:pointer-events-none data-[empty=true]:before:absolute data-[empty=true]:before:top-2 data-[empty=true]:before:left-3 data-[empty=true]:before:content-[attr(data-placeholder)]"
                     contentEditable={!isQueued}
                     data-empty={isEmpty ? "true" : "false"}
                     data-placeholder={
                       isLoading
                         ? "Queue a message..."
-                        : "Send a message... (type @ for tools and context)"
+                        : "Send a message... (type @ for tools, / for skills)"
                     }
                     onBlur={() => {
                       setTimeout(() => {
+                        const active = document.activeElement;
                         if (
-                          !mentionListRef.current?.contains(
-                            document.activeElement
+                          !(
+                            mentionListRef.current?.contains(active) ||
+                            slashListRef.current?.contains(active)
                           )
                         ) {
                           setMentionQuery(null);
                           mentionAnchorRef.current = null;
+                          slashAnchorRef.current = null;
+                          closeSlashMenu();
                         }
                       }, 150);
                     }}
@@ -2466,7 +2704,7 @@ export function ChatInputAdvanced({
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     ref={editorRef}
-                    role="textbox"
+                    role="combobox"
                     suppressContentEditableWarning
                     tabIndex={isLoading || isQueued ? -1 : 0}
                   />
@@ -2519,7 +2757,7 @@ export function ChatInputAdvanced({
               <ChatComposerSendButton
                 attachmentCount={attachments.length}
                 hasUnsupportedAttachments={hasUnsupportedAttachmentsForModel}
-                isEmpty={isEmpty}
+                isEmpty={isEmpty && taggedSkills.length === 0}
                 isLoading={isLoading}
                 isQueued={isQueued}
                 isStopping={isStopping}
