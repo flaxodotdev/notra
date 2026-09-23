@@ -657,7 +657,7 @@ function filterElementEffects(filterEl: Element): FigmaEffect[] {
     "feTurbulence"
   );
   if (drop && !blurEl && !other) {
-    const flood = parseColor(
+    const flood: [number, number, number, number] = parseColor(
       drop.getAttribute("flood-color") ?? "rgba(0,0,0,0.5)"
     ) ?? [0, 0, 0, 0.5];
     const floodOpacity =
@@ -684,7 +684,7 @@ function cssFilterEffects(css: string): FigmaEffect[] {
   const effects: FigmaEffect[] = [];
   const parsed = parseCssFilter(css);
   for (const shadow of parsed.dropShadows) {
-    const color = shadow.color
+    const color: [number, number, number, number] = shadow.color
       ? (parseColor(shadow.color) ?? [0, 0, 0, 0.5])
       : [0, 0, 0, 0.5];
     effects.push(
