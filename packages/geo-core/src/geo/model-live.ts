@@ -125,15 +125,11 @@ export const geoModelLive = Layer.succeed(
             abortSignal: signal,
             providerOptions: { gateway: { tags: ["geo-scan-grounded"] } },
           });
-          const grounding = extractGrounding(result);
-          const sources = collectSources(result.sources);
           return {
             text: result.text,
-            grounding,
+            grounding: extractGrounding(result),
             finishReason: result.finishReason,
-            sources: sources.length
-              ? sources
-              : grounding.sources.map(({ title, url }) => ({ title, url })),
+            sources: collectSources(result.sources),
             usage: usageWithModel(result.usage, input.engine.key),
             zdrEnforced: GEO_DIRECT_GROUNDED_PROVIDERS.has(
               input.engine.provider
