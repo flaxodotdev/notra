@@ -69,10 +69,7 @@ export interface ClipBounds {
   maxY: number;
 }
 
-export function subpathBounds(
-  subpaths: PathSubpath[]
-): ClipBounds | null {
-
+export function subpathBounds(subpaths: PathSubpath[]): ClipBounds | null {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -158,9 +155,7 @@ function isClosedRectLoop(
 }
 
 /** A clip is a "rect clip" when it is exactly one closed 4-point loop forming an axis-aligned rect. */
-export function rectClipBounds(
-  subpaths: PathSubpath[]
-): ClipBounds | null {
+export function rectClipBounds(subpaths: PathSubpath[]): ClipBounds | null {
   if (subpaths.length !== 1) {
     return null;
   }
@@ -254,7 +249,9 @@ export interface ParsedCssFilter {
 }
 
 /** Split a CSS `filter` value into top-level `name(args)` functions, handling nested parens. */
-function splitCssFunctions(value: string): Array<{ name: string; args: string }> {
+function splitCssFunctions(
+  value: string
+): Array<{ name: string; args: string }> {
   const out: Array<{ name: string; args: string }> = [];
   let i = 0;
   while (i < value.length) {
@@ -294,7 +291,9 @@ function splitCssFunctions(value: string): Array<{ name: string; args: string }>
 
 /** Parse a CSS `filter` value, keeping only what maps to Figma effects.
  * Stacked `blur()`s keep only the first (documented approximation). */
-export function parseCssFilter(value: string | null | undefined): ParsedCssFilter {
+export function parseCssFilter(
+  value: string | null | undefined
+): ParsedCssFilter {
   const out: ParsedCssFilter = { dropShadows: [], blur: null };
   if (!value || value.trim() === "" || value.trim() === "none") {
     return out;
@@ -348,8 +347,7 @@ export function applyAffine(
 }
 
 const SVG_TRANSFORM_FN_RE = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
-const SVG_TRANSFORM_NUM_RE =
-  /-?\d*\.?\d+(?:[eE][+-]?\d+)?/g;
+const SVG_TRANSFORM_NUM_RE = /-?\d*\.?\d+(?:[eE][+-]?\d+)?/g;
 
 function transformNumbers(args: string): number[] {
   const out: number[] = [];
@@ -369,7 +367,9 @@ function transformNumbers(args: string): number[] {
  * Parse an SVG `transform` attribute into an affine matrix.
  * Supports matrix/translate/scale/rotate/skewX/skewY; unknown functions are ignored.
  */
-export function parseSvgTransformAttr(value: string | null | undefined): Affine {
+export function parseSvgTransformAttr(
+  value: string | null | undefined
+): Affine {
   if (!value || value.trim() === "") {
     return { ...IDENTITY_AFFINE };
   }
@@ -381,7 +381,14 @@ export function parseSvgTransformAttr(value: string | null | undefined): Affine 
     const nums = transformNumbers(m[2] ?? "");
     let next: Affine | null = null;
     if (name === "matrix" && nums.length === 6) {
-      const [a, b, c, d, e, f] = nums as [number, number, number, number, number, number];
+      const [a, b, c, d, e, f] = nums as [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ];
       next = { a, b, c, d, e, f };
     } else if (name === "translate" && nums.length >= 1) {
       next = { ...IDENTITY_AFFINE, e: nums[0] ?? 0, f: nums[1] ?? 0 };
@@ -389,7 +396,7 @@ export function parseSvgTransformAttr(value: string | null | undefined): Affine 
       const sx = nums[0] ?? 1;
       next = { ...IDENTITY_AFFINE, a: sx, d: nums[1] ?? sx };
     } else if (name === "rotate" && nums.length >= 1) {
-      const rad = (((nums[0] ?? 0) * Math.PI) / 180);
+      const rad = ((nums[0] ?? 0) * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
       const rot: Affine = { a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 };
@@ -404,9 +411,15 @@ export function parseSvgTransformAttr(value: string | null | undefined): Affine 
         next = rot;
       }
     } else if (name === "skewx" && nums.length >= 1) {
-      next = { ...IDENTITY_AFFINE, c: Math.tan(((nums[0] ?? 0) * Math.PI) / 180) };
+      next = {
+        ...IDENTITY_AFFINE,
+        c: Math.tan(((nums[0] ?? 0) * Math.PI) / 180),
+      };
     } else if (name === "skewy" && nums.length >= 1) {
-      next = { ...IDENTITY_AFFINE, b: Math.tan(((nums[0] ?? 0) * Math.PI) / 180) };
+      next = {
+        ...IDENTITY_AFFINE,
+        b: Math.tan(((nums[0] ?? 0) * Math.PI) / 180),
+      };
     }
     if (next) {
       acc = multiplyAffine(acc, next);
@@ -461,19 +474,11 @@ export function clipSubpathToRect(
   if (!sub.closed || sub.points.length < 3) {
     return null;
   }
-  const vIntersect = (
-    edge: number,
-    a: PathPoint,
-    b: PathPoint
-  ): PathPoint => {
+  const vIntersect = (edge: number, a: PathPoint, b: PathPoint): PathPoint => {
     const t = b.x === a.x ? 0 : (edge - a.x) / (b.x - a.x);
     return { x: edge, y: a.y + t * (b.y - a.y) };
   };
-  const hIntersect = (
-    edge: number,
-    a: PathPoint,
-    b: PathPoint
-  ): PathPoint => {
+  const hIntersect = (edge: number, a: PathPoint, b: PathPoint): PathPoint => {
     const t = b.y === a.y ? 0 : (edge - a.y) / (b.y - a.y);
     return { x: a.x + t * (b.x - a.x), y: edge };
   };
@@ -501,17 +506,25 @@ export function clipSubpathToRect(
     return out;
   };
   let pts: PathPoint[] = sub.points.map((p) => ({ x: p.x, y: p.y }));
-  pts = clipEdge(pts, (p) => p.x >= bounds.minX, (a, b) =>
-    vIntersect(bounds.minX, a, b)
+  pts = clipEdge(
+    pts,
+    (p) => p.x >= bounds.minX,
+    (a, b) => vIntersect(bounds.minX, a, b)
   );
-  pts = clipEdge(pts, (p) => p.x <= bounds.maxX, (a, b) =>
-    vIntersect(bounds.maxX, a, b)
+  pts = clipEdge(
+    pts,
+    (p) => p.x <= bounds.maxX,
+    (a, b) => vIntersect(bounds.maxX, a, b)
   );
-  pts = clipEdge(pts, (p) => p.y >= bounds.minY, (a, b) =>
-    hIntersect(bounds.minY, a, b)
+  pts = clipEdge(
+    pts,
+    (p) => p.y >= bounds.minY,
+    (a, b) => hIntersect(bounds.minY, a, b)
   );
-  pts = clipEdge(pts, (p) => p.y <= bounds.maxY, (a, b) =>
-    hIntersect(bounds.maxY, a, b)
+  pts = clipEdge(
+    pts,
+    (p) => p.y <= bounds.maxY,
+    (a, b) => hIntersect(bounds.maxY, a, b)
   );
   if (pts.length < 3) {
     return null;

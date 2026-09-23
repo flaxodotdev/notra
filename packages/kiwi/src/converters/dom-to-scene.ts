@@ -266,7 +266,10 @@ function clipLocalMatrix(child: Element, container: Element): Affine {
   chain.unshift(container);
   let acc: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
   for (const el of chain) {
-    acc = multiplyAffine(acc, parseSvgTransformAttr(el.getAttribute("transform")));
+    acc = multiplyAffine(
+      acc,
+      parseSvgTransformAttr(el.getAttribute("transform"))
+    );
   }
   return acc;
 }
@@ -328,7 +331,10 @@ interface ClipRef {
   ref: Element;
 }
 
-function clipAttrRef(node: Element, style: CSSStyleDeclaration | null): string | null {
+function clipAttrRef(
+  node: Element,
+  style: CSSStyleDeclaration | null
+): string | null {
   return (
     parseClipRef(node.getAttribute("clip-path")) ??
     (style
@@ -340,7 +346,10 @@ function clipAttrRef(node: Element, style: CSSStyleDeclaration | null): string |
   );
 }
 
-function maskAttrRef(node: Element, style: CSSStyleDeclaration | null): string | null {
+function maskAttrRef(
+  node: Element,
+  style: CSSStyleDeclaration | null
+): string | null {
   return (
     parseClipRef(node.getAttribute("mask")) ??
     (style
@@ -621,10 +630,7 @@ function resolveClipKey(
   return key;
 }
 
-function svgFilterChild(
-  filterEl: Element,
-  ...names: string[]
-): Element | null {
+function svgFilterChild(filterEl: Element, ...names: string[]): Element | null {
   const wanted = new Set(names.map((n) => n.toLowerCase()));
   for (const child of Array.from(filterEl.children)) {
     if (child instanceof Element && wanted.has(child.tagName.toLowerCase())) {
@@ -678,7 +684,9 @@ function cssFilterEffects(css: string): FigmaEffect[] {
   const effects: FigmaEffect[] = [];
   const parsed = parseCssFilter(css);
   for (const shadow of parsed.dropShadows) {
-    const color = shadow.color ? (parseColor(shadow.color) ?? [0, 0, 0, 0.5]) : [0, 0, 0, 0.5];
+    const color = shadow.color
+      ? (parseColor(shadow.color) ?? [0, 0, 0, 0.5])
+      : [0, 0, 0, 0.5];
     effects.push(
       dropShadowEffect({
         dx: shadow.dx,
@@ -694,13 +702,9 @@ function cssFilterEffects(css: string): FigmaEffect[] {
   return effects;
 }
 
-function queryFilterElement(
-  svg: SVGSVGElement,
-  ref: string
-): Element | null {
+function queryFilterElement(svg: SVGSVGElement, ref: string): Element | null {
   try {
-    const id =
-      typeof CSS !== "undefined" && CSS.escape ? CSS.escape(ref) : ref;
+    const id = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(ref) : ref;
     const found = svg.querySelector(`filter#${id}`);
     return found instanceof Element ? found : null;
   } catch {
@@ -793,8 +797,7 @@ function svgElementEffects(
 ): FigmaEffect[] {
   const effects: FigmaEffect[] = [];
   const css = style?.getPropertyValue("filter") || "";
-  const ref =
-    parseClipRef(svg.getAttribute("filter")) ?? parseClipRef(css);
+  const ref = parseClipRef(svg.getAttribute("filter")) ?? parseClipRef(css);
   if (ref) {
     const filterEl = queryFilterElement(svg, ref);
     if (filterEl) {
@@ -824,9 +827,7 @@ function svgShapeOpacity(
         : undefined;
       first = false;
     } else {
-      opacity = parseOpacityValue(
-        getStyle(node)?.getPropertyValue("opacity")
-      );
+      opacity = parseOpacityValue(getStyle(node)?.getPropertyValue("opacity"));
     }
     if (opacity === undefined) {
       opacity = parseOpacityValue(node.getAttribute("opacity"));
@@ -1393,11 +1394,15 @@ function extractLayout(node: Node): LayoutNode | null {
       const strokeDasharray =
         parseSvgDasharray(geomEl.getAttribute("stroke-dasharray")) ??
         parseSvgDasharray(svg.getAttribute("stroke-dasharray")) ??
-        parseSvgDasharray(geomStyle?.getPropertyValue("stroke-dasharray") ?? null);
+        parseSvgDasharray(
+          geomStyle?.getPropertyValue("stroke-dasharray") ?? null
+        );
       const fill = svgPaintValue(
         geomFill,
         svgFill ??
-          (stroke || geomStroke || svgStroke ? null : (geomStyle?.fill ?? null)),
+          (stroke || geomStroke || svgStroke
+            ? null
+            : (geomStyle?.fill ?? null)),
         fallbackColor
       );
       if (!fill && !stroke) {
@@ -1427,13 +1432,7 @@ function extractLayout(node: Node): LayoutNode | null {
         if (!source) {
           continue;
         }
-        const key = resolveClipKey(
-          source,
-          ref,
-          svg,
-          clipRoot,
-          resolvedClips
-        );
+        const key = resolveClipKey(source, ref, svg, clipRoot, resolvedClips);
         if (key) {
           clipChain.push(key);
         }

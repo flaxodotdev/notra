@@ -58,7 +58,13 @@ describe("svg clip helpers (#386)", () => {
 
     expect(
       rectClipBounds([
-        { closed: false, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        {
+          closed: false,
+          points: [
+            { x: 0, y: 0 },
+            { x: 1, y: 1 },
+          ],
+        },
       ])
     ).toBeNull();
     expect(
@@ -208,7 +214,13 @@ describe("svg clip helpers (#386)", () => {
     ).toBeNull();
     expect(
       clipSubpathToRect(
-        { closed: false, points: [{ x: 0, y: 0 }, { x: 5, y: 5 }] },
+        {
+          closed: false,
+          points: [
+            { x: 0, y: 0 },
+            { x: 5, y: 5 },
+          ],
+        },
         lit
       )
     ).toBeNull();

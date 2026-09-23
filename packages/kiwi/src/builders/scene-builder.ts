@@ -34,12 +34,7 @@ export function positionFor(index: number): string {
   throw new Error("more than 94 siblings not yet supported");
 }
 
-export function solidFill(
-  r: number,
-  g: number,
-  b: number,
-  a = 1
-): SolidFill {
+export function solidFill(r: number, g: number, b: number, a = 1): SolidFill {
   const opacity = Math.max(0, Math.min(1, a));
   return {
     type: "SOLID",
@@ -50,14 +45,16 @@ export function solidFill(
   };
 }
 
-export function dropShadowEffect(options: {
-  dx?: number;
-  dy?: number;
-  blur?: number;
-  spread?: number;
-  color?: [number, number, number, number];
-  opacity?: number;
-} = {}): FigmaEffect {
+export function dropShadowEffect(
+  options: {
+    dx?: number;
+    dy?: number;
+    blur?: number;
+    spread?: number;
+    color?: [number, number, number, number];
+    opacity?: number;
+  } = {}
+): FigmaEffect {
   const [r = 0, g = 0, b = 0, a = 1] = options.color ?? [];
   // Figma DropShadowEffect carries alpha in color.a (no opacity field).
   const alpha = Math.max(0, Math.min(1, finiteOr(options.opacity ?? a, 1)));
