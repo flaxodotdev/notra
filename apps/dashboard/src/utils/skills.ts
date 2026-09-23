@@ -17,6 +17,14 @@ const relativeFormatter = new Intl.RelativeTimeFormat("en", {
   numeric: "auto",
 });
 
+export function skillDisplayName(name: string): string {
+  return name
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function formatSkillUpdatedAt(
   value: string | Date,
   now = Date.now()
@@ -67,6 +75,22 @@ export function sortSkills<T extends SkillListItem>(
     const primary = compareBy(sort.key, a, b) * sign;
     return primary === 0 ? a.name.localeCompare(b.name) : primary;
   });
+}
+
+export function skillQuickstartError(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname !== "skills.sh") {
+      return "Only skills.sh links are supported.";
+    }
+    return null;
+  } catch {
+    return "Enter a valid skills.sh URL.";
+  }
 }
 
 export function toggleSkillSort(

@@ -1,5 +1,5 @@
 {
-  "id": "1684a401-444b-4f45-9823-db135633fbae",
+  "id": "b4bf04a4-bad3-4b39-88cd-8c9708cca859",
   "prevId": "59e1d159-c5a7-4bfb-a551-e9e7e7314104",
   "version": "7",
   "dialect": "postgresql",
@@ -2873,36 +2873,6 @@
         "last_generation_error": {
           "name": "last_generation_error",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_filename": {
-          "name": "source_pdf_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_storage_key": {
-          "name": "source_pdf_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_url": {
-          "name": "source_pdf_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_text": {
-          "name": "source_pdf_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_uploaded_at": {
-          "name": "source_pdf_uploaded_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -12021,6 +11991,101 @@
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_backup_codes": {
+      "name": "user_backup_codes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_hash": {
+          "name": "code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "user_backup_codes_userId_idx": {
+          "name": "user_backup_codes_userId_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "user_backup_codes_userId_codeHash_uidx": {
+          "name": "user_backup_codes_userId_codeHash_uidx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_backup_codes_user_id_users_id_fk": {
+          "name": "user_backup_codes_user_id_users_id_fk",
+          "tableFrom": "user_backup_codes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"

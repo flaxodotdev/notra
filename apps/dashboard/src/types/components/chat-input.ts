@@ -1,11 +1,14 @@
 import type {
+  ChatAttachment,
   ChatModel,
   ContextItem,
   TextSelection,
 } from "@notra/ai/types/chat";
 
 import type { QueuedMessage } from "@/components/chat/chat-queue";
+import type { PendingChatUpload } from "@/types/hooks/chat-composer-attachments";
 import type { GitHubRepository } from "@/types/integrations";
+import type { SkillSlashOption } from "@/types/skills/slash";
 
 export type ChatModelProvider = "anthropic" | "openai" | "auto";
 
@@ -19,7 +22,7 @@ export interface ChatModelOption {
 }
 
 export interface ChatInputProps {
-  onSend?: (value: string) => void;
+  onSend?: (value: string, attachments: ChatAttachment[]) => void;
   onStop?: () => void;
   isLoading?: boolean;
   disabled?: boolean;
@@ -39,6 +42,7 @@ export interface ChatInputProps {
   queuedMessages?: QueuedMessage[];
   onEditQueued?: (message: QueuedMessage) => void;
   onRemoveQueued?: (id: string) => void;
+  onSteerQueued?: (message: QueuedMessage) => void;
 }
 
 export type EnabledRepo = GitHubRepository & { integrationId: string };
@@ -68,6 +72,40 @@ export interface ChatContextOption {
   contextItem: ContextItem;
   logoLightUrl?: string | null;
   logoDarkUrl?: string | null;
+}
+
+export interface ChatInputContextPickerProps {
+  contextOptions: ChatContextOption[];
+  contextPickerId: string;
+  disabledReason: string | null;
+  isInContext: (item: ContextItem) => boolean;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  organizationSlug?: string;
+  toggleContextItem: (item: ContextItem, inContext: boolean) => void;
+}
+
+export interface ChatInputComposerNudgeProps {
+  attachments: ChatAttachment[];
+  context: ContextItem[];
+  hasAttachmentChips: boolean;
+  hasContextChips: boolean;
+  onClearSelection?: () => void;
+  onEditQueued?: (message: QueuedMessage) => void;
+  onRemoveContext?: (item: ContextItem) => void;
+  onRemoveQueued?: (id: string) => void;
+  onSteerQueued?: (message: QueuedMessage) => void;
+  organizationSlug?: string;
+  pendingUploads: PendingChatUpload[];
+  queuedMessages: QueuedMessage[];
+  remainingChatCredits: number | null;
+  removeAttachment: (key: string) => void;
+  selection?: TextSelection | null;
+  setPreviewAttachment: (attachment: ChatAttachment) => void;
+  shouldShowLowCredits: boolean;
+  taggedSkills: SkillSlashOption[];
+  untagSkill: (name: string) => void;
+  usageLimitError: string | null;
 }
 
 export interface ChatContextOptionContentProps {

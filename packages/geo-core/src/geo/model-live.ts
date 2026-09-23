@@ -64,6 +64,7 @@ export const geoModelLive = Layer.succeed(
             instructions: GEO_ANSWER_SYSTEM_PROMPT,
             maxOutputTokens: GEO_ANSWER_MAX_TOKENS,
             abortSignal: signal,
+            providerOptions: { gateway: { tags: ["geo-scan-plain"] } },
           };
           let result = await generateText({ model, ...options });
           let usage = result.usage;
@@ -122,16 +123,13 @@ export const geoModelLive = Layer.succeed(
             instructions: GEO_ANSWER_SYSTEM_PROMPT,
             maxOutputTokens: GEO_GROUNDED_ANSWER_MAX_TOKENS,
             abortSignal: signal,
+            providerOptions: { gateway: { tags: ["geo-scan-grounded"] } },
           });
-          const grounding = extractGrounding(result);
-          const sources = collectSources(result.sources);
           return {
             text: result.text,
-            grounding,
+            grounding: extractGrounding(result),
             finishReason: result.finishReason,
-            sources: sources.length
-              ? sources
-              : grounding.sources.map(({ title, url }) => ({ title, url })),
+            sources: collectSources(result.sources),
             usage: usageWithModel(result.usage, input.engine.key),
             zdrEnforced: GEO_DIRECT_GROUNDED_PROVIDERS.has(
               input.engine.provider
@@ -172,6 +170,7 @@ export const geoModelLive = Layer.succeed(
               "You analyze AI assistant answers for brand mentions. Respond only with the requested structured data.",
             maxOutputTokens: GEO_JUDGE_MAX_TOKENS,
             abortSignal: signal,
+            providerOptions: { gateway: { tags: ["geo-scan-judge"] } },
           });
           return {
             ...result.output,
@@ -220,6 +219,7 @@ export const geoModelLive = Layer.succeed(
               "You translate user prompts faithfully, preserving intent and named entities. Respond only with the requested structured data.",
             maxOutputTokens: GEO_TRANSLATION_MAX_TOKENS,
             abortSignal: signal,
+            providerOptions: { gateway: { tags: ["geo-scan-translation"] } },
           });
           return {
             translations: result.output.translations,
@@ -257,6 +257,7 @@ export const geoModelLive = Layer.succeed(
             prompt: buildGscSuggestionPrompt(input),
             maxOutputTokens: GSC_SUGGESTION_MAX_TOKENS,
             abortSignal: signal,
+            providerOptions: { gateway: { tags: ["geo-discovery"] } },
           });
           return {
             prompts: result.output.prompts,

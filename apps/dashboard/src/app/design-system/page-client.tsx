@@ -226,6 +226,7 @@ import { DesignSystemOpencodeCatalog } from "@/app/design-system/opencode/page-c
 import { DesignSystemPerplexityCatalog } from "@/app/design-system/perplexity/page-client";
 import { Button, buttonVariants } from "@/components/button";
 import ChatInput from "@/components/chat-input";
+import { DesignSystemChatQueueDemo } from "@/components/design-system/design-system-chat-queue-demo";
 import { DesignSystemFrame } from "@/components/design-system/design-system-frame";
 import { DesignSystemSectionHeader } from "@/components/design-system/design-system-section-header";
 import { GeoRangePickerDemo } from "@/components/design-system/geo-range-picker-demo";
@@ -368,10 +369,6 @@ function ColorSwatch({ name, label }: { name: string; label: string }) {
   );
 }
 
-/*
- * Tailwind must see these class strings literally, so each row spells out its
- * own utilities rather than interpolating the token name.
- */
 const MOTION_DURATIONS = [
   {
     token: "duration-instant",
@@ -1422,6 +1419,17 @@ export default function DesignSystemClientPage() {
 
       <Separator />
 
+      <section className="scroll-mt-10 space-y-6" id="chat-queue">
+        <DesignSystemSectionHeader
+          description="Queued follow-ups stay visible until the steered send starts. The pending chip is muted and only offers cancel."
+          id="chat-queue"
+          title="Chat Queue"
+        />
+        <DesignSystemChatQueueDemo />
+      </section>
+
+      <Separator />
+
       <section className="scroll-mt-10 space-y-6" id="identity">
         <DesignSystemSectionHeader id="identity" title="Identity & Layout" />
         <div className="grid gap-6 lg:grid-cols-2">
@@ -1757,6 +1765,8 @@ export default function DesignSystemClientPage() {
           </div>
         </div>
       </section>
+
+      <Separator />
 
       <DesignSystemWriteDialogDemo />
       <DesignSystemClaudeCatalog />

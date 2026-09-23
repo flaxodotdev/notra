@@ -85,7 +85,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .$onUpdate(() => new Date())
     .notNull(),
   role: text("role"),
   banned: boolean("banned").default(false),
@@ -95,6 +95,26 @@ export const users = pgTable("users", {
   showAgentStats: boolean("show_agent_stats").default(false).notNull(),
   workosUserId: text("workos_user_id").unique(),
 });
+
+export const userBackupCodes = pgTable(
+  "user_backup_codes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_backup_codes_userId_idx").on(table.userId),
+    uniqueIndex("user_backup_codes_userId_codeHash_uidx").on(
+      table.userId,
+      table.codeHash
+    ),
+  ]
+);
 
 export const chatSessions = pgTable(
   "chat_sessions",
@@ -120,7 +140,7 @@ export const chatSessions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -172,7 +192,7 @@ export const agentSessions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -223,7 +243,7 @@ export const socialConnections = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -239,39 +259,27 @@ export const socialConnections = pgTable(
   ]
 );
 
-export const organizations = pgTable(
-  "organizations",
-  {
-    id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    slug: text("slug").notNull().unique(),
-    logo: text("logo"),
-    createdAt: timestamp("created_at").notNull(),
-    metadata: text("metadata"),
-    heardAboutNotraSource: text("heard_about_notra_source"),
-    heardAboutNotraOther: text("heard_about_notra_other"),
-    geoIngestTokenGeneration: integer("geo_ingest_token_generation")
-      .notNull()
-      .default(1),
-    feedbackIngestTokenGeneration: integer("feedback_ingest_token_generation")
-      .notNull()
-      .default(1),
-    onboardingCompleted: boolean("onboarding_completed")
-      .default(false)
-      .notNull(),
-    onboardingDismissed: boolean("onboarding_dismissed")
-      .default(false)
-      .notNull(),
-    onboardingAgentRan: boolean("onboarding_agent_ran")
-      .default(false)
-      .notNull(),
-    onboardingAgentStartedAt: timestamp("onboarding_agent_started_at"),
-    workosOrgId: text("workos_org_id").unique(),
-  }
-  // No extra indexes: `slug` already carries a unique constraint
-  // (`organizations_slug_unique`) that Postgres backs with a unique index, so a
-  // second identical index would only double index maintenance on every write.
-);
+export const organizations = pgTable("organizations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  createdAt: timestamp("created_at").notNull(),
+  metadata: text("metadata"),
+  heardAboutNotraSource: text("heard_about_notra_source"),
+  heardAboutNotraOther: text("heard_about_notra_other"),
+  geoIngestTokenGeneration: integer("geo_ingest_token_generation")
+    .notNull()
+    .default(1),
+  feedbackIngestTokenGeneration: integer("feedback_ingest_token_generation")
+    .notNull()
+    .default(1),
+  onboardingCompleted: boolean("onboarding_completed").default(false).notNull(),
+  onboardingDismissed: boolean("onboarding_dismissed").default(false).notNull(),
+  onboardingAgentRan: boolean("onboarding_agent_ran").default(false).notNull(),
+  onboardingAgentStartedAt: timestamp("onboarding_agent_started_at"),
+  workosOrgId: text("workos_org_id").unique(),
+});
 
 export const members = pgTable(
   "members",
@@ -289,8 +297,6 @@ export const members = pgTable(
   (table) => [
     index("members_organizationId_idx").on(table.organizationId),
     index("members_userId_idx").on(table.userId),
-    // Serves the membership lookup that runs on every authenticated request and
-    // enforces one membership row per (organization, user).
     uniqueIndex("members_organizationId_userId_uidx").on(
       table.organizationId,
       table.userId
@@ -319,7 +325,7 @@ export const githubAppInstallations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -361,7 +367,7 @@ export const githubIntegrations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -396,7 +402,7 @@ export const linearIntegrations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -434,7 +440,7 @@ export const slackIntegrations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -461,7 +467,7 @@ export const granolaIntegrations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -514,7 +520,7 @@ export const mcpServerIntegrations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -602,7 +608,7 @@ export const mcpOAuthCredentials = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -655,7 +661,7 @@ export const mcpOAuthPendingAuthorizations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -715,7 +721,7 @@ export const mcpToolIndex = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -810,7 +816,7 @@ export const contentTriggers = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -874,7 +880,7 @@ export const brandSettings = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -992,7 +998,7 @@ export const brandReferences = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1023,7 +1029,7 @@ export const brandGuidelines = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1050,7 +1056,7 @@ export const brandGuidelineColors = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1079,7 +1085,7 @@ export const brandGuidelineFonts = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1107,7 +1113,7 @@ export const brandGuidelineTokens = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1141,7 +1147,7 @@ export const brandGuidelineAssets = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1178,7 +1184,7 @@ export const brandGuidelineScreenshots = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1211,7 +1217,7 @@ export const brandSitemaps = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1244,7 +1250,7 @@ export const brandSitemapPages = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1253,7 +1259,6 @@ export const brandSitemapPages = pgTable(
       table.sitemapId,
       table.category
     ),
-    // The gaps program takes the top pages by word count per crawled sitemap.
     index("brandSitemapPages_sitemap_category_wordCount_idx").on(
       table.sitemapId,
       table.category,
@@ -1283,7 +1288,7 @@ export const connectedSocialAccounts = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1315,7 +1320,7 @@ export const trackedSocialAccounts = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1349,7 +1354,7 @@ export const organizationNotificationSettings = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1374,7 +1379,7 @@ export const projects = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1419,7 +1424,7 @@ export const agentFeedback = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1467,15 +1472,11 @@ export const geoSettings = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     languages: text("languages").array(),
-    // null = track the default engine set; otherwise a subset of GEO_ENGINES.
     engines: text("engines").array(),
-    // Pro feature: ask every model host for zero data retention.
     enforceZdr: boolean("enforce_zdr").notNull().default(true),
-    // Hidden setting: also run every search-capable model without web search.
     trackWithoutSearch: boolean("track_without_search")
       .notNull()
       .default(false),
-    // Engines without a ZDR host the user explicitly approved anyway.
     nonZdrApprovedEngines: text("non_zdr_approved_engines")
       .array()
       .notNull()
@@ -1488,7 +1489,6 @@ export const geoSettings = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    // Prompt gaps the user ignored; hidden from Content Gaps and the planner.
     ignoredGapPromptIds: text("ignored_gap_prompt_ids")
       .array()
       .notNull()
@@ -1497,16 +1497,13 @@ export const geoSettings = pgTable(
     scanIntervalHours: integer("scan_interval_hours").notNull().default(24),
     sentimentAttemptedAt: timestamp("sentiment_attempted_at"),
     nextScanAt: timestamp("next_scan_at"),
-    // Cron-sweep lease: while set and in the future the row is off limits to
-    // other sweeps. Kept separate from `next_scan_at` so a retried tick never
-    // loses the slot it is scanning for.
     scanLeaseUntil: timestamp("scan_lease_until"),
     scanStartedAt: timestamp("scan_started_at"),
     lastScanAt: timestamp("last_scan_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1535,14 +1532,12 @@ export const geoPrompts = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
     index("geoPrompts_organizationId_idx").on(table.organizationId),
     index("geoPrompts_projectId_idx").on(table.projectId),
-    // The prompt list and the gaps program both read a project's prompts in
-    // `created_at desc` order, which currently costs a heap sort.
     index("geoPrompts_projectId_createdAt_idx").on(
       table.projectId,
       table.createdAt.desc()
@@ -1569,7 +1564,7 @@ export const geoPromptSequences = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1603,7 +1598,7 @@ export const geoPersonas = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1658,7 +1653,7 @@ export const geoCompetitors = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1712,7 +1707,7 @@ export const geoShelfSources = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1790,8 +1785,6 @@ export const geoMentionChecks = pgTable(
     engine: text("engine").notNull(),
     promptId: text("prompt_id").notNull(),
     sequenceId: text("sequence_id"),
-    // Set on turns played by a simulated buyer persona; null for tracked
-    // prompts and hand-written conversations.
     personaId: text("persona_id").references(() => geoPersonas.id, {
       onDelete: "cascade",
     }),
@@ -1821,8 +1814,6 @@ export const geoMentionChecks = pgTable(
     promptTokens: integer("prompt_tokens"),
     outputTokens: integer("output_tokens"),
     reasoningTokens: integer("reasoning_tokens"),
-    // Whether the engine call ran with zero data retention enforced. Null on
-    // rows written before the column existed or when the route did not say.
     zdrEnforced: boolean("zdr_enforced"),
     durationMs: integer("duration_ms"),
     costUsd: real("cost_usd"),
@@ -1849,11 +1840,6 @@ export const geoMentionChecks = pgTable(
       table.promptId,
       table.capturedAt
     ),
-    // Covering index for the GEO analytics window: the aggregate procedures
-    // (overview, timeseries, competitor/language share) read only these columns,
-    // while the table averages ~900 B/row because of answer/grounding/excerpt.
-    // drizzle-orm 0.45 has no `INCLUDE` support, so the payload columns are
-    // trailing key columns instead of index-only payload.
     index("geoMentionChecks_project_captured_cover_idx").on(
       table.projectId,
       table.capturedAt,
@@ -1867,9 +1853,6 @@ export const geoMentionChecks = pgTable(
       table.sentiment,
       table.sequenceId
     ),
-    // Matches the `distinct on (prompt_id, engine) ... order by captured_at desc`
-    // shape used by promptResultSummaries/promptResults/competitorDetail/gaps;
-    // the existing projectEnginePrompt index has the leading columns swapped.
     index("geoMentionChecks_project_prompt_engine_captured_idx").on(
       table.projectId,
       table.promptId,
@@ -1877,8 +1860,6 @@ export const geoMentionChecks = pgTable(
       table.capturedAt.desc()
     ),
     index("geoMentionChecks_competitors_idx").using("gin", table.competitors),
-    // sequenceResults orders by exactly this tuple; `sequence_id` appears in no
-    // other index.
     index("geoMentionChecks_sequence_turn_engine_captured_idx")
       .on(table.sequenceId, table.turn, table.engine, table.capturedAt.desc())
       .where(sql`${table.sequenceId} IS NOT NULL`),
@@ -1953,7 +1934,7 @@ export const geoAgentReadinessReports = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -1999,7 +1980,7 @@ export const googleSearchConsoleIntegrations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2045,7 +2026,7 @@ export const geoPromptSuggestions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2104,7 +2085,7 @@ export const geoContentBriefs = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2116,9 +2097,6 @@ export const geoContentBriefs = pgTable(
       table.projectId,
       table.status
     ),
-    // Serves the `distinct on (source_kind, source_id) ... order by updated_at
-    // desc` read in the gaps program; the partial unique index below excludes
-    // published/archived briefs and so cannot serve it.
     index("geoContentBriefs_project_source_updated_idx").on(
       table.projectId,
       table.sourceKind,
@@ -2153,7 +2131,7 @@ export const socialExperiments = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2186,7 +2164,7 @@ export const postCollections = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2234,7 +2212,7 @@ export const posts = pgTable(
     status: postStatusEnum("status").default("draft").notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2247,18 +2225,14 @@ export const posts = pgTable(
       table.id
     ),
     index("posts_collection_id_idx").on(table.collectionId),
-    // content.metrics.get aggregates a year of posts by (created_at, status);
-    // posts_org_createdAt_id_idx lacks `status` and forces a heap fetch per row.
     index("posts_org_createdAt_status_idx").on(
       table.organizationId,
       table.createdAt,
       table.status
     ),
-    // Adoption analytics looks up the org's first published post.
     index("posts_org_published_createdAt_idx")
       .on(table.organizationId, table.createdAt)
       .where(sql`${table.status} = 'published'`),
-    // The gaps program reads the newest posts of one content type per org.
     index("posts_org_content_type_updated_at_idx").on(
       table.organizationId,
       table.contentType,
@@ -2293,7 +2267,7 @@ export const contentPublications = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2329,7 +2303,7 @@ export const skills = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2338,11 +2312,6 @@ export const skills = pgTable(
   ]
 );
 
-/**
- * Prospect-facing GEO reports built in the console and shared via `/r/{shareToken}`.
- * The report body is denormalised into a few columns for listing; the JSON is
- * the source of truth and includes the raw model answers from the scan.
- */
 export const geoProspectReports = pgTable(
   "geo_prospect_reports",
   {
@@ -2353,7 +2322,6 @@ export const geoProspectReports = pgTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** Unguessable token used in the public share link. */
     shareToken: text("share_token").notNull(),
     status: text("status", { enum: GEO_PROSPECT_REPORT_STATUSES })
       .notNull()
@@ -2368,7 +2336,7 @@ export const geoProspectReports = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2434,7 +2402,7 @@ export const autonomyMandates = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2472,7 +2440,7 @@ export const autonomySignals = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2523,7 +2491,7 @@ export const autonomyGoals = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2575,7 +2543,7 @@ export const autonomyRuns = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2627,7 +2595,7 @@ export const autonomyTasks = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2676,7 +2644,7 @@ export const autonomyActions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2746,7 +2714,7 @@ export const autonomyOutbox = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2777,7 +2745,7 @@ export const autonomyClaims = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [
@@ -2802,7 +2770,7 @@ export const autonomyControllerLeases = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [

@@ -13,6 +13,7 @@ import {
   createGetLinearProjectsTool,
 } from "@notra/ai/tools/linear";
 import { getSkillByName, listAvailableSkills } from "@notra/ai/tools/skills";
+import { registerWebSearchTools } from "@notra/ai/tools/web-search";
 import type {
   BuildToolSetDeps,
   BuildToolSetParams,
@@ -53,8 +54,10 @@ export function buildToolSet(
   };
 
   const descriptions: string[] = [
-    "**Skills**: Access knowledge and writing guidelines using listAvailableSkills and getSkillByName",
+    "**Skills**: Access knowledge and writing guidelines using listAvailableSkills and getSkillByName. If the user writes /skill-name, load that skill with getSkillByName before responding.",
   ];
+
+  registerWebSearchTools(tools, descriptions);
 
   if (isImageContent) {
     if (currentPostId && userId && imageDefaults) {

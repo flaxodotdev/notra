@@ -1,3 +1,4 @@
+import type { GeoSuggestionKeyword } from "@notra/geo-core/types/geo";
 import type {
   GeoCsvParseResult,
   GeoImportKind,
@@ -28,6 +29,7 @@ export interface SuggestionColumnsOptions {
   disabled: boolean;
   onAccept: (suggestionId: string) => void;
   onDismiss: (suggestion: GeoPromptSuggestion) => void;
+  onOpen: (suggestion: GeoPromptSuggestion) => void;
 }
 
 export interface SearchConsoleToolbarProps {
@@ -78,6 +80,45 @@ export interface SearchConsoleConnectedStateProps {
   propertyPickerOpen: boolean;
   status: GeoSearchConsoleStatus;
   websiteUrl: string | null;
+}
+
+export interface PromptSuggestionsToolbarProps {
+  checking: boolean;
+  showSearchConsole: boolean;
+  trackAllPending: boolean;
+  suggestionsCount: number;
+  callbackPath: string;
+  isSearchConsolePending: boolean;
+  connectPromo: boolean;
+  onDismissCard: () => void;
+  onPropertyPickerOpenChange: (open: boolean) => void;
+  organizationId: string;
+  propertyPickerOpen: boolean;
+  status: GeoSearchConsoleStatus | undefined;
+  onTrackAll: () => void;
+}
+
+export interface DismissSuggestionDialogProps {
+  suggestion: GeoPromptSuggestion | null;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (suggestionId: string) => void;
+}
+
+export interface PromptSuggestionSheetProps {
+  suggestion: GeoPromptSuggestion | null;
+  actions?: ReactNode;
+  onOpenChange: (open: boolean) => void;
+}
+
+export interface SuggestionQueryTableProps {
+  queries: readonly GeoSuggestionKeyword[];
+}
+
+export interface SuggestionKeywordTotals {
+  impressions: number;
+  clicks: number;
+  position: number | null;
+  ctr: number | null;
 }
 
 export interface GeoUpgradeGateProps {

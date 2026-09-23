@@ -57,6 +57,7 @@ const nextConfig: NextConfig = {
     "@cursor/sdk",
     "@ai-sdk/code-mode",
     "run",
+    "sharp",
   ],
   skipTrailingSlashRedirect: true,
   async rewrites() {
@@ -102,11 +103,6 @@ const nextConfig: NextConfig = {
         source: "/landing",
         destination: "https://www.usenotra.com/landing",
         permanent: true,
-      },
-      {
-        source: "/",
-        destination: "/login",
-        permanent: false,
       },
       {
         source: "/:slug/settings",

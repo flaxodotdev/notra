@@ -49,7 +49,7 @@ import {
 import { getThinkingProviderOptions } from "./thinking";
 
 const NOTRA_TOOLING_DESCRIPTION =
-  "Read-only Notra data tools (GitHub, Linear, Granola, posts, integrations, brand references, skills, web search, webpage fetch, GEO projects, prompt results, and project context) run inside code_mode. Content, brand identity, GEO chart, and approval tools are called directly. Context.dev tools require API configuration when called.";
+  "Read-only Notra data tools (GitHub, Linear, Granola, posts, integrations, brand references, skills, schedules, web search, webpage fetch, GEO projects, prompt results, and project context) run inside code_mode. Content, brand identity, GEO chart, schedule creation, and approval tools are called directly. Context.dev tools require API configuration when called.";
 
 export async function orchestrateStandaloneChat(
   input: StandaloneChatInput,
@@ -209,11 +209,14 @@ export async function orchestrateStandaloneChat(
     enableThinking && (autoThinkingLevel ? autoThinkingLevel !== "off" : true);
 
   const providerOptions = withRouterDefaults(
-    getThinkingProviderOptions(
-      routingDecision.model,
-      effectiveEnableThinking,
-      effectiveThinkingLevel
-    ),
+    {
+      ...getThinkingProviderOptions(
+        routingDecision.model,
+        effectiveEnableThinking,
+        effectiveThinkingLevel
+      ),
+      gateway: { tags: ["standalone-chat"] },
+    },
     { modelId: routingDecision.model }
   );
 
@@ -284,6 +287,9 @@ export async function orchestrateStandaloneChat(
       try {
         const { output: repairedInput } = await generateText({
           model: modelWithMemory,
+          providerOptions: {
+            gateway: { tags: ["standalone-chat-tool-repair"] },
+          },
           output: Output.object({ schema: brokenTool.inputSchema }),
           prompt: [
             `The assistant called the tool "${toolCall.toolName}" with inputs that failed validation:`,

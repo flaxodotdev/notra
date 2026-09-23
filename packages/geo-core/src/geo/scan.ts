@@ -274,7 +274,10 @@ const askOpenCodeEngineEffect = Effect.fn("geo.askOpenCodeEngine")(function* (
   );
   const answer: GeoEngineAnswer = {
     text: result.text,
-    grounding: extractGrounding(result),
+    grounding: extractGrounding({
+      ...result,
+      sources: [...result.groundingSources, ...result.sources],
+    }),
     sources: result.sources,
     finishReason: "stop",
     usage: result.usage,
@@ -503,7 +506,7 @@ const runGeoCheck = Effect.fn("geo.runCheck")(function* (
   const durationMs = Math.round(performance.now() - startedMs);
   const ownedSourceCited = hasOwnedSourceCitation(
     context.websiteUrl,
-    [...answer.grounding.sources, ...answer.sources],
+    answer.sources,
     context.domains
   );
   const engineUsage = agentTokenUsageFrom(answer.usage);
@@ -1818,7 +1821,10 @@ const runGeoOpenCodeSequenceCheck = Effect.fn("geo.runOpenCodeSequenceCheck")(
       }
       const answer: GeoEngineAnswer = {
         text: result.text,
-        grounding: extractGrounding(result),
+        grounding: extractGrounding({
+          ...result,
+          sources: [...result.groundingSources, ...result.sources],
+        }),
         sources: result.sources,
         finishReason: "stop",
         usage: result.usage,
@@ -1890,7 +1896,7 @@ const runGeoOpenCodeSequenceCheck = Effect.fn("geo.runOpenCodeSequenceCheck")(
       judgeUsage = addTokenUsage(judgeUsage, agentTokenUsageFrom(judged.usage));
       const ownedSourceCited = hasOwnedSourceCitation(
         context.websiteUrl,
-        [...answer.grounding.sources, ...answer.sources],
+        answer.sources,
         context.domains
       );
 
