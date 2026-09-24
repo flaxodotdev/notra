@@ -279,5 +279,11 @@ describe("svg clip helpers (#386)", () => {
     expect(masked).toContain('mask="url(#fade-mask)"');
     expect(masked).toContain("<feDropShadow");
     expect(parseClipRef('mask="url(#x)"'.split("=")[1] ?? "")).toBe("x");
+
+    const nested = await Bun.file(
+      `${import.meta.dir}/fixtures/nested-mask.svg`
+    ).text();
+    expect(nested).toContain('mask="url(#outer-mask)"');
+    expect(nested).toContain('mask="url(#inner-mask)"');
   });
 });

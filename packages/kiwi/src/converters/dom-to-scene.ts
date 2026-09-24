@@ -359,16 +359,17 @@ function maskAttrRef(
   );
 }
 
-// clip-path accumulates through ancestors (outermost first); mask applies from
-// the nearest self-or-ancestor only. Each entry keeps its referencing element
-// so clip geometry resolves in the referencing element's user space.
+// clip-path accumulates through ancestors (outermost first), and so does
+// mask: every self-or-ancestor mask applies, outermost first, after the
+// clips. Each entry keeps its referencing element so clip geometry resolves
+// in the referencing element's user space.
 function svgClipRefs(
   el: Element,
   style: CSSStyleDeclaration | null,
   getStyle: StyleGetter = safeStyle
 ): ClipRef[] {
   const refs: ClipRef[] = [];
-  let maskRef: ClipRef | null = null;
+  const maskRefs: ClipRef[] = [];
   let node: Element | null = el;
   let first = true;
   while (node && node.tagName.toLowerCase() !== "svg") {
@@ -380,29 +381,26 @@ function svgClipRefs(
       if (clipId) {
         refs.unshift({ id: clipId, ref: node });
       }
-      if (!maskRef) {
-        const maskId = maskAttrRef(node, cs);
-        if (maskId) {
-          maskRef = { id: maskId, ref: node };
-        }
+      const maskId = maskAttrRef(node, cs);
+      if (maskId) {
+        maskRefs.unshift({ id: maskId, ref: node });
       }
     } else if (node instanceof Element) {
       const clipId = parseClipRef(node.getAttribute("clip-path"));
       if (clipId) {
         refs.unshift({ id: clipId, ref: node });
       }
-      if (!maskRef) {
-        const maskId = maskAttrRef(node, cs);
-        if (maskId) {
-          maskRef = { id: maskId, ref: node };
-        }
+      const maskId = maskAttrRef(node, cs);
+      if (maskId) {
+        maskRefs.unshift({ id: maskId, ref: node });
       }
     }
     node = node.parentElement;
   }
-  const foundMask = maskRef;
-  if (foundMask && !refs.some((r) => r.id === foundMask.id)) {
-    refs.push(foundMask);
+  for (const maskRef of maskRefs) {
+    if (!refs.some((r) => r.id === maskRef.id)) {
+      refs.push(maskRef);
+    }
   }
   return refs;
 }
