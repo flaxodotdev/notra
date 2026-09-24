@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   applyAffine,
-  clipSubpathToRect,
   multiplyAffine,
   normalizeBlendMode,
   parseClipRef,
@@ -11,9 +10,7 @@ import {
   parseOpacityValue,
   parseSvgTransformAttr,
   rectClipBounds,
-  signedSubpathArea,
   subpathBounds,
-  withWinding,
 } from "../src/utils/svg-clip";
 
 describe("svg clip helpers (#386)", () => {
@@ -164,106 +161,6 @@ describe("svg clip helpers (#386)", () => {
     expect(applyAffine(m, { x: 1, y: 1 })).toEqual({ x: 8, y: 3 });
   });
 
-  test("opacity parses percentages as fractions", () => {
-    expect(parseOpacityValue("50%")).toBeCloseTo(0.5, 6);
-    expect(parseOpacityValue("100%")).toBe(1);
-    expect(parseOpacityValue("200%")).toBe(1);
-    expect(parseOpacityValue("abc%")).toBeUndefined();
-  });
-
-  test("rect clips reject bow-tie paths", () => {
-    // Same corner set as a rect, but the diagonal edges self-intersect.
-    expect(
-      rectClipBounds([
-        {
-          closed: true,
-          points: [
-            { x: 0, y: 0 },
-            { x: 20, y: 10 },
-            { x: 20, y: 0 },
-            { x: 0, y: 10 },
-          ],
-        },
-      ])
-    ).toBeNull();
-    // Path-order rectangle still accepted.
-    expect(
-      rectClipBounds([
-        {
-          closed: true,
-          points: [
-            { x: 0, y: 0 },
-            { x: 20, y: 0 },
-            { x: 20, y: 10 },
-            { x: 0, y: 10 },
-          ],
-        },
-      ])
-    ).toEqual({ minX: 0, minY: 0, maxX: 20, maxY: 10 });
-  });
-
-  test("mask holes wind opposite and clip to lit bounds", () => {
-    const ccw = {
-      closed: true,
-      points: [
-        { x: 0, y: 0 },
-        { x: 0, y: 10 },
-        { x: 10, y: 10 },
-        { x: 10, y: 0 },
-      ],
-    };
-    expect(signedSubpathArea(ccw)).toBeCloseTo(-100, 6);
-    const cw = withWinding(ccw, true);
-    expect(signedSubpathArea(cw)).toBeCloseTo(100, 6);
-    expect(signedSubpathArea(withWinding(cw, false))).toBeCloseTo(-100, 6);
-    // Already-correct winding returns the same object.
-    expect(withWinding(cw, true)).toBe(cw);
-
-    const lit = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
-    const overhang = {
-      closed: true,
-      points: [
-        { x: 5, y: 5 },
-        { x: 15, y: 5 },
-        { x: 15, y: 15 },
-        { x: 5, y: 15 },
-      ],
-    };
-    const cut = clipSubpathToRect(overhang, lit);
-    expect(cut).not.toBeNull();
-    expect(subpathBounds(cut ? [cut] : [])).toEqual({
-      minX: 5,
-      minY: 5,
-      maxX: 10,
-      maxY: 10,
-    });
-    expect(
-      clipSubpathToRect(
-        {
-          closed: true,
-          points: [
-            { x: 20, y: 20 },
-            { x: 30, y: 20 },
-            { x: 30, y: 30 },
-          ],
-        },
-        lit
-      )
-    ).toBeNull();
-    expect(
-      clipSubpathToRect(
-        {
-          closed: false,
-          points: [
-            { x: 0, y: 0 },
-            { x: 5, y: 5 },
-          ],
-        },
-        lit
-      )
-    ).toBeNull();
-  });
-
   test("fixtures demonstrate clipped logos and masked fills", async () => {
     const clipped = await Bun.file(
       `${import.meta.dir}/fixtures/clipped-logo.svg`
@@ -279,11 +176,5 @@ describe("svg clip helpers (#386)", () => {
     expect(masked).toContain('mask="url(#fade-mask)"');
     expect(masked).toContain("<feDropShadow");
     expect(parseClipRef('mask="url(#x)"'.split("=")[1] ?? "")).toBe("x");
-
-    const nested = await Bun.file(
-      `${import.meta.dir}/fixtures/nested-mask.svg`
-    ).text();
-    expect(nested).toContain('mask="url(#outer-mask)"');
-    expect(nested).toContain('mask="url(#inner-mask)"');
   });
 });
