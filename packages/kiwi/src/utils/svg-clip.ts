@@ -482,6 +482,86 @@ export function withWinding(sub: PathSubpath, positive: boolean): PathSubpath {
 }
 
 /**
+ * Intersect a closed polygon subpath with a convex clip polygon
+ * (Sutherland–Hodgman, edge by edge). Returns null when nothing survives.
+ * The clip polygon must be convex and wound consistently; its orientation
+ * decides the inside of each edge.
+ */
+export function clipSubpathToPolygon(
+  sub: PathSubpath,
+  clip: PathPoint[]
+): PathSubpath | null {
+  if (!sub.closed || sub.points.length < 3 || clip.length < 3) {
+    return null;
+  }
+  const clipArea = signedSubpathArea({ closed: true, points: clip });
+  if (clipArea === 0) {
+    return null;
+  }
+  const positive = clipArea > 0;
+  let pts: PathPoint[] = sub.points.map((p) => ({ x: p.x, y: p.y }));
+  for (let e = 0; e < clip.length; e += 1) {
+    const a = clip[e];
+    const b = clip[(e + 1) % clip.length];
+    if (!a || !b) {
+      return null;
+    }
+    const next: PathPoint[] = [];
+    for (let i = 0; i < pts.length; i += 1) {
+      const cur = pts[i];
+      const prev = pts[(i + pts.length - 1) % pts.length];
+      if (!cur || !prev) {
+        continue;
+      }
+      const curIn = positive
+        ? turnArea(a, b, cur) >= -1e-9
+        : turnArea(a, b, cur) <= 1e-9;
+      const prevIn = positive
+        ? turnArea(a, b, prev) >= -1e-9
+        : turnArea(a, b, prev) <= 1e-9;
+      if (curIn) {
+        if (!prevIn) {
+          const t = intersectSegmentEdge(prev, cur, a, b);
+          if (t) {
+            next.push(t);
+          }
+        }
+        next.push(cur);
+      } else if (prevIn) {
+        const t = intersectSegmentEdge(prev, cur, a, b);
+        if (t) {
+          next.push(t);
+        }
+      }
+    }
+    pts = next;
+    if (pts.length < 3) {
+      return null;
+    }
+  }
+  return { closed: true, points: pts };
+}
+
+/** Intersection of segment p→q with the infinite line through edge a→b. */
+function intersectSegmentEdge(
+  p: PathPoint,
+  q: PathPoint,
+  a: PathPoint,
+  b: PathPoint
+): PathPoint | null {
+  const dx = q.x - p.x;
+  const dy = q.y - p.y;
+  const ex = b.x - a.x;
+  const ey = b.y - a.y;
+  const denom = dx * ey - dy * ex;
+  if (Math.abs(denom) < 1e-12) {
+    return null;
+  }
+  const t = ((a.x - p.x) * ey - (a.y - p.y) * ex) / denom;
+  return { x: p.x + t * dx, y: p.y + t * dy };
+}
+
+/**
  * Intersect a closed polygon subpath with an axis-aligned rect
  * (Sutherland–Hodgman). Returns null when nothing survives. Mask cutouts are
  * clipped to the lit bounds so a dark shape hanging over the edge cannot add

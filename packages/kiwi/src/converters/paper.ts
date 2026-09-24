@@ -25,6 +25,14 @@ import type {
   PaperNode,
   PaperPaint,
 } from "../types/paper";
+import type { PathSubpath } from "../types/svg-path";
+import type { SvgPrimitiveAttrs } from "../types/svg-primitive";
+import {
+  clipSubpathToPolygon,
+  isConvexSubpath,
+  parseClipRef,
+} from "../utils/svg-clip";
+import { svgPrimitiveToSubpaths } from "../utils/svg-primitive";
 
 export type { BuildPaperPasteHtmlOptions } from "../types/paper";
 
@@ -619,12 +627,20 @@ function textStyleMeta(style: CSSStyleDeclaration): PaperNode["styleMeta"] {
 
 function svgProps(
   element: SVGElement,
-  style: CSSStyleDeclaration
+  style: CSSStyleDeclaration,
+  bakedPath?: string | null
 ): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   for (const attribute of element.getAttributeNames()) {
     const value = element.getAttribute(attribute);
     if (value == null || attribute === "style") {
+      continue;
+    }
+    if (
+      bakedPath != null &&
+      (PAPER_BAKE_GEOMETRY_PROPS.includes(attribute) ||
+        attribute === "clip-path")
+    ) {
       continue;
     }
     props[cssPropertyToPaperKey(attribute)] = value;
@@ -650,6 +666,9 @@ function svgProps(
   props.textDecoration = style.textDecorationLine;
   props.wordSpacing = style.wordSpacing;
   props.writingMode = style.writingMode;
+  if (bakedPath != null) {
+    props.d = bakedPath;
+  }
   return props;
 }
 
@@ -659,6 +678,193 @@ function hasMeaningfulChildren(element: Element): boolean {
       node.nodeType === Node.ELEMENT_NODE ||
       (node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim())
   );
+}
+
+const PAPER_BAKE_GEOMETRY_TAGS = new Set([
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "path",
+]);
+
+const PAPER_BAKE_GEOMETRY_PROPS = [
+  "d",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "x",
+  "y",
+  "width",
+  "height",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "points",
+];
+
+function paperSvgGeometryAttrs(el: Element): SvgPrimitiveAttrs {
+  return {
+    d: el.getAttribute("d"),
+    cx: el.getAttribute("cx"),
+    cy: el.getAttribute("cy"),
+    r: el.getAttribute("r"),
+    rx: el.getAttribute("rx"),
+    ry: el.getAttribute("ry"),
+    x: el.getAttribute("x"),
+    y: el.getAttribute("y"),
+    width: el.getAttribute("width"),
+    height: el.getAttribute("height"),
+    x1: el.getAttribute("x1"),
+    y1: el.getAttribute("y1"),
+    x2: el.getAttribute("x2"),
+    y2: el.getAttribute("y2"),
+    points: el.getAttribute("points"),
+  };
+}
+
+function paperHasTransform(
+  el: Element,
+  getStyle: (target: Element) => CSSStyleDeclaration | null
+): boolean {
+  if (el.getAttribute("transform")) {
+    return true;
+  }
+  const transform = getStyle(el)?.getPropertyValue("transform") || "";
+  return transform !== "" && transform !== "none";
+}
+
+function paperSubpathsToPathData(subs: PathSubpath[]): string {
+  const round = (n: number): string => String(Math.round(n * 1000) / 1000);
+  return subs
+    .map(
+      (sub) =>
+        `M${sub.points.map((p) => `${round(p.x)} ${round(p.y)}`).join("L")}${
+          sub.closed ? "Z" : ""
+        }`
+    )
+    .join("");
+}
+
+// Paper's importer ignores SVG clipPath/mask/filter, so a shape clipped by a
+// single convex clip contour (plain or rounded rect, circle) would paste
+// unclipped. Bake that case into the geometry (rewrite as a clipped path)
+// and drop the clip-path ref. Everything else — concave clips, masks,
+// filters, transformed chains, multi-clips — passes through untouched
+// (documented limitation).
+function bakePaperConvexClip(
+  el: Element,
+  getStyle: (target: Element) => CSSStyleDeclaration | null
+): { kind: "rewrite"; d: string } | { kind: "remove" } | null {
+  if (el.closest("defs, clipPath, mask, filter, symbol")) {
+    return null;
+  }
+  // Single clip-path ref from self + ancestors (attr or computed style).
+  const refs: Array<{ id: string; ref: Element }> = [];
+  let node: Element | null = el;
+  while (node && node.tagName.toLowerCase() !== "svg") {
+    const cs = getStyle(node);
+    const ref =
+      parseClipRef(node.getAttribute("clip-path")) ??
+      (cs ? parseClipRef(cs.getPropertyValue("clip-path")) : null);
+    if (ref && !refs.some((r) => r.id === ref)) {
+      refs.push({ id: ref, ref: node });
+    }
+    node = node.parentElement;
+  }
+  if (refs.length !== 1) {
+    return null;
+  }
+  const clipRef = refs[0];
+  if (!clipRef) {
+    return null;
+  }
+  const svgRoot = el.closest("svg");
+  if (!svgRoot) {
+    return null;
+  }
+  let clipEl: Element | null = null;
+  try {
+    const escaped =
+      typeof CSS !== "undefined" && CSS.escape
+        ? CSS.escape(clipRef.id)
+        : clipRef.id;
+    clipEl = svgRoot.querySelector(`clipPath#${escaped}`);
+  } catch {
+    clipEl = null;
+  }
+  if (!clipEl) {
+    return null;
+  }
+  if (
+    (clipEl.getAttribute("clipPathUnits") ?? "").trim() === "objectBoundingBox"
+  ) {
+    return null;
+  }
+  // Exactly one closed convex contour, no transforms inside the clip.
+  const clipKids = Array.from(clipEl.children).filter(
+    (c) => c instanceof Element
+  );
+  if (clipKids.length !== 1) {
+    return null;
+  }
+  const clipKid = clipKids[0];
+  if (
+    !clipKid ||
+    clipKid.getAttribute("transform") ||
+    !PAPER_BAKE_GEOMETRY_TAGS.has(clipKid.tagName.toLowerCase())
+  ) {
+    return null;
+  }
+  const clipSubs = svgPrimitiveToSubpaths(
+    clipKid.tagName.toLowerCase(),
+    paperSvgGeometryAttrs(clipKid)
+  );
+  if (
+    clipSubs.length !== 1 ||
+    !clipSubs[0] ||
+    !clipSubs[0].closed ||
+    !isConvexSubpath(clipSubs[0])
+  ) {
+    return null;
+  }
+  const clipPts = clipSubs[0].points;
+  // The clip contour lives in the referencing element's user space, so every
+  // element from the shape up to (excluding) the referencing element must be
+  // transform-free for local-space baking to be exact.
+  let cursor: Element | null = el;
+  while (cursor && cursor !== clipRef.ref) {
+    if (paperHasTransform(cursor, getStyle)) {
+      return null;
+    }
+    cursor = cursor.parentElement;
+  }
+  if (!cursor) {
+    return null;
+  }
+  const subs = svgPrimitiveToSubpaths(
+    el.tagName.toLowerCase(),
+    paperSvgGeometryAttrs(el)
+  );
+  if (subs.length === 0 || subs.some((sub) => !sub.closed)) {
+    return null;
+  }
+  const baked: PathSubpath[] = [];
+  for (const sub of subs) {
+    const cut = clipSubpathToPolygon(sub, clipPts);
+    if (cut) {
+      baked.push(cut);
+    }
+  }
+  if (baked.length === 0) {
+    return { kind: "remove" };
+  }
+  return { kind: "rewrite", d: paperSubpathsToPathData(baked) };
 }
 
 function isSvgElement(element: Element): element is SVGElement {
@@ -751,14 +957,36 @@ function buildPaperEmbedData(
     const styles = computedStyles(style);
     applyPaperTextSizing(styles, element, style);
 
+    let bakedPath: string | null = null;
+    if (
+      isSvgChild &&
+      PAPER_BAKE_GEOMETRY_TAGS.has(element.tagName.toLowerCase())
+    ) {
+      const baked = bakePaperConvexClip(
+        element,
+        (target) =>
+          target.ownerDocument.defaultView?.getComputedStyle(target) ?? null
+      );
+      if (baked) {
+        if (baked.kind === "remove") {
+          return null;
+        }
+        bakedPath = baked.d;
+      }
+    }
+
     nodes[id] = {
       "~": false,
       component,
       id,
       label: isRoot ? label : elementLayerName(element, style),
       labelIsModified: true,
-      ...(isSvgChild ? { tag: element.tagName.toLowerCase() } : {}),
-      ...(isSvgElement(element) ? { props: svgProps(element, style) } : {}),
+      ...(isSvgChild
+        ? { tag: bakedPath !== null ? "path" : element.tagName.toLowerCase() }
+        : {}),
+      ...(isSvgElement(element)
+        ? { props: svgProps(element, style, bakedPath) }
+        : {}),
       ...(isSvgChild ? {} : { styleMeta: htmlStyleMeta(style) }),
       styles,
     };
