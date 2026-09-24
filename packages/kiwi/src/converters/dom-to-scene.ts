@@ -38,6 +38,7 @@ import {
   type Affine,
   applyAffine,
   clipSubpathToRect,
+  isConvexSubpath,
   multiplyAffine,
   normalizeBlendMode,
   parseClipRef,
@@ -46,6 +47,7 @@ import {
   parseSvgTransformAttr,
   rectClipBounds,
   subpathBounds,
+  triangulateSubpath,
   withWinding,
 } from "../utils/svg-clip";
 import { svgPrimitiveToSubpaths } from "../utils/svg-primitive";
@@ -545,6 +547,27 @@ function refMatrixFingerprint(m: Affine): string {
   return `${r(m.a)},${r(m.b)},${r(m.c)},${r(m.d)},${r(m.e)},${r(m.f)}`;
 }
 
+// Prepare clip/mask contours for emit: normalize winding (positive fills,
+// negative holes) and decompose concave loops into convex triangles, which
+// pasted vectors render reliably. Convex loops pass through untouched.
+function emitClipSubpaths(
+  subs: PathSubpath[],
+  positive: boolean
+): PathSubpath[] {
+  const out: PathSubpath[] = [];
+  for (const sub of subs) {
+    const oriented = positive ? withWinding(sub, true) : sub;
+    if (!oriented.closed || isConvexSubpath(oriented)) {
+      out.push(oriented);
+    } else {
+      for (const t of triangulateSubpath(oriented)) {
+        out.push(positive ? withWinding(t, true) : t);
+      }
+    }
+  }
+  return out;
+}
+
 // Map one clip/mask source to screen space for a single referencing element
 // and cache it. The cache key folds in the reference transform, so the same
 // clip under different transformed ancestors resolves independently.
@@ -577,7 +600,9 @@ function resolveClipKey(
       if (child.evenOdd) {
         fillRule = "evenodd";
       }
-      subpaths.push(...mapped);
+      // Shared orientation unions overlapping children under NONZERO
+      // (SVG clips OR their children); harmless under evenodd.
+      subpaths.push(...emitClipSubpaths(mapped, true));
     }
     if (subpaths.length === 0) {
       return null;
@@ -609,10 +634,11 @@ function resolveClipKey(
   }
   // Normalize light winding so holes punch reliably, then encode each dark
   // contour (clipped to the lit bounds) with opposite winding.
-  const lit = lights.map((sub) => withWinding(sub, true));
+  const lit = emitClipSubpaths(lights, true);
   const subpaths = [...lit];
   const litBounds = subpathBounds(lit);
   if (litBounds) {
+    const cuts: PathSubpath[] = [];
     for (const dark of darks) {
       if (!dark.closed || dark.points.length < 3) {
         continue;
@@ -621,8 +647,9 @@ function resolveClipKey(
       if (!cut) {
         continue;
       }
-      subpaths.push(withWinding(cut, false));
+      cuts.push(withWinding(cut, false));
     }
+    subpaths.push(...emitClipSubpaths(cuts, false));
   }
   resolved.set(key, { id: key, subpaths, fillRule: "nonzero" });
   return key;

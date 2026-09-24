@@ -551,3 +551,148 @@ export function clipSubpathToRect(
   }
   return { closed: true, points: pts };
 }
+
+/** Signed doubled area of triangle (a, b, c); sign encodes turn direction. */
+function turnArea(a: PathPoint, b: PathPoint, c: PathPoint): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+/**
+ * Whether a closed polygon is convex (all turns share a sign). Convex loops
+ * pass through to Figma untouched; concave loops are triangulated because
+ * pasted concave contours misrender.
+ */
+export function isConvexSubpath(sub: PathSubpath): boolean {
+  const pts = sub.points;
+  if (!sub.closed || pts.length < 3) {
+    return false;
+  }
+  let sign = 0;
+  for (let i = 0; i < pts.length; i += 1) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    const r = pts[(i + 2) % pts.length];
+    if (!p || !q || !r) {
+      return false;
+    }
+    const t = turnArea(p, q, r);
+    if (Math.abs(t) < 1e-9) {
+      continue;
+    }
+    const s = t > 0 ? 1 : -1;
+    if (sign === 0) {
+      sign = s;
+    } else if (s !== sign) {
+      return false;
+    }
+  }
+  return sign !== 0;
+}
+
+/**
+ * Decompose a closed polygon into triangles (ear clipping). Output preserves
+ * the input winding orientation. Returns the input unchanged when it is
+ * already a triangle or when decomposition fails (never drop content).
+ */
+export function triangulateSubpath(sub: PathSubpath): PathSubpath[] {
+  const cleaned: PathPoint[] = [];
+  for (const p of sub.points) {
+    const prev = cleaned.at(-1);
+    if (!prev || Math.hypot(p.x - prev.x, p.y - prev.y) >= 1e-9) {
+      cleaned.push({ x: p.x, y: p.y });
+    }
+  }
+  if (cleaned.length >= 2) {
+    const first = cleaned[0];
+    const last = cleaned.at(-1);
+    if (
+      first &&
+      last &&
+      Math.hypot(first.x - last.x, first.y - last.y) < 1e-9
+    ) {
+      cleaned.pop();
+    }
+  }
+  if (!sub.closed || cleaned.length < 3) {
+    return [];
+  }
+  if (cleaned.length === 3) {
+    return [{ closed: true, points: cleaned }];
+  }
+  const positive = signedSubpathArea({ closed: true, points: cleaned }) >= 0;
+  const idx: number[] = cleaned.map((_, i) => i);
+  const at = (k: number): PathPoint => {
+    const p =
+      cleaned[idx[((k % idx.length) + idx.length) % idx.length] ?? 0] ??
+      cleaned[0];
+    if (!p) {
+      return { x: 0, y: 0 };
+    }
+    return p;
+  };
+  const inTriangle = (
+    p: PathPoint,
+    a: PathPoint,
+    b: PathPoint,
+    c: PathPoint
+  ): boolean => {
+    const d1 = turnArea(p, a, b);
+    const d2 = turnArea(p, b, c);
+    const d3 = turnArea(p, c, a);
+    const hasNeg = d1 < -1e-9 || d2 < -1e-9 || d3 < -1e-9;
+    const hasPos = d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9;
+    return !(hasNeg && hasPos);
+  };
+  const out: PathSubpath[] = [];
+  let guard = idx.length * idx.length;
+  let k = 0;
+  while (idx.length > 3 && guard > 0) {
+    guard -= 1;
+    const a = at(k);
+    const b = at(k + 1);
+    const c = at(k + 2);
+    const ear = turnArea(a, b, c);
+    if ((positive && ear <= 1e-9) || (!positive && ear >= -1e-9)) {
+      k += 1;
+      continue;
+    }
+    // Exclusion uses wrapped indices: k grows unboundedly while j spans the
+    // live list, so raw k would stop matching the ear's own vertices.
+    const e0 = k % idx.length;
+    const e1 = (k + 1) % idx.length;
+    const e2 = (k + 2) % idx.length;
+    let blocked = false;
+    for (let j = 0; j < idx.length; j += 1) {
+      if (j === e0 || j === e1 || j === e2) {
+        continue;
+      }
+      if (inTriangle(at(j), a, b, c)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) {
+      k += 1;
+      continue;
+    }
+    out.push({
+      closed: true,
+      points: [a, b, c].map((p) => ({ x: p.x, y: p.y })),
+    });
+    idx.splice((k + 1) % idx.length, 1);
+  }
+  if (idx.length === 3) {
+    const a = at(0);
+    const b = at(1);
+    const c = at(2);
+    if (Math.abs(turnArea(a, b, c)) > 1e-9) {
+      out.push({
+        closed: true,
+        points: [a, b, c].map((p) => ({ x: p.x, y: p.y })),
+      });
+      return out;
+    }
+  }
+  // Degenerate input: keep the original contour instead of losing content.
+  return [{ closed: true, points: cleaned }];
+}
