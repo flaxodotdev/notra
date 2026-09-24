@@ -64,8 +64,8 @@ export interface SvgShape {
   strokeDasharray: number[] | null;
   strokeWidth: number;
   clipChain: string[];
-  filterGroup: string | null;
-  filterGroupOutside: boolean;
+  effectGroup: string | null;
+  filterOutside: boolean;
   opacity: number | undefined;
   blendMode: string | undefined;
   effects: FigmaEffect[];
@@ -77,9 +77,11 @@ export interface SvgClip {
   fillRule: "nonzero" | "evenodd";
 }
 
-export interface SvgFilterGroup {
+export interface SvgEffectGroup {
   id: string;
   effects: FigmaEffect[];
+  opacity: number | undefined;
+  blendMode: string | undefined;
 }
 
 export interface SvgInfo {
@@ -94,7 +96,7 @@ export interface SvgInfo {
   color: string;
   shapes: SvgShape[];
   clips: SvgClip[];
-  filterGroups: SvgFilterGroup[];
+  effectGroups: SvgEffectGroup[];
   opacity: number | undefined;
   blendMode: string | undefined;
   effects: FigmaEffect[];

@@ -164,6 +164,44 @@ describe("svg clip helpers (#386)", () => {
     expect(applyAffine(m, { x: 1, y: 1 })).toEqual({ x: 8, y: 3 });
   });
 
+  test("opacity parses percentages as fractions", () => {
+    expect(parseOpacityValue("50%")).toBeCloseTo(0.5, 6);
+    expect(parseOpacityValue("100%")).toBe(1);
+    expect(parseOpacityValue("200%")).toBe(1);
+    expect(parseOpacityValue("abc%")).toBeUndefined();
+  });
+
+  test("rect clips reject bow-tie paths", () => {
+    // Same corner set as a rect, but the diagonal edges self-intersect.
+    expect(
+      rectClipBounds([
+        {
+          closed: true,
+          points: [
+            { x: 0, y: 0 },
+            { x: 20, y: 10 },
+            { x: 20, y: 0 },
+            { x: 0, y: 10 },
+          ],
+        },
+      ])
+    ).toBeNull();
+    // Path-order rectangle still accepted.
+    expect(
+      rectClipBounds([
+        {
+          closed: true,
+          points: [
+            { x: 0, y: 0 },
+            { x: 20, y: 0 },
+            { x: 20, y: 10 },
+            { x: 0, y: 10 },
+          ],
+        },
+      ])
+    ).toEqual({ minX: 0, minY: 0, maxX: 20, maxY: 10 });
+  });
+
   test("mask holes wind opposite and clip to lit bounds", () => {
     const ccw = {
       closed: true,

@@ -55,7 +55,15 @@ export function parseOpacityValue(
   if (value == null) {
     return undefined;
   }
-  const parsed = Number.parseFloat(value.trim());
+  const trimmed = value.trim();
+  if (trimmed.endsWith("%")) {
+    const parsed = Number.parseFloat(trimmed);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    return Math.max(0, Math.min(1, parsed / 100));
+  }
+  const parsed = Number.parseFloat(trimmed);
   if (!Number.isFinite(parsed)) {
     return undefined;
   }
@@ -110,6 +118,18 @@ function isClosedRectLoop(
 ): ClipBounds | null {
   if (points.length !== 4) {
     return null;
+  }
+  // Edges in path order (including the closing edge) must be axis-aligned;
+  // a corner-set match alone also accepts bow-ties, whose fill is not the rect.
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    const q = points[(i + 1) % points.length];
+    if (!p || !q) {
+      return null;
+    }
+    if (Math.abs(p.x - q.x) > tolerance && Math.abs(p.y - q.y) > tolerance) {
+      return null;
+    }
   }
   const [a, b, c, d] = points;
   if (!a || !b || !c || !d) {

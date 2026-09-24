@@ -27,7 +27,7 @@ import type {
   ElementInfo,
   LayoutNode,
   SvgClip,
-  SvgFilterGroup,
+  SvgEffectGroup,
   SvgInfo,
   SvgShape,
 } from "../types/dom-to-scene";
@@ -712,23 +712,32 @@ function queryFilterElement(svg: SVGSVGElement, ref: string): Element | null {
   }
 }
 
-interface ShapeFilterGroup {
+// Ancestor opacity / blend / filter carried by one run wrapper in emitSvg.
+interface ShapeAncestorGroup {
   ancestor: Element;
   effects: FigmaEffect[];
+  opacity: number | undefined;
+  blendMode: string | undefined;
 }
 
-// SVG filters run after group compositing, so a filter on an ancestor <g>
-// must be emitted once on a wrapper around the whole group — not duplicated
-// onto every child vector. Self filters stay on the shape; ancestor filters
-// (nearest filtering ancestor defines the group, outer levels stack into it)
-// are returned for the run wrapper in emitSvg.
-function svgShapeFilter(
+// Opacity, blend mode, and filters inherit through SVG groups, but they apply
+// to the composited group — not to each child. Copying ancestor opacity onto
+// every vector changes overlaps (two opaque children at group opacity 0.5
+// overlap at 0.75 instead of 0.5), and per-child drop shadows duplicate.
+// Self properties stay on the shape; ancestor properties (nearest affecting
+// ancestor defines the group, outer levels stack into it) are returned for a
+// single wrapper around the run in emitSvg.
+function svgShapeStyling(
   el: Element,
   style: CSSStyleDeclaration | null,
   svg: SVGSVGElement,
   getStyle: StyleGetter = safeStyle
-): { self: FigmaEffect[]; group: ShapeFilterGroup | null } {
-  const self: FigmaEffect[] = [];
+): {
+  opacity: number | undefined;
+  blendMode: string | undefined;
+  effects: FigmaEffect[];
+  group: ShapeAncestorGroup | null;
+} {
   // Walk self + ancestors: a <g filter> / <g style="filter:..."> applies to the whole group.
   const chain: Element[] = [];
   let node: Element | null = el;
@@ -736,17 +745,26 @@ function svgShapeFilter(
     chain.unshift(node);
     node = node.parentElement;
   }
-  const seenFilters = new Set<string>();
-  const groupEffects: FigmaEffect[] = [];
-  let groupAncestor: Element | null = null;
   // Passed style is the self element's computed style (avoids a recompute).
   const selfCss = style?.getPropertyValue("filter") || "";
+  let selfOpacity: number | undefined;
+  let selfBlend: string | undefined;
+  const selfEffects: FigmaEffect[] = [];
+  const ancestorEffects: FigmaEffect[] = [];
+  let ancestorOpacityProduct = 1;
+  let nearestAncestorBlend: string | undefined;
+  let groupAncestor: Element | null = null;
   for (let idx = 0; idx < chain.length; idx += 1) {
     const item = chain[idx];
     if (!item) {
       continue;
     }
     const isSelf = idx === chain.length - 1;
+    const cs = isSelf && style ? style : getStyle(item);
+    // Opacity multiplies through ancestors; computed opacity is per-element, not inherited.
+    const opacity =
+      (cs ? parseOpacityValue(cs.getPropertyValue("opacity")) : undefined) ??
+      parseOpacityValue(item.getAttribute("opacity"));
     let cssFilter = isSelf && selfCss ? selfCss : "";
     if (!cssFilter) {
       cssFilter = getStyle(item)?.getPropertyValue("filter") || "";
@@ -761,30 +779,68 @@ function svgShapeFilter(
     const ref =
       parseClipRef(item.getAttribute("filter")) ?? parseClipRef(cssFilter);
     let refEffects: FigmaEffect[] = [];
-    if (ref && !seenFilters.has(ref)) {
-      seenFilters.add(ref);
+    if (ref) {
       const filterEl = queryFilterElement(svg, ref);
       if (filterEl) {
         refEffects = filterElementEffects(filterEl);
       }
     }
     const cssEffects = cssFilter ? cssFilterEffects(cssFilter) : [];
-    // Each ancestor level applies its own filter; identical values on different
-    // elements intentionally stack, so no string dedupe here.
+    // Each level applies its own filter independently: identical references on
+    // different elements intentionally stack, so no ref dedupe here.
     const level = [...refEffects, ...cssEffects];
     if (isSelf) {
-      self.push(...level);
-    } else if (level.length > 0) {
-      groupAncestor = item;
-      groupEffects.push(...level);
+      selfOpacity = opacity !== undefined && opacity < 1 ? opacity : undefined;
+      const blend = normalizeBlendMode(
+        style?.getPropertyValue("mix-blend-mode") ||
+          (style as unknown as { mixBlendMode?: string } | null)
+            ?.mixBlendMode ||
+          ""
+      );
+      selfBlend = blend !== "NORMAL" ? blend : undefined;
+      selfEffects.push(...level);
+    } else {
+      ancestorOpacityProduct *= opacity ?? 1;
+      const blend = normalizeBlendMode(
+        cs?.getPropertyValue("mix-blend-mode") || ""
+      );
+      if (blend !== "NORMAL") {
+        nearestAncestorBlend = blend;
+      }
+      if (
+        level.length > 0 ||
+        (opacity !== undefined && opacity < 1) ||
+        blend !== "NORMAL"
+      ) {
+        groupAncestor = item;
+      }
+      ancestorEffects.push(...level);
     }
   }
+  const group: ShapeAncestorGroup | null = groupAncestor
+    ? {
+        ancestor: groupAncestor,
+        effects: ancestorEffects,
+        opacity:
+          ancestorOpacityProduct < 1 ? ancestorOpacityProduct : undefined,
+        blendMode: nearestAncestorBlend,
+      }
+    : null;
+  if (group) {
+    return {
+      opacity: selfOpacity,
+      blendMode: selfBlend,
+      effects: selfEffects,
+      group,
+    };
+  }
+  // No wrapper to carry ancestors: fold them into the shape (as before).
+  const full = (selfOpacity ?? 1) * ancestorOpacityProduct;
   return {
-    self,
-    group:
-      groupAncestor && groupEffects.length > 0
-        ? { ancestor: groupAncestor, effects: groupEffects }
-        : null,
+    opacity: full < 1 ? full : undefined,
+    blendMode: selfBlend ?? nearestAncestorBlend,
+    effects: selfEffects,
+    group: null,
   };
 }
 
@@ -808,65 +864,6 @@ function svgElementEffects(
     effects.push(...cssFilterEffects(css));
   }
   return effects;
-}
-
-function svgShapeOpacity(
-  el: Element,
-  style: CSSStyleDeclaration | null,
-  getStyle: StyleGetter = safeStyle
-): number | undefined {
-  // Opacity multiplies through ancestors; computed opacity is per-element, not inherited.
-  let acc = 1;
-  let node: Element | null = el;
-  let first = true;
-  while (node && node.tagName.toLowerCase() !== "svg") {
-    let opacity: number | undefined;
-    if (first) {
-      opacity = style
-        ? parseOpacityValue(style.getPropertyValue("opacity"))
-        : undefined;
-      first = false;
-    } else {
-      opacity = parseOpacityValue(getStyle(node)?.getPropertyValue("opacity"));
-    }
-    if (opacity === undefined) {
-      opacity = parseOpacityValue(node.getAttribute("opacity"));
-    }
-    if (opacity !== undefined) {
-      acc *= opacity;
-    }
-    node = node.parentElement;
-  }
-  if (acc >= 1) {
-    return undefined;
-  }
-  return acc;
-}
-
-function svgShapeBlendMode(
-  el: Element,
-  style: CSSStyleDeclaration | null,
-  getStyle: StyleGetter = safeStyle
-): string | undefined {
-  const own =
-    style?.getPropertyValue("mix-blend-mode") ||
-    (style as unknown as { mixBlendMode?: string } | null)?.mixBlendMode ||
-    "";
-  let normalized = normalizeBlendMode(own);
-  if (normalized !== "NORMAL") {
-    return normalized;
-  }
-  // Nearest ancestor with a blend wins (group blend applies to children).
-  let node = el.parentElement;
-  while (node && node.tagName.toLowerCase() !== "svg") {
-    const mode = getStyle(node)?.getPropertyValue("mix-blend-mode") || "";
-    normalized = normalizeBlendMode(mode);
-    if (normalized !== "NORMAL") {
-      return normalized;
-    }
-    node = node.parentElement;
-  }
-  return undefined;
 }
 
 export function parseSvgDasharray(value: string | null): number[] | undefined {
@@ -1362,8 +1359,8 @@ function extractLayout(node: Node): LayoutNode | null {
     const clipSources = collectSvgClipSources(svg, getStyle);
     const clipRoot = svgRootScreenAffine(svg);
     const resolvedClips = new Map<string, SvgClip>();
-    const filterGroupIds = new Map<Element, string>();
-    const filterGroups: SvgFilterGroup[] = [];
+    const effectGroupIds = new Map<Element, string>();
+    const effectGroups: SvgEffectGroup[] = [];
     const geomEls = svg.querySelectorAll(SVG_GEOMETRY_SELECTOR);
     for (const geomEl of geomEls) {
       if (!(geomEl instanceof SVGGraphicsElement)) {
@@ -1437,27 +1434,28 @@ function extractLayout(node: Node): LayoutNode | null {
           clipChain.push(key);
         }
       }
-      const { self: selfEffects, group } = svgShapeFilter(
-        geomEl,
-        geomStyle,
-        svg,
-        getStyle
-      );
-      let filterGroup: string | null = null;
-      let filterGroupOutside = false;
+      const styling = svgShapeStyling(geomEl, geomStyle, svg, getStyle);
+      const group = styling.group;
+      let effectGroup: string | null = null;
+      let filterOutside = false;
       if (group) {
-        let gid = filterGroupIds.get(group.ancestor);
+        let gid = effectGroupIds.get(group.ancestor);
         if (!gid) {
-          gid = `filter-group-${filterGroupIds.size + 1}`;
-          filterGroupIds.set(group.ancestor, gid);
-          filterGroups.push({ id: gid, effects: group.effects });
+          gid = `effect-group-${effectGroupIds.size + 1}`;
+          effectGroupIds.set(group.ancestor, gid);
+          effectGroups.push({
+            id: gid,
+            effects: group.effects,
+            opacity: group.opacity,
+            blendMode: group.blendMode,
+          });
         }
-        filterGroup = gid;
-        // SVG applies an outer filter after inner clipping and vice versa, so
-        // the wrapper sits outside the clip containers only when the filtered
-        // ancestor contains every clip reference; otherwise it wraps the
-        // shapes directly (correct for a filter+clip on the same element).
-        filterGroupOutside = clipRefs.every(({ ref }) =>
+        effectGroup = gid;
+        // A filter on the same element (or inside the clip refs) applies
+        // before clipping, so its wrapper sits inside the clip containers;
+        // an outer filter applies after. Opacity commutes with clipping, so
+        // the opacity/blend wrapper always sits outside.
+        filterOutside = clipRefs.every(({ ref }) =>
           group.ancestor.contains(ref)
         );
       }
@@ -1486,11 +1484,11 @@ function extractLayout(node: Node): LayoutNode | null {
               ""
           ) * strokeScale,
         clipChain,
-        filterGroup,
-        filterGroupOutside,
-        opacity: svgShapeOpacity(geomEl, geomStyle, getStyle),
-        blendMode: svgShapeBlendMode(geomEl, geomStyle, getStyle),
-        effects: selfEffects,
+        effectGroup,
+        filterOutside,
+        opacity: styling.opacity,
+        blendMode: styling.blendMode,
+        effects: styling.effects,
       });
     }
     restoreUses();
@@ -1521,7 +1519,7 @@ function extractLayout(node: Node): LayoutNode | null {
       color: fallbackColor,
       shapes,
       clips: [...resolvedClips.values()],
-      filterGroups,
+      effectGroups,
       opacity: svgOpacity,
       blendMode: svgBlendMode,
       effects: svgElementEffects(svg, style),
@@ -1611,23 +1609,31 @@ function emitSvg(
   });
 
   const clips = new Map<string, SvgClip>(svgNode.clips.map((c) => [c.id, c]));
-  const groupEffects = new Map<string, FigmaEffect[]>(
-    svgNode.filterGroups.map((g) => [g.id, g.effects])
+  const effectGroupProps = new Map<string, SvgEffectGroup>(
+    svgNode.effectGroups.map((g) => [g.id, g])
   );
-  // Emit in document order: consecutive shapes sharing a clip chain AND filter
-  // group share one clip container (+ one filter wrapper), but a repeated key
+  // Emit in document order: consecutive shapes sharing a clip chain AND effect
+  // group share one clip container (+ group wrappers), but a repeated key
   // later gets fresh containers so paint order is preserved (grouping by key
   // would reorder overlapping shapes).
   const runKey = (shape: SvgShape): string =>
-    `${shape.clipChain.filter((id) => clips.has(id)).join("|")}\n${shape.filterGroup ?? ""}`;
+    `${shape.clipChain.filter((id) => clips.has(id)).join("|")}\n${shape.effectGroup ?? ""}`;
   const chainOf = (shape: SvgShape): string[] =>
     shape.clipChain.filter((id) => clips.has(id));
-  const groupOf = (shape: SvgShape): FigmaEffect[] | null => {
-    if (!shape.filterGroup) {
+  const groupOf = (shape: SvgShape): SvgEffectGroup | null => {
+    if (!shape.effectGroup) {
       return null;
     }
-    const effects = groupEffects.get(shape.filterGroup);
-    return effects && effects.length > 0 ? effects : null;
+    const group = effectGroupProps.get(shape.effectGroup);
+    if (
+      !group ||
+      (group.effects.length === 0 &&
+        group.opacity === undefined &&
+        group.blendMode === undefined)
+    ) {
+      return null;
+    }
+    return group;
   };
 
   const buildContainer = (
@@ -1703,8 +1709,8 @@ function emitSvg(
               strokeDasharray: null,
               strokeWidth: 0,
               clipChain: [],
-              filterGroup: null,
-              filterGroupOutside: false,
+              effectGroup: null,
+              filterOutside: false,
               opacity: undefined,
               blendMode: undefined,
               effects: [],
@@ -1754,42 +1760,69 @@ function emitSvg(
       }
       j += 1;
     }
-    const effects = groupOf(first);
-    // An outer filter wraps the clip containers; a same-element (or inner)
-    // filter wraps the shapes inside them — mirroring SVG filter/clip order.
-    let runParent = frameGuid;
-    const runX = svgNode.x;
-    const runY = svgNode.y;
-    if (effects && first.filterGroupOutside) {
-      runParent = sb.addFrame({
+    const group = groupOf(first);
+    const chain = chainOf(first);
+    let container: Guid;
+    let originX: number;
+    let originY: number;
+    let emitMasks: (() => void) | undefined;
+    if (group && chain.length === 0) {
+      // No clip containers: one wrapper carries filter, opacity, and blend.
+      container = sb.addFrame({
         parent: frameGuid,
-        name: `${svgNode.name} Filter`,
+        name: `${svgNode.name} Group`,
         x: 0,
         y: 0,
         width: svgNode.width,
         height: svgNode.height,
-        effects,
+        effects: group.effects.length > 0 ? group.effects : undefined,
+        opacity: group.opacity,
+        blendMode: group.blendMode,
       });
-    }
-    const {
-      guid: innerContainer,
-      x: originX,
-      y: originY,
-      w: containerW,
-      h: containerH,
-      emitMasks,
-    } = buildContainer(chainOf(first), runParent, runX, runY);
-    let container = innerContainer;
-    if (effects && !first.filterGroupOutside) {
-      container = sb.addFrame({
-        parent: innerContainer,
-        name: `${svgNode.name} Filter`,
-        x: 0,
-        y: 0,
-        width: containerW,
-        height: containerH,
-        effects,
-      });
+      originX = svgNode.x;
+      originY = svgNode.y;
+    } else {
+      // An outer filter wraps the clip containers; a same-element (or inner)
+      // filter wraps the shapes inside them — mirroring SVG filter/clip
+      // order. The opacity/blend wrapper always sits outside: opacity
+      // commutes with clipping, and blending applies to clipped content.
+      const outerEffects = group && first.filterOutside ? group.effects : [];
+      let runParent = frameGuid;
+      if (
+        group &&
+        (outerEffects.length > 0 ||
+          group.opacity !== undefined ||
+          group.blendMode !== undefined)
+      ) {
+        runParent = sb.addFrame({
+          parent: frameGuid,
+          name: `${svgNode.name} Group`,
+          x: 0,
+          y: 0,
+          width: svgNode.width,
+          height: svgNode.height,
+          effects: outerEffects.length > 0 ? outerEffects : undefined,
+          opacity: group.opacity,
+          blendMode: group.blendMode,
+        });
+      }
+      const built = buildContainer(chain, runParent, svgNode.x, svgNode.y);
+      container = built.guid;
+      originX = built.x;
+      originY = built.y;
+      emitMasks = built.emitMasks;
+      const innerEffects = group && !first.filterOutside ? group.effects : [];
+      if (innerEffects.length > 0) {
+        container = sb.addFrame({
+          parent: container,
+          name: `${svgNode.name} Filter`,
+          x: 0,
+          y: 0,
+          width: built.w,
+          height: built.h,
+          effects: innerEffects,
+        });
+      }
     }
     for (let k = i; k < j; k += 1) {
       const shape = svgNode.shapes[k];
