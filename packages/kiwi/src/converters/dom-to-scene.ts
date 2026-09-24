@@ -1645,14 +1645,12 @@ function emitSvg(
     y: number;
     w: number;
     h: number;
-    emitMasks?: () => void;
   } => {
     let container = parent;
     let x = originX;
     let y = originY;
     let w = svgNode.width;
     let h = svgNode.height;
-    const pendingMasks: Array<() => void> = [];
     for (const clipId of chain) {
       const clip = clips.get(clipId);
       if (!clip) {
@@ -1688,38 +1686,32 @@ function emitSvg(
           width,
           height,
         });
-        // Figma masks sit above the content they clip, so the mask vector is
-        // emitted after the shapes (deferred to preserve child order).
-        const maskMinX = bounds.minX;
-        const maskMinY = bounds.minY;
-        const maskSubpaths = clip.subpaths;
-        const maskFillRule = clip.fillRule;
-        pendingMasks.push(() =>
-          emitSvgSubpaths(
-            sb,
-            {
-              subpaths: [],
-              fill: "#ffffff",
-              fillRule: maskFillRule,
-              stroke: null,
-              strokeLineCap: "butt",
-              strokeLineJoin: "miter",
-              strokeDasharray: null,
-              strokeWidth: 0,
-              clipChain: [],
-              effectGroup: null,
-              filterOutside: false,
-              opacity: undefined,
-              blendMode: undefined,
-              effects: [],
-            },
-            maskSubpaths,
-            maskFrame,
-            maskMinX,
-            maskMinY,
-            `${svgNode.name} Mask`,
-            { mask: true, maskType: "ALPHA" }
-          )
+        // Figma masks sit BELOW the content they clip, so the mask vector
+        // is emitted first, before the shapes.
+        emitSvgSubpaths(
+          sb,
+          {
+            subpaths: [],
+            fill: "#ffffff",
+            fillRule: clip.fillRule,
+            stroke: null,
+            strokeLineCap: "butt",
+            strokeLineJoin: "miter",
+            strokeDasharray: null,
+            strokeWidth: 0,
+            clipChain: [],
+            effectGroup: null,
+            filterOutside: false,
+            opacity: undefined,
+            blendMode: undefined,
+            effects: [],
+          },
+          clip.subpaths,
+          maskFrame,
+          bounds.minX,
+          bounds.minY,
+          `${svgNode.name} Mask`,
+          { mask: true, maskType: "ALPHA" }
         );
         container = maskFrame;
         x = bounds.minX;
@@ -1728,15 +1720,7 @@ function emitSvg(
         h = height;
       }
     }
-    const emitMasks =
-      pendingMasks.length > 0
-        ? () => {
-            for (const emit of pendingMasks) {
-              emit();
-            }
-          }
-        : undefined;
-    return { guid: container, x, y, w, h, emitMasks };
+    return { guid: container, x, y, w, h };
   };
 
   // Contiguous runs share a container (+ filter wrapper); each run gets fresh
@@ -1763,7 +1747,6 @@ function emitSvg(
     let container: Guid;
     let originX: number;
     let originY: number;
-    let emitMasks: (() => void) | undefined;
     if (group && chain.length === 0) {
       // No clip containers: one wrapper carries filter, opacity, and blend.
       container = sb.addFrame({
@@ -1808,7 +1791,6 @@ function emitSvg(
       container = built.guid;
       originX = built.x;
       originY = built.y;
-      emitMasks = built.emitMasks;
       const innerEffects = group && !first.filterOutside ? group.effects : [];
       if (innerEffects.length > 0) {
         container = sb.addFrame({
@@ -1839,7 +1821,6 @@ function emitSvg(
         `${svgNode.name} Shape${suffix}`
       );
     }
-    emitMasks?.();
     i = j;
   }
 }
