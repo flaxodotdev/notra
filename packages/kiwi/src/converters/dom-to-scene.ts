@@ -1545,6 +1545,8 @@ function extractLayout(node: Node): LayoutNode | null {
       shapes,
       clips: [...resolvedClips.values()],
       effectGroups,
+      clipsContent:
+        (style?.getPropertyValue("overflow") || "").trim() !== "visible",
       opacity: svgOpacity,
       blendMode: svgBlendMode,
       effects: svgElementEffects(svg, style),
@@ -1628,6 +1630,7 @@ function emitSvg(
     width: svgNode.width,
     height: svgNode.height,
     fill,
+    clipsContent: svgNode.clipsContent,
     opacity: svgNode.opacity,
     blendMode: svgNode.blendMode,
     effects: svgNode.effects.length > 0 ? svgNode.effects : undefined,

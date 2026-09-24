@@ -97,6 +97,8 @@ export interface SvgInfo {
   shapes: SvgShape[];
   clips: SvgClip[];
   effectGroups: SvgEffectGroup[];
+  /** Mirror the SVG viewport: clip overflowing content unless overflow is visible. */
+  clipsContent: boolean;
   opacity: number | undefined;
   blendMode: string | undefined;
   effects: FigmaEffect[];
