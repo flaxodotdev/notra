@@ -922,6 +922,26 @@ export const GEO_TRAFFIC_GROUPS_BY_ENGINE: Partial<
     icon: "firecrawlagent",
   },
   parallel: { key: "parallel", label: "Parallel", icon: "shapbot" },
+  cloudflare: {
+    key: "cloudflare",
+    label: "Cloudflare",
+    icon: "cloudflare-autorag",
+  },
+  liner: { key: "liner", label: "Liner", icon: "linerbot" },
+  diffbot: { key: "diffbot", label: "Diffbot", icon: "diffbot" },
+  timpi: { key: "timpi", label: "Timpi", icon: "timpibot" },
+  devin: { key: "devin", label: "Devin", icon: "devin" },
+  cline: { key: "cline", label: "Cline", icon: "cline" },
+  mozilla: { key: "mozilla", label: "Mozilla", icon: "mozilla tabstack" },
+  kagi: { key: "kagi", label: "Kagi", icon: "kagi-fetcher" },
+  tavily: { key: "tavily", label: "Tavily", icon: "tavilybot" },
+  tencent: { key: "tencent", label: "Tencent", icon: "tencent" },
+  xiaomi: { key: "xiaomi", label: "Xiaomi", icon: "xiaomi" },
+  youcom: { key: "youcom", label: "You.com", icon: "youbot" },
+  kimi: { key: "kimi", label: "Kimi", icon: "kimi-searchbot" },
+  zai: { key: "zai", label: "Z.ai", icon: "chatglm-spider" },
+  huawei: { key: "huawei", label: "Huawei", icon: "pangubot" },
+  manus: { key: "manus", label: "Manus", icon: "manus-user" },
 };
 
 export const GEO_TRAFFIC_TREND_CRAWLER_KEY = "crawler";
