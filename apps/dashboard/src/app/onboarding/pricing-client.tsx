@@ -23,6 +23,7 @@ import {
 import { trackEvent } from "@/lib/analytics/posthog-client";
 import { attachPlanWithAddons } from "@/lib/billing/attach-plan";
 import { useBillingCustomer } from "@/lib/hooks/use-billing-customer";
+import { skipOnboarding } from "@/lib/onboarding/skip";
 import type { BillingPlanGroup } from "@/types/billing/plan";
 import type { PricingClientProps } from "@/types/onboarding";
 import {
@@ -35,7 +36,11 @@ import {
   zdrAddonToggle,
 } from "@/utils/billing-plans";
 
-export function PricingClient({ slug, progressHrefs }: PricingClientProps) {
+export function PricingClient({
+  canSkipOnboarding,
+  slug,
+  progressHrefs,
+}: PricingClientProps) {
   const { data: plans, isLoading: plansLoading } = useListPlans();
   const { attach, multiAttach } = useBillingCustomer();
   const [isYearly, setIsYearly] = useState(false);
@@ -218,6 +223,19 @@ export function PricingClient({ slug, progressHrefs }: PricingClientProps) {
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
           {planGroups.map(renderPlanCard)}
         </div>
+      )}
+      {canSkipOnboarding && (
+        <form
+          action={skipOnboarding.bind(null, slug, ONBOARDING_STEPS.PRICING)}
+          className="mt-8 flex justify-center"
+        >
+          <button
+            className="text-muted-foreground hover:text-foreground cursor-pointer px-3 py-2 text-sm hover:underline"
+            type="submit"
+          >
+            Skip onboarding
+          </button>
+        </form>
       )}
     </div>
   );

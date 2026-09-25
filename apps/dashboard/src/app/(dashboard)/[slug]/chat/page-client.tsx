@@ -20,7 +20,6 @@ import {
   MessageContent,
   MessageResponse,
 } from "@notra/ui/components/ai-elements/message";
-import { BrailleLoader } from "@notra/ui/components/shared/braille-loader";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -45,7 +44,7 @@ import {
 import { LazyMotion, m, useReducedMotion } from "motion/react";
 import { nanoid } from "nanoid";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { parseAsString, useQueryState } from "nuqs";
 import {
   Children,
@@ -61,6 +60,8 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { ChatActivityStatus } from "@/components/ai/chat-activity-status";
+import { ChatAssistantParts } from "@/components/ai/chat-assistant-parts";
 import { ChatReasoningBlock } from "@/components/ai/chat-reasoning-block";
 import { ChatToolBlock } from "@/components/ai/chat-tool-block";
 import { getMcpToolServerId } from "@/components/ai/chat-tool-block/mcp/utils";
@@ -83,6 +84,10 @@ import {
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { CHAT_ACTIVE_STREAM_POLL_INTERVAL_MS } from "@/constants/chat-active-stream";
 import { MAX_VISIBLE_CHAT_IMAGES } from "@/constants/chat-images";
+import {
+  AVAILABLE_MODELS,
+  ZDR_AVAILABLE_MODELS,
+} from "@/constants/chat-models";
 import { TOOL_TIMER_THRESHOLD_SECONDS } from "@/constants/chat-tool-timer";
 import { INTEGRATION_REFERENCE_TOKEN_SPLIT_REGEX } from "@/constants/integration-reference";
 import { MIRROR_WORKING_TIMEOUT_MS } from "@/constants/slack-mirror";
@@ -97,11 +102,13 @@ import {
 } from "@/lib/chat/slack-relay";
 import { createStandaloneChatTransport } from "@/lib/chat/standalone-chat-transport";
 import { useActiveProject } from "@/lib/hooks/use-active-project";
+import { useChatActivityTimer } from "@/lib/hooks/use-chat-activity-timer";
 import {
   reconcileCreatedChatTitle,
   useChatSessionMutations,
 } from "@/lib/hooks/use-chat-sessions";
 import { useElapsedSeconds } from "@/lib/hooks/use-elapsed-seconds";
+import { useHasZdrEntitlement } from "@/lib/hooks/use-plan";
 import { useSlackMirrorStream } from "@/lib/hooks/use-slack-mirror-stream";
 import { getMcpIconUrls } from "@/lib/integrations/mcp";
 import { dashboardOrpc } from "@/lib/orpc/query";
@@ -147,6 +154,7 @@ import {
   resetNewChatClientState,
   updateWasStoppedByUser,
 } from "@/utils/chat-state";
+import { isContentEditorStandaloneTool } from "@/utils/content-editor-standalone-tool";
 import { formatLongDate, getGreeting } from "@/utils/dashboard-greeting";
 import { formatElapsedSeconds } from "@/utils/format-elapsed-seconds";
 import {
@@ -202,7 +210,7 @@ function CreateToolPendingIndicator({
 
   return (
     <div className="text-muted-foreground flex items-center gap-2 text-xs">
-      <BrailleLoader className="text-sm" label="Thinking" />
+      <span>Working</span>
       {elapsedSeconds >= TOOL_TIMER_THRESHOLD_SECONDS && (
         <span className="text-muted-foreground/60 shrink-0 text-xs tabular-nums">
           {formatElapsedSeconds(elapsedSeconds)}
@@ -421,6 +429,10 @@ function StandaloneChatPageClient({
   const organizationId = organization?.id ?? "";
   const { projectId: activeProjectId, isResolved: isProjectResolved } =
     useActiveProject();
+  const { canUseNonZdr } = useHasZdrEntitlement();
+  const availableModels = canUseNonZdr
+    ? AVAILABLE_MODELS
+    : ZDR_AVAILABLE_MODELS;
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
   const { insertPendingChatSession, removePendingChatSession } =
@@ -504,6 +516,12 @@ function StandaloneChatPageClient({
   const [selectedModel, setSelectedModel] = useState(
     DEFAULT_CHAT_PREFERENCES.model
   );
+  const effectiveSelectedModel =
+    !canUseNonZdr &&
+    (selectedModel === "openai/gpt-6-sol" ||
+      selectedModel === "openai/gpt-6-luna")
+      ? "auto"
+      : selectedModel;
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(
     DEFAULT_CHAT_PREFERENCES.thinkingLevel
   );
@@ -550,7 +568,7 @@ function StandaloneChatPageClient({
   useEffect(() => {
     contextRef.current = context;
     hasCustomizedContextRef.current = hasCustomizedContext;
-    selectedModelRef.current = selectedModel;
+    selectedModelRef.current = effectiveSelectedModel;
     thinkingLevelRef.current = thinkingLevel;
     organizationIdRef.current = organizationId;
     activeProjectIdRef.current = activeProjectId;
@@ -562,7 +580,7 @@ function StandaloneChatPageClient({
     hasCustomizedContext,
     initialChatId,
     organizationId,
-    selectedModel,
+    effectiveSelectedModel,
     thinkingLevel,
   ]);
 
@@ -997,10 +1015,18 @@ function StandaloneChatPageClient({
   }, [chatHistoryData, setMessages]);
 
   const hasUpdatedUrlRef = useRef(false);
+  const pathname = usePathname();
   const previousInitialChatIdRef = useRef(initialChatId);
 
   useEffect(() => {
-    if (previousInitialChatIdRef.current === initialChatId) {
+    const returnedToNewChat =
+      !initialChatId &&
+      hasUpdatedUrlRef.current &&
+      pathname === `/${organizationSlug}/chat`;
+    if (
+      previousInitialChatIdRef.current === initialChatId &&
+      !returnedToNewChat
+    ) {
       return;
     }
     previousInitialChatIdRef.current = initialChatId;
@@ -1016,6 +1042,7 @@ function StandaloneChatPageClient({
     }
 
     queuedMessagesRef.current = [];
+    hasPendingChatNavigationRef.current = false;
     resetNewChatClientState({
       hasUpdatedUrlRef,
       setChatError,
@@ -1028,7 +1055,7 @@ function StandaloneChatPageClient({
       setWasStoppedByUser,
       wasStoppedByUserRef,
     });
-  }, [initialChatId]);
+  }, [initialChatId, organizationSlug, pathname]);
 
   const draftStorageKey = localStorageKeys.chatDraft(
     initialChatId ?? `new:${organizationSlug}`
@@ -1088,6 +1115,11 @@ function StandaloneChatPageClient({
       isChatHistoryPending ||
       pendingHistoryMessages > 0);
   const isLoading = status === "streaming" || status === "submitted";
+  const activitySeconds = useChatActivityTimer(
+    isLoading || isMirrorWorking,
+    stableChatId,
+    messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : undefined
+  );
   const isPendingAutoSubmit =
     !initialChatId && Boolean(initialQuery?.trim()) && messages.length === 0;
   const isProjectScopePending = !initialChatId && !isProjectResolved;
@@ -2073,15 +2105,7 @@ function StandaloneChatPageClient({
         return null;
       }
       const reasoningKey = `${messageId}-reasoning-${index}`;
-      const reasoningState = part.state as "streaming" | "done" | undefined;
-      return (
-        <ChatReasoningBlock
-          isStreaming={isLoading && reasoningState === "streaming"}
-          key={reasoningKey}
-        >
-          {text}
-        </ChatReasoningBlock>
-      );
+      return <ChatReasoningBlock key={reasoningKey}>{text}</ChatReasoningBlock>;
     }
 
     if (isToolUIPart(part)) {
@@ -2467,6 +2491,7 @@ function StandaloneChatPageClient({
               <ProjectScopeLoadingInput />
             ) : (
               <ChatInputAdvanced
+                availableModels={availableModels}
                 authorsById={messageAuthorsById}
                 context={context}
                 draftStorageKey={draftStorageKey}
@@ -2474,7 +2499,7 @@ function StandaloneChatPageClient({
                 initialValue={initialQuery ?? undefined}
                 isLoading={isLoading}
                 isStopping={isStopping}
-                model={selectedModel}
+                model={effectiveSelectedModel}
                 onAddContext={handleAddContext}
                 onClearError={handleClearError}
                 onEditQueued={handleEditQueued}
@@ -2529,9 +2554,15 @@ function StandaloneChatPageClient({
     lastMessage != null &&
     (lastMessage.role === "user" ||
       lastAssistantHasNoVisibleContent ||
-      isAwaitingAssistantContinuation);
-  const thinkingIndicatorLabel =
-    lastMessage?.role === "user" ? "Getting Started" : "Working";
+      (isAwaitingAssistantContinuation &&
+        !lastMessage.parts.some(
+          (part) =>
+            part.type === "reasoning" ||
+            (isToolUIPart(part) &&
+              !isContentEditorStandaloneTool(part) &&
+              (part.type === "dynamic-tool" ||
+                (!isCreateTool(part.type) && part.type !== "tool-createImage")))
+        )));
   const visibleMessages =
     showThinkingIndicator && lastAssistantHasNoVisibleContent
       ? messages.slice(0, -1)
@@ -2544,12 +2575,7 @@ function StandaloneChatPageClient({
           <MessageScrollerProvider autoScroll>
             <MessageScroller className="min-h-0 flex-1">
               <MessageScrollerViewport className="min-w-0 overflow-x-hidden">
-                <MessageScrollerContent
-                  className={cn(
-                    "gap-4 px-4 pt-6 pb-6",
-                    isFirstMessageTransition && "chat-messages-fade-in"
-                  )}
-                >
+                <MessageScrollerContent className="gap-4 px-4 pt-6 pb-6">
                   {(() => {
                     const branchPointIndex = branchSwitchSignal
                       ? visibleMessages.findIndex(
@@ -2559,6 +2585,11 @@ function StandaloneChatPageClient({
                     const lastUserMessageId = [...visibleMessages]
                       .reverse()
                       .find((m) => m.role === "user")?.id;
+                    const lastVisibleMessage = visibleMessages.at(-1);
+                    const lastAssistantMessageId =
+                      lastVisibleMessage?.role === "assistant"
+                        ? lastVisibleMessage.id
+                        : undefined;
                     return visibleMessages.map((message, messageIndex) => {
                       const isUser = message.role === "user";
                       const isEditing =
@@ -2666,13 +2697,40 @@ function StandaloneChatPageClient({
                               </m.div>
                             ) : (
                               <MessageContent>
-                                {message.parts.map((part, index) =>
-                                  renderPart(part, message.id, index)
-                                )}
+                                <ChatAssistantParts
+                                  durationMs={
+                                    message.metadata?.generationDurationMs
+                                  }
+                                  elapsedSeconds={
+                                    message.id === lastMessage?.id
+                                      ? activitySeconds
+                                      : undefined
+                                  }
+                                  isLoading={
+                                    (isLoading || isMirrorWorking) &&
+                                    message.id === lastAssistantMessageId
+                                  }
+                                  isStandaloneTool={(part) =>
+                                    isContentEditorStandaloneTool(part) ||
+                                    (isToolUIPart(part) &&
+                                      part.type !== "dynamic-tool" &&
+                                      (isCreateTool(part.type) ||
+                                        part.type === "tool-createImage"))
+                                  }
+                                  messageId={message.id}
+                                  parts={message.parts}
+                                  renderStandalone={(part, index) =>
+                                    renderPart(part, message.id, index)
+                                  }
+                                  renderTool={(part, index) =>
+                                    renderPart(part, message.id, index)
+                                  }
+                                />
                               </MessageContent>
                             )}
                             {isUser && !isSlackMirrored && (
                               <UserMessageActions
+                                availableModels={availableModels}
                                 branchIndex={
                                   branchTotal > 1 ? branchIdx : undefined
                                 }
@@ -2742,12 +2800,16 @@ function StandaloneChatPageClient({
                     <div className="mx-auto w-full max-w-2xl">
                       <Message from="assistant">
                         <MessageContent>
-                          <BrailleLoader
-                            className="text-sm"
-                            label={
-                              isStopping ? "Stopping" : thinkingIndicatorLabel
-                            }
-                          />
+                          <span
+                            className="text-muted-foreground flex items-center gap-2 text-sm leading-5"
+                            role="status"
+                          >
+                            <ChatActivityStatus
+                              active={!isStopping}
+                              label={isStopping ? "Stopping" : "Thinking"}
+                              seconds={activitySeconds ?? 0}
+                            />
+                          </span>
                         </MessageContent>
                       </Message>
                     </div>
@@ -2783,6 +2845,7 @@ function StandaloneChatPageClient({
                 <ProjectScopeLoadingInput />
               ) : (
                 <ChatInputAdvanced
+                  availableModels={availableModels}
                   authorsById={messageAuthorsById}
                   context={context}
                   draftStorageKey={draftStorageKey}
@@ -2790,7 +2853,7 @@ function StandaloneChatPageClient({
                   initialValue={initialQuery ?? undefined}
                   isLoading={isLoading}
                   isStopping={isStopping}
-                  model={selectedModel}
+                  model={effectiveSelectedModel}
                   onAddContext={handleAddContext}
                   onClearError={handleClearError}
                   onEditQueued={handleEditQueued}

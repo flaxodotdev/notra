@@ -1,5 +1,7 @@
 "use client";
 
+import { Files01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { GeoJourneyPageStats } from "@notra/geo-core/types/geo";
 import { trafficVisitDelta } from "@notra/geo-core/utils/ai-traffic";
 import { TruncateWithTooltip } from "@notra/ui/components/shared/truncate-with-tooltip";
@@ -63,7 +65,15 @@ export function JourneyPathsCard({
       caption={sampled ? `${pageNoun} (top ${pages.length} shown)` : pageNoun}
       delta={trafficVisitDelta(totalPages, previousTotalPages)}
       emptyMessage={
-        failed ? "Could not load fetched pages" : "No fetched pages yet"
+        failed ? "Could not load fetched pages" : "No pages fetched yet"
+      }
+      emptyDescription={
+        failed ? undefined : "Pages fetched by AI agents will appear here."
+      }
+      emptyMedia={
+        failed ? undefined : (
+          <HugeiconsIcon icon={Files01Icon} className="size-5" />
+        )
       }
       emptySeed="geo-journey-paths"
       eyebrow="Fetched pages"

@@ -1,5 +1,7 @@
 "use client";
 
+import { Route01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { GEO_JOURNEY_DEEP_CRAWL_PAGES } from "@notra/geo-core/constants/geo";
 import type { GeoJourneySourceStats } from "@notra/geo-core/types/geo";
 import {
@@ -69,9 +71,15 @@ export function JourneyOverviewCard({
       caption={totals.journeys === 1 ? "journey" : "journeys"}
       delta={trafficVisitDelta(totals.journeys, totals.previousJourneys)}
       emptyMessage={
-        failed
-          ? "Could not load agent journeys"
-          : "No agent journeys captured yet"
+        failed ? "Could not load agent journeys" : "No journeys yet"
+      }
+      emptyDescription={
+        failed ? undefined : "See the paths AI agents take through your site."
+      }
+      emptyMedia={
+        failed ? undefined : (
+          <HugeiconsIcon icon={Route01Icon} className="size-5" />
+        )
       }
       emptySeed="geo-journey-overview"
       eyebrow="Journeys"

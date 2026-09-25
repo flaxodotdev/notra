@@ -7,16 +7,31 @@ import { standaloneChatContextSchema } from "./standalone-chat";
 
 export const chatModelSchema = z.enum([
   "auto",
+  "anthropic/claude-opus-5.5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
   "anthropic/claude-sonnet-5",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-haiku-4.5",
-  "openai/gpt-5.4",
+  "openai/gpt-6-sol",
+  "openai/gpt-6-luna",
+  "openai/gpt-5.6-sol",
   "openai/gpt-5.5",
+  "openai/gpt-5.4",
 ]);
 
 export const thinkingLevelSchema = z.enum(["off", "low", "medium", "high"]);
+
+export const conversationSelectionSchema = z.object({
+  model: chatModelSchema.exclude(["auto"]).or(z.literal("openai/gpt-5.4-mini")),
+  thinkingLevel: thinkingLevelSchema.optional(),
+});
+
+export const chatToolApprovalResponseSchema = z.object({
+  id: z.string().min(1).max(500),
+  approved: z.boolean(),
+  reason: z.string().max(2000).optional(),
+});
 
 export const chatIdSchema = z.uuid();
 
@@ -56,7 +71,7 @@ export const slackRelayMetadataSchema = z.object({
 export const chatMessageMetadataSchema = z.object({
   chatId: z.string().min(1).optional(),
   authorUserId: z.string().min(1).max(200).optional(),
-  model: chatModelSchema.optional(),
+  model: z.string().min(1).optional(),
   requestedModel: chatModelSchema.optional(),
   thinkingLevel: thinkingLevelSchema.optional(),
   requestedThinkingLevel: thinkingLevelSchema.optional(),

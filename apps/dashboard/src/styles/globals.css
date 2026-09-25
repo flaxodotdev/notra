@@ -83,6 +83,40 @@
   }
 }
 
+@keyframes sentiment-analysis-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sentiment-analysis-progress {
+    animation: sentiment-analysis-progress 24s cubic-bezier(0.23, 1, 0.32, 1)
+      forwards;
+  }
+
+  .sentiment-results-table[data-ready="true"] tbody tr {
+    transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .sentiment-state-copy {
+    transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .sentiment-results-table[data-ready="true"] tbody tr {
+      opacity: 0.55;
+    }
+
+    .sentiment-state-copy {
+      opacity: 0.55;
+    }
+  }
+}
+
 @keyframes thinking-letter {
   0%,
   100% {
@@ -110,22 +144,6 @@
   animation: chat-input-slide-down 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes chat-messages-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.chat-messages-fade-in {
-  animation: chat-messages-fade-in 360ms ease-out both;
-  animation-delay: 120ms;
-}
-
 @keyframes chat-branch-fade-in {
   from {
     opacity: 0;
@@ -139,4 +157,33 @@
 
 .chat-branch-fade-in {
   animation: chat-branch-fade-in 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input-slide-down,
+  .chat-branch-fade-in {
+    animation: none;
+  }
+}
+
+/* Pierre diffs inherit these into Shadow DOM. */
+.chat-document-diff {
+  --diffs-font-family: var(--font-mono);
+  --diffs-header-font-family: var(--font-sans);
+  --diffs-font-size: 0.75rem;
+  --diffs-line-height: 1.25rem;
+  --diffs-light-bg: var(--background);
+  --diffs-dark-bg: var(--background);
+  --diffs-light: var(--foreground);
+  --diffs-dark: var(--foreground);
+  --diffs-added-light: var(--success);
+  --diffs-added-dark: var(--success);
+  --diffs-deleted-light: var(--destructive);
+  --diffs-deleted-dark: var(--destructive);
+  --diffs-modified-light: var(--info);
+  --diffs-modified-dark: var(--info);
+  --diffs-fg-number-override: var(--muted-foreground);
+  --diffs-bg-separator-override: var(--muted);
+  --diffs-token-light-bg: transparent;
+  --diffs-token-dark-bg: transparent;
 }

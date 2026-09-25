@@ -1,5 +1,5 @@
 {
-  "id": "630ea451-7bb5-4751-8386-b866effdf283",
+  "id": "9acac3f8-f995-4702-b66a-ad213149ef4b",
   "prevId": "b4bf04a4-bad3-4b39-88cd-8c9708cca859",
   "version": "7",
   "dialect": "postgresql",
@@ -2873,36 +2873,6 @@
         "last_generation_error": {
           "name": "last_generation_error",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_filename": {
-          "name": "source_pdf_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_storage_key": {
-          "name": "source_pdf_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_url": {
-          "name": "source_pdf_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_text": {
-          "name": "source_pdf_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_uploaded_at": {
-          "name": "source_pdf_uploaded_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -7558,6 +7528,12 @@
         },
         "scan_lease_until": {
           "name": "scan_lease_until",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scan_first_failed_at": {
+          "name": "scan_first_failed_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
