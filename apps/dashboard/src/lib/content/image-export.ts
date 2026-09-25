@@ -103,12 +103,17 @@ export function preloadImageExportCopy(
 
 function createExportElement(html: string): HTMLDivElement {
   const container = document.createElement("div");
+  // The container lives in this page's DOM, so it would inherit the page's
+  // cascade (text color, color-scheme, fonts). Reset to the initial values a
+  // fresh document has, so exported content styles only itself.
+  container.style.all = "initial";
   container.style.position = "fixed";
   container.style.left = "-10000px";
   container.style.top = "0";
   container.style.width = "1200px";
   container.style.height = "630px";
   container.style.overflow = "hidden";
+  container.style.display = "block";
   container.style.pointerEvents = "none";
 
   container.replaceChildren(sanitizeExportHtml(html));
@@ -190,7 +195,7 @@ export async function copyImageAsFigma(
 
 export async function copyImageAsPaper(
   element: HTMLElement | null,
-  label?: string,
+  _label?: string,
   html?: string | null,
   htmlUrl?: string | null
 ): Promise<void> {
@@ -206,7 +211,7 @@ export async function copyImageAsPaper(
       html,
       htmlUrl,
       async (exportElement) => {
-        await copyAsPaper(exportElement, { label, name: label });
+        await copyAsPaper(exportElement);
       }
     );
     if (!copied) {

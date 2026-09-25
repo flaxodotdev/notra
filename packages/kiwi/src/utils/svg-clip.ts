@@ -482,95 +482,27 @@ export function withWinding(sub: PathSubpath, positive: boolean): PathSubpath {
 }
 
 /**
- * Intersect a closed polygon subpath with a convex clip polygon
- * (Sutherland–Hodgman, edge by edge). Returns null when nothing survives.
- * The clip polygon must be convex and wound consistently; its orientation
- * decides the inside of each edge.
- *
- * The inside test is scale-relative: the signed distance from the edge
- * (cross / edge length) is compared against 1e-9 of the clip's extent, so
- * small-unit SVGs clip as correctly as large ones.
+ * Local transform from a clip/mask container's user space to a descendant
+ * child (accumulates `transform` attributes from container down to child).
+ * Ancestors above the container (defs etc.) are intentionally excluded:
+ * userSpaceOnUse clip content lives in the referencing element's user space.
  */
-export function clipSubpathToPolygon(
-  sub: PathSubpath,
-  clip: PathPoint[]
-): PathSubpath | null {
-  if (!sub.closed || sub.points.length < 3 || clip.length < 3) {
-    return null;
+export function clipLocalMatrix(child: Element, container: Element): Affine {
+  const chain: Element[] = [];
+  let node: Element | null = child;
+  while (node && node !== container) {
+    chain.unshift(node);
+    node = node.parentElement;
   }
-  const clipArea = signedSubpathArea({ closed: true, points: clip });
-  if (clipArea === 0) {
-    return null;
+  chain.unshift(container);
+  let acc: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  for (const el of chain) {
+    acc = multiplyAffine(
+      acc,
+      parseSvgTransformAttr(el.getAttribute("transform"))
+    );
   }
-  const positive = clipArea > 0;
-  const scale = polygonExtent(clip);
-  // 1e-9 of the clip extent, in distance units (cross product is area-like,
-  // so divide by edge length before comparing).
-  const eps = 1e-9 * Math.max(scale, 1e-12);
-  const inside = (a: PathPoint, b: PathPoint, p: PathPoint): boolean => {
-    const edgeLen = Math.hypot(b.x - a.x, b.y - a.y);
-    if (!(edgeLen > 0)) {
-      return true;
-    }
-    const dist = turnArea(a, b, p) / edgeLen;
-    return positive ? dist >= -eps : dist <= eps;
-  };
-  let pts: PathPoint[] = sub.points.map((p) => ({ x: p.x, y: p.y }));
-  for (let e = 0; e < clip.length; e += 1) {
-    const a = clip[e];
-    const b = clip[(e + 1) % clip.length];
-    if (!a || !b) {
-      return null;
-    }
-    const next: PathPoint[] = [];
-    for (let i = 0; i < pts.length; i += 1) {
-      const cur = pts[i];
-      const prev = pts[(i + pts.length - 1) % pts.length];
-      if (!cur || !prev) {
-        continue;
-      }
-      const curIn = inside(a, b, cur);
-      const prevIn = inside(a, b, prev);
-      if (curIn) {
-        if (!prevIn) {
-          const t = intersectSegmentEdge(prev, cur, a, b);
-          if (t) {
-            next.push(t);
-          }
-        }
-        next.push(cur);
-      } else if (prevIn) {
-        const t = intersectSegmentEdge(prev, cur, a, b);
-        if (t) {
-          next.push(t);
-        }
-      }
-    }
-    pts = next;
-    if (pts.length < 3) {
-      return null;
-    }
-  }
-  return { closed: true, points: pts };
-}
-
-/** Intersection of segment p→q with the infinite line through edge a→b. */
-function intersectSegmentEdge(
-  p: PathPoint,
-  q: PathPoint,
-  a: PathPoint,
-  b: PathPoint
-): PathPoint | null {
-  const dx = q.x - p.x;
-  const dy = q.y - p.y;
-  const ex = b.x - a.x;
-  const ey = b.y - a.y;
-  const denom = dx * ey - dy * ex;
-  if (Math.abs(denom) < 1e-12) {
-    return null;
-  }
-  const t = ((a.x - p.x) * ey - (a.y - p.y) * ex) / denom;
-  return { x: p.x + t * dx, y: p.y + t * dy };
+  return acc;
 }
 
 /**

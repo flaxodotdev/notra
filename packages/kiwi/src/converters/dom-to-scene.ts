@@ -37,6 +37,7 @@ import { normalizeCssColorWithContext } from "../utils/css-color";
 import {
   type Affine,
   applyAffine,
+  clipLocalMatrix,
   clipSubpathToRect,
   isConvexSubpath,
   multiplyAffine,
@@ -251,30 +252,6 @@ function svgRootScreenAffine(svg: SVGSVGElement): Affine {
     // fall through to identity (detached DOM in tests)
   }
   return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-}
-
-/**
- * Local transform from a clip/mask container's user space to a descendant
- * child (accumulates `transform` attributes from container down to child).
- * Ancestors above the container (defs etc.) are intentionally excluded:
- * userSpaceOnUse clip content lives in the referencing element's user space.
- */
-function clipLocalMatrix(child: Element, container: Element): Affine {
-  const chain: Element[] = [];
-  let node: Element | null = child;
-  while (node && node !== container) {
-    chain.unshift(node);
-    node = node.parentElement;
-  }
-  chain.unshift(container);
-  let acc: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-  for (const el of chain) {
-    acc = multiplyAffine(
-      acc,
-      parseSvgTransformAttr(el.getAttribute("transform"))
-    );
-  }
-  return acc;
 }
 
 // clipPath/mask children are never rendered, so getScreenCTM() is null for

@@ -10,6 +10,10 @@ const FONT_RENDER_DELAY_MS = 50;
 
 function createExportElement(html: string): HTMLDivElement {
   const container = document.createElement("div");
+  // The container lives in this page's DOM, so it would inherit the page's
+  // cascade (text color, color-scheme, fonts). Reset to the initial values a
+  // fresh document has, so exported content styles only itself.
+  container.style.all = "initial";
   container.style.position = "fixed";
   container.style.left = "-10000px";
   container.style.top = "0";
@@ -75,9 +79,7 @@ export function copyHtmlAsFigma(
 
 export function copyHtmlAsPaper(
   html: string,
-  label: string
+  _label: string
 ): Promise<HtmlExportResult> {
-  return copyHtml(html, (element) =>
-    copyAsPaper(element, { label, name: label })
-  );
+  return copyHtml(html, (element) => copyAsPaper(element));
 }
