@@ -486,15 +486,25 @@ export function withWinding(sub: PathSubpath, positive: boolean): PathSubpath {
  * child (accumulates `transform` attributes from container down to child).
  * Ancestors above the container (defs etc.) are intentionally excluded:
  * userSpaceOnUse clip content lives in the referencing element's user space.
+ *
+ * Pass includeContainerTransform: false when the container is the root <svg>:
+ * its CTM already carries the root transform, so counting it here would apply
+ * it twice.
  */
-export function clipLocalMatrix(child: Element, container: Element): Affine {
+export function clipLocalMatrix(
+  child: Element,
+  container: Element,
+  includeContainerTransform = true
+): Affine {
   const chain: Element[] = [];
   let node: Element | null = child;
   while (node && node !== container) {
     chain.unshift(node);
     node = node.parentElement;
   }
-  chain.unshift(container);
+  if (includeContainerTransform) {
+    chain.unshift(container);
+  }
   let acc: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
   for (const el of chain) {
     acc = multiplyAffine(

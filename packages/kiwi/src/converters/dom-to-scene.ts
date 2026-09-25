@@ -588,7 +588,8 @@ function resolveClipKey(
   root: Affine,
   resolved: Map<string, SvgClip>
 ): string | null {
-  const refMatrix = clipLocalMatrix(ref, svg);
+  // root carries the root <svg> transform via getScreenCTM, so exclude it here.
+  const refMatrix = clipLocalMatrix(ref, svg, false);
   const key = `${source.id}|${refMatrixFingerprint(refMatrix)}`;
   if (resolved.has(key)) {
     return key;

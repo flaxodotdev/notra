@@ -57,23 +57,11 @@ function soleSvgChild(element: Element): SVGSVGElement | null {
   return hasText ? null : (only as SVGSVGElement);
 }
 
-function paperMarkup(element: HTMLElement): string {
-  const clone = element.cloneNode(true) as HTMLElement;
-  // The export element is parked offscreen; Paper lays the markup out itself.
-  clone.style.position = "";
-  clone.style.left = "";
-  clone.style.top = "";
-  clone.style.pointerEvents = "";
-  return clone.outerHTML;
-}
-
 export function buildPaperPasteHtml(
   element: HTMLElement,
   options: BuildPaperPasteHtmlOptions = {}
 ): string {
-  return paperMarkup(
-    paperRootElement(element, options.unwrapSingleChild ?? true)
-  );
+  return paperRootElement(element, options.unwrapSingleChild ?? true).outerHTML;
 }
 
 function supportsClipboardType(type: string): boolean {
@@ -93,7 +81,7 @@ export async function copyAsPaper(
   // when the SVG is the whole export; otherwise it carries the HTML.
   const markup = svg
     ? new XMLSerializer().serializeToString(svg)
-    : paperMarkup(root);
+    : root.outerHTML;
   const payload: Record<string, Blob> = {
     "text/html": new Blob([markup], { type: "text/html" }),
     "text/plain": new Blob([markup], { type: "text/plain" }),

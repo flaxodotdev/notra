@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   applyAffine,
+  clipLocalMatrix,
   multiplyAffine,
   normalizeBlendMode,
   parseClipRef,
@@ -159,6 +160,35 @@ describe("svg clip helpers (#386)", () => {
       parseSvgTransformAttr("scale(3)")
     );
     expect(applyAffine(m, { x: 1, y: 1 })).toEqual({ x: 8, y: 3 });
+  });
+
+  test("clipLocalMatrix keeps or drops the container transform on request", () => {
+    const node = (transform: string, parent: Element | null = null) =>
+      ({
+        getAttribute: (name: string) =>
+          name === "transform" ? transform : null,
+        parentElement: parent,
+      }) as unknown as Element;
+
+    // <svg transform="translate(100 0)"><g transform="translate(0 10)"><rect/>
+    const svg = node("translate(100 0)");
+    const group = node("translate(0 10)", svg);
+    const rect = node("", group);
+
+    // Container included: svg(100,0) * g(0,10).
+    expect(applyAffine(clipLocalMatrix(rect, svg), { x: 0, y: 0 })).toEqual({
+      x: 100,
+      y: 10,
+    });
+
+    // Excluded: only the intermediate g transform remains, because the root
+    // CTM already carries the svg transform.
+    expect(
+      applyAffine(clipLocalMatrix(rect, svg, false), { x: 0, y: 0 })
+    ).toEqual({ x: 0, y: 10 });
+    expect(
+      applyAffine(clipLocalMatrix(group, svg, false), { x: 0, y: 0 })
+    ).toEqual({ x: 0, y: 10 });
   });
 
   test("fixtures demonstrate clipped logos and masked fills", async () => {
