@@ -14,7 +14,6 @@ import {
   MessageContent,
   MessageResponse,
 } from "@notra/ui/components/ai-elements/message";
-import { BrailleLoader } from "@notra/ui/components/shared/braille-loader";
 import { Button } from "@notra/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -41,13 +40,17 @@ import {
 import { getToolName, isToolUIPart } from "ai";
 import { Fragment, type ReactNode, useState } from "react";
 
+import { ChatActivityStatus } from "@/components/ai/chat-activity-status";
+import { ChatAssistantParts } from "@/components/ai/chat-assistant-parts";
 import { ChatEmptyDither } from "@/components/ai/chat-empty-dither";
-import { ChatReasoningBlock } from "@/components/ai/chat-reasoning-block";
 import { ChatToolBlock } from "@/components/ai/chat-tool-block";
+import { isMcpToolName } from "@/components/ai/chat-tool-block/mcp/utils";
+import { AssistantMetadataHover } from "@/components/chat/assistant-metadata-hover";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview";
 import { ChatImageAttachment } from "@/components/chat/chat-image-attachment";
 import { ChatInputContextRow } from "@/components/chat/chat-input-context-row";
 import { useRightPanel } from "@/components/dashboard/right-panel-context";
+import { useChatActivityTimer } from "@/lib/hooks/use-chat-activity-timer";
 import { isImageMimeType } from "@/lib/upload/mime";
 import type {
   ContentChatActivityMessageProps,
@@ -62,6 +65,8 @@ import {
   hasContentChatAttachments,
 } from "@/utils/content-chat-attachments";
 import { getContentChatHistoryGroups } from "@/utils/content-chat-history";
+import { isContentEditorStandaloneTool } from "@/utils/content-editor-standalone-tool";
+import { parseChatMessageMetadata } from "@/utils/parse-chat-message-metadata";
 
 const ACTIVITY_MESSAGE_CLASSNAME =
   "translate-y-0 opacity-100 transition-[opacity,translate] duration-fast ease-emphasized starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none motion-reduce:starting:translate-y-0 motion-reduce:starting:opacity-100";
@@ -90,9 +95,56 @@ function ContentChatActivityFeed({
   );
 }
 
+function renderContentChatToolPart({
+  part,
+  organizationSlug,
+  onApproveTool,
+  onDenyTool,
+}: {
+  part: Parameters<typeof getToolName>[0];
+  organizationSlug?: string;
+  onApproveTool?: (approvalId: string) => void;
+  onDenyTool?: (approvalId: string) => void;
+}) {
+  const approvalId =
+    part.state === "approval-requested" ? part.approval?.id : undefined;
+  const toolName = getToolName(part);
+  const output =
+    part.state === "output-error" ? { error: part.errorText } : part.output;
+  const postId = parseCreatedPostId(output);
+  return (
+    <ChatToolBlock
+      editorHref={
+        organizationSlug && postId
+          ? `/${organizationSlug}/content/${postId}`
+          : undefined
+      }
+      input={part.input}
+      isMcp={isMcpToolName(toolName)}
+      key={part.toolCallId}
+      onApprove={
+        approvalId && onApproveTool
+          ? () => onApproveTool(approvalId)
+          : undefined
+      }
+      onDeny={
+        approvalId && onDenyTool ? () => onDenyTool(approvalId) : undefined
+      }
+      output={output}
+      state={part.state}
+      toolCallId={part.toolCallId}
+      toolMetadata={
+        part.type === "dynamic-tool" ? part.toolMetadata : undefined
+      }
+      toolName={toolName}
+    />
+  );
+}
+
 function ContentChatActivityMessage({
   message,
-  status,
+  isLoading,
+  elapsedSeconds,
   organizationSlug,
   onApproveTool,
   onDenyTool,
@@ -107,6 +159,10 @@ function ContentChatActivityMessage({
       ? getContentChatAttachments(message.metadata)
       : { selection: null, context: [] };
   const showAttachments = hasContentChatAttachments(attachments);
+  const assistantMetadata =
+    message.role === "assistant"
+      ? parseChatMessageMetadata(message.metadata)
+      : undefined;
   const imageParts =
     message.role === "user"
       ? message.parts.filter(
@@ -128,7 +184,10 @@ function ContentChatActivityMessage({
   const hasBubbleContent =
     fileParts.length > 0 ||
     message.parts.some((part) => {
-      if (part.type === "text" || part.type === "reasoning") {
+      if (part.type === "reasoning") {
+        return true;
+      }
+      if (part.type === "text") {
         return Boolean(part.text.trim());
       }
       return isToolUIPart(part);
@@ -175,96 +234,77 @@ function ContentChatActivityMessage({
         ) : null}
         {hasBubbleContent ? (
           <MessageContent>
-            {message.parts.map((part, index) => {
-              const key = `${message.id}-${index}`;
-
-              if (part.type === "file") {
-                return null;
-              }
-
-              if (part.type === "text") {
-                if (!part.text.trim()) {
-                  return null;
-                }
-                return <MessageResponse key={key}>{part.text}</MessageResponse>;
-              }
-
-              if (part.type === "reasoning") {
-                if (!part.text.trim()) {
-                  return null;
-                }
-                return (
-                  <ChatReasoningBlock
-                    isStreaming={
-                      status === "streaming" && part.state === "streaming"
-                    }
-                    key={key}
-                  >
-                    {part.text}
-                  </ChatReasoningBlock>
-                );
-              }
-
-              if (isToolUIPart(part)) {
-                const approvalId =
-                  part.state === "approval-requested"
-                    ? part.approval?.id
-                    : undefined;
-                const postId = parseCreatedPostId(part.output);
-                return (
-                  <ChatToolBlock
-                    editorHref={
-                      organizationSlug && postId
-                        ? `/${organizationSlug}/content/${postId}`
-                        : undefined
-                    }
-                    input={part.input}
-                    key={part.toolCallId}
-                    onApprove={
-                      approvalId && onApproveTool
-                        ? () => onApproveTool(approvalId)
-                        : undefined
-                    }
-                    onDeny={
-                      approvalId && onDenyTool
-                        ? () => onDenyTool(approvalId)
-                        : undefined
-                    }
-                    output={part.output}
-                    state={part.state}
-                    toolCallId={part.toolCallId}
-                    toolName={getToolName(part)}
-                  />
-                );
-              }
-
-              return null;
-            })}
-            {fileParts.length > 0 ? (
-              <div className="flex max-w-full flex-wrap justify-end gap-2">
-                {fileParts.map((part, index) => {
-                  const { url, mediaType, filename } =
-                    getChatFilePartFields(part);
-                  if (!isTrustedChatFileUrl(url)) {
+            {message.role === "assistant" ? (
+              <ChatAssistantParts
+                durationMs={assistantMetadata?.generationDurationMs}
+                elapsedSeconds={elapsedSeconds}
+                isLoading={isLoading}
+                isStandaloneTool={isContentEditorStandaloneTool}
+                messageId={message.id}
+                parts={message.parts}
+                renderStandalone={(part, index) => {
+                  if (part.type !== "text" || !part.text.trim()) {
                     return null;
                   }
                   return (
-                    <a
-                      className="border-border bg-muted/40 text-foreground hover:bg-accent my-1 inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs no-underline transition-colors"
-                      href={url}
-                      key={`${message.id}-file-${index}`}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      <span className="truncate">
-                        {filename ?? mediaType ?? "Attachment"}
-                      </span>
-                    </a>
+                    <MessageResponse key={`${message.id}-${index}`}>
+                      {part.text}
+                    </MessageResponse>
+                  );
+                }}
+                renderTool={(part) =>
+                  isToolUIPart(part)
+                    ? renderContentChatToolPart({
+                        part,
+                        organizationSlug,
+                        onApproveTool,
+                        onDenyTool,
+                      })
+                    : null
+                }
+              />
+            ) : (
+              <>
+                {message.parts.map((part, index) => {
+                  if (part.type !== "text" || !part.text.trim()) {
+                    return null;
+                  }
+                  return (
+                    <MessageResponse key={`${message.id}-${index}`}>
+                      {part.text}
+                    </MessageResponse>
                   );
                 })}
-              </div>
-            ) : null}
+                {fileParts.length > 0 ? (
+                  <div className="flex max-w-full flex-wrap justify-end gap-2">
+                    {fileParts.map((part, index) => {
+                      const { url, mediaType, filename } =
+                        getChatFilePartFields(part);
+                      if (!isTrustedChatFileUrl(url)) {
+                        return null;
+                      }
+                      return (
+                        <a
+                          className="border-border bg-muted/40 text-foreground hover:bg-accent my-1 inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs no-underline transition-colors"
+                          href={url}
+                          key={`${message.id}-file-${index}`}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          <span className="truncate">
+                            {filename ?? mediaType ?? "Attachment"}
+                          </span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </>
+            )}
           </MessageContent>
+        ) : null}
+        {message.role === "assistant" ? (
+          <AssistantMetadataHover metadata={assistantMetadata} />
         ) : null}
       </Message>
       <AttachmentPreviewDialog
@@ -486,12 +526,17 @@ export function ContentChatActivityPanel(props: ContentChatActivityPanelProps) {
   } = props;
   const isAgentBusy = status === "streaming" || status === "submitted";
   const lastMessage = messages.at(-1);
+  const activitySeconds = useChatActivityTimer(
+    isAgentBusy,
+    activeChatId ?? "",
+    lastMessage?.role === "assistant" ? lastMessage.id : undefined
+  );
   const lastAssistantHasNoVisibleContent =
     lastMessage?.role === "assistant" &&
     !lastMessage.parts.some(
       (part) =>
         (part.type === "text" && Boolean(part.text.trim())) ||
-        (part.type === "reasoning" && Boolean(part.text.trim())) ||
+        part.type === "reasoning" ||
         isToolUIPart(part)
     );
   const showThinkingIndicator =
@@ -504,6 +549,11 @@ export function ContentChatActivityPanel(props: ContentChatActivityPanelProps) {
   const lastUserMessageId = [...visibleMessages]
     .reverse()
     .find((message) => message.role === "user")?.id;
+  const lastVisibleMessage = visibleMessages.at(-1);
+  const lastAssistantMessageId =
+    lastVisibleMessage?.role === "assistant"
+      ? lastVisibleMessage.id
+      : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -521,11 +571,17 @@ export function ContentChatActivityPanel(props: ContentChatActivityPanelProps) {
                 scrollAnchor={message.id === lastUserMessageId}
               >
                 <ContentChatActivityMessage
+                  isLoading={
+                    status === "streaming" &&
+                    message.id === lastAssistantMessageId
+                  }
+                  elapsedSeconds={
+                    message.id === lastMessage?.id ? activitySeconds : undefined
+                  }
                   message={message}
                   onApproveTool={onApproveTool}
                   onDenyTool={onDenyTool}
                   organizationSlug={organizationSlug}
-                  status={status}
                 />
               </MessageScrollerItem>
             ))}
@@ -535,10 +591,12 @@ export function ContentChatActivityPanel(props: ContentChatActivityPanelProps) {
                 messageId="thinking"
                 style={{ contentVisibility: "visible" }}
               >
-                <BrailleLoader
-                  className="text-muted-foreground text-sm"
-                  label="Thinking"
-                />
+                <span
+                  className="text-muted-foreground flex items-center gap-2 text-sm leading-5"
+                  role="status"
+                >
+                  <ChatActivityStatus seconds={activitySeconds ?? 0} />
+                </span>
               </MessageScrollerItem>
             ) : null}
           </ContentChatActivityFeed>

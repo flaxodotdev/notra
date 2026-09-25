@@ -7,9 +7,15 @@ import type {
   OrchestrateResult,
 } from "@notra/ai/types/orchestration";
 import { normalizeMarkdownFileAttachments } from "@notra/ai/utils/message-attachments";
+import { resolveConversationRoute } from "@notra/ai/utils/resolve-conversation-route";
 import { summarizeRouteUsage } from "@notra/ai/utils/route-usage";
 import { buildTelemetryOptions } from "@notra/ai/utils/tcc";
-import { convertToModelMessages, isStepCount, streamText } from "ai";
+import {
+  convertToModelMessages,
+  isStepCount,
+  streamText,
+  type UIMessage,
+} from "ai";
 
 import {
   hasEnabledGitHubIntegration,
@@ -57,23 +63,39 @@ export async function orchestrateChat(
 
   const hasGitHub = hasEnabledGitHubIntegration(validatedIntegrations);
   const hasLinear = hasEnabledLinearIntegration(validatedIntegrations);
-  const userParts = messages.findLast(
-    (message) => message.role === "user"
-  )?.parts;
-  const decision = await routeMessage(
-    userParts?.find((part) => part.type === "text")?.text ?? "",
-    hasGitHub || hasLinear,
-    log,
-    userParts?.some((part) => part.type !== "text") ?? false,
-    telemetryMetadata
+  const hasIntegrationContext = hasGitHub || hasLinear;
+
+  const lastUserMessage = getLastUserMessage(messages);
+  const hasAttachments = lastUserMessageHasNonTextParts(messages);
+  const routedDecision = await resolveConversationRoute(
+    messages,
+    undefined,
+    async () => {
+      const decision = await routeMessage(
+        lastUserMessage,
+        hasIntegrationContext,
+        log,
+        hasAttachments,
+        telemetryMetadata
+      );
+      const auto = selectAutoModel(decision);
+      return {
+        model: auto.model,
+        thinkingLevel: auto.thinkingLevel,
+        complexity: decision.complexity,
+        requiresTools: true,
+        reasoning: decision.requiresTools
+          ? `auto → ${auto.model}: ${decision.reasoning}`
+          : `auto → ${auto.model}: ${decision.reasoning} (tools available by default)`,
+      };
+    }
   );
-  const auto = selectAutoModel(decision);
   const routingDecision = {
-    model: auto.model,
-    complexity: decision.complexity,
+    ...routedDecision,
     requiresTools: true,
-    reasoning: `auto → ${auto.model}: ${decision.reasoning}`,
-    thinkingLevel: auto.thinkingLevel,
+    reasoning: routedDecision.requiresTools
+      ? routedDecision.reasoning
+      : `${routedDecision.reasoning} (tools available by default)`,
   };
 
   const modelWithMemory = createModel(
@@ -116,11 +138,12 @@ export async function orchestrateChat(
   });
 
   const messagesForModel = normalizeMarkdownFileAttachments(messages);
+  let firstChunkFired = false;
 
   const thinkingProviderOptions = getThinkingProviderOptions(
     routingDecision.model,
     true,
-    routingDecision.thinkingLevel
+    routingDecision.thinkingLevel ?? "low"
   );
   const stream = streamText({
     model: modelWithMemory,
@@ -141,6 +164,15 @@ export async function orchestrateChat(
       }
     ),
     ...buildTelemetryOptions(telemetryMetadata),
+    onChunk({ chunk }) {
+      if (firstChunkFired) {
+        return;
+      }
+      if (chunk.type === "text-delta" || chunk.type === "reasoning-delta") {
+        firstChunkFired = true;
+        deps?.onFirstChunk?.();
+      }
+    },
     async onEnd({ usage, steps }) {
       await deps?.onUsage?.(
         usage,
@@ -158,4 +190,37 @@ export async function orchestrateChat(
   });
 
   return { stream, routingDecision };
+}
+
+function lastUserMessageHasNonTextParts(messages: UIMessage[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (!message || message.role !== "user") {
+      continue;
+    }
+    if (!Array.isArray(message.parts)) {
+      return false;
+    }
+    return message.parts.some((part) => part.type !== "text");
+  }
+  return false;
+}
+
+function getLastUserMessage(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (!message || message.role !== "user") {
+      continue;
+    }
+    const parts = message.parts;
+    if (!Array.isArray(parts)) {
+      continue;
+    }
+    for (const part of parts) {
+      if (part.type === "text") {
+        return part.text;
+      }
+    }
+  }
+  return "";
 }

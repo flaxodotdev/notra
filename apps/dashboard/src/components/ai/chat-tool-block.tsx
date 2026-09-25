@@ -1,6 +1,10 @@
 "use client";
 
-import { ArrowDown01Icon, CpuIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  CancelCircleIcon,
+  CpuIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   commitsByTimeframeInputSchema,
@@ -17,7 +21,6 @@ import {
   webSearchInputSchema,
   webSearchOutputSchema,
 } from "@notra/schemas/dashboard/ai/chat-tool-block";
-import { Shimmer } from "@notra/ui/components/ai-elements/shimmer";
 import {
   Avatar,
   AvatarFallback,
@@ -37,6 +40,8 @@ import { type ReactNode, useState } from "react";
 import { McpIcon } from "@/components/integrations/mcp-icon";
 import { TOOL_TIMER_THRESHOLD_SECONDS } from "@/constants/chat-tool-timer";
 import { useElapsedSeconds } from "@/lib/hooks/use-elapsed-seconds";
+import { getChatToolIcon } from "@/utils/chat-tool-icon";
+import { isFailedToolOutput } from "@/utils/chat-tool-output";
 import { formatElapsedSeconds } from "@/utils/format-elapsed-seconds";
 
 import {
@@ -58,6 +63,12 @@ const ToolOutputChart = dynamic(
     import("./chat-tool-block/tool-output-chart").then(
       (mod) => mod.ToolOutputChart
     ),
+  { ssr: false }
+);
+
+const DocumentDiff = dynamic(
+  () =>
+    import("./chat-tool-block/document-diff").then((mod) => mod.DocumentDiff),
   { ssr: false }
 );
 
@@ -326,8 +337,8 @@ function geoDaysSuffix(input: unknown): string | undefined {
 
 const TOOL_COPY: Record<string, ToolCopy> = {
   code_mode: {
-    verbs: ["Running", "Ran"],
-    noun: "tool program",
+    verbs: ["Executing", "Executed"],
+    noun: "tools",
   },
   // Notra tool provisioning was replaced by code_mode; kept for older chats.
   searchNotraTools: {
@@ -790,13 +801,6 @@ function ToolDataSection({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-function isErrorOutputPayload(output: unknown): boolean {
-  if (output === null || typeof output !== "object") {
-    return false;
-  }
-  return "isError" in output && output.isError === true;
-}
-
 export function ChatToolBlock({
   toolCallId,
   toolName,
@@ -815,7 +819,7 @@ export function ChatToolBlock({
   const isAwaitingApproval = state === "approval-requested";
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const isOpen = isAwaitingApproval || isDetailsOpen;
-  const isError = state === "output-error" || isErrorOutputPayload(output);
+  const isError = state === "output-error" || isFailedToolOutput(output);
   const isStreaming =
     state === "input-streaming" || state === "input-available";
   const elapsedSeconds = useElapsedSeconds(isStreaming, toolCallId);
@@ -842,6 +846,7 @@ export function ChatToolBlock({
   const hasOutput = output != null;
   const {
     chart,
+    documentDiff,
     draft,
     showDraftPreview,
     hasApprovalActions,
@@ -876,10 +881,19 @@ export function ChatToolBlock({
       : output;
   let toolIcon: ReactNode = null;
 
-  if (isMcp) {
+  if (isError) {
+    toolIcon = (
+      <HugeiconsIcon
+        className="size-3.5 shrink-0"
+        icon={CancelCircleIcon}
+        strokeWidth={1.8}
+      />
+    );
+  } else if (isMcp) {
     const mcpIconUrls = getMcpToolIconUrls(toolMetadata);
     toolIcon = (
       <McpIcon
+        className="size-3.5"
         darkUrl={
           iconUrl ?? mcpLogoDarkUrl ?? mcpLogoLightUrl ?? mcpIconUrls.darkUrl
         }
@@ -890,51 +904,61 @@ export function ChatToolBlock({
     );
   } else if (iconUrl) {
     toolIcon = (
-      <Avatar className="size-4 shrink-0 rounded-sm after:hidden">
+      <Avatar className="size-3.5 shrink-0 rounded-sm after:hidden">
         <AvatarImage className="rounded-sm" src={iconUrl} />
         <AvatarFallback className="rounded-sm bg-transparent">
-          <HugeiconsIcon className="size-3" icon={CpuIcon} />
+          <HugeiconsIcon
+            className="size-3.5"
+            icon={CpuIcon}
+            strokeWidth={1.8}
+          />
         </AvatarFallback>
       </Avatar>
+    );
+  } else {
+    toolIcon = (
+      <HugeiconsIcon
+        className="size-3.5 shrink-0"
+        icon={getChatToolIcon(toolName)}
+        strokeWidth={1.8}
+      />
     );
   }
 
   return (
     <Collapsible onOpenChange={setIsDetailsOpen} open={isOpen}>
       <CollapsibleTrigger
-        className="group text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground flex w-full min-w-0 items-center gap-2 text-sm transition-colors disabled:cursor-default"
+        className={cn(
+          "group flex w-full min-w-0 items-center gap-2 text-sm transition-colors disabled:cursor-default",
+          isError
+            ? "text-destructive hover:text-destructive disabled:hover:text-destructive"
+            : "text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
+        )}
         disabled={!hasDetails}
       >
         {toolIcon}
-        {isStreaming ? (
-          <Shimmer as="span" className="min-w-0 truncate text-sm leading-5">
-            {subtitle}
-          </Shimmer>
-        ) : (
-          <span className="inline-block min-w-0 truncate leading-5">
-            {subtitle}
-          </span>
-        )}
+        <span className="min-w-0 truncate leading-5">{subtitle}</span>
         {showElapsedTimer && (
           <span className="text-muted-foreground/60 shrink-0 text-xs tabular-nums">
             {formatElapsedSeconds(elapsedSeconds)}
           </span>
         )}
-        <HugeiconsIcon
-          aria-hidden
-          className={cn(
-            "text-muted-foreground/60 size-3.5 shrink-0 transition-all",
-            !hasDetails && "invisible",
-            hasDetails && isOpen && "rotate-180 opacity-100",
-            hasDetails &&
-              !isOpen &&
-              "rotate-0 opacity-0 group-hover:opacity-100"
-          )}
-          icon={ArrowDown01Icon}
-        />
+        {hasDetails ? (
+          <HugeiconsIcon
+            aria-hidden
+            className={cn(
+              "text-muted-foreground/60 size-3.5 shrink-0 transition-transform",
+              isOpen
+                ? "rotate-180"
+                : "rotate-0 opacity-0 group-hover:opacity-100"
+            )}
+            icon={ArrowDown01Icon}
+          />
+        ) : null}
       </CollapsibleTrigger>
       <ToolOutputImages images={outputImages} />
       {chart && !isStreaming ? <ToolOutputChart chart={chart} /> : null}
+      {documentDiff ? <DocumentDiff {...documentDiff} /> : null}
       {showDraftPreview && draft ? (
         <ToolDraftPreview
           editorHref={editorHref}

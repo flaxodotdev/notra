@@ -61,7 +61,10 @@ export function ChatSkillSlashMenu({
                   {skillDisplayName(skill.name)}
                 </span>
                 {skill.description ? (
-                  <span className="text-muted-foreground min-w-0 truncate">
+                  <span
+                    className="text-muted-foreground max-w-[64ch] min-w-0 flex-1 truncate"
+                    title={skill.description}
+                  >
                     {skill.description}
                   </span>
                 ) : null}

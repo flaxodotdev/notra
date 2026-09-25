@@ -22,7 +22,8 @@ export interface ContentChatActivityPanelProps {
 
 export interface ContentChatActivityMessageProps {
   message: UIMessage;
-  status: ChatStatus;
+  isLoading: boolean;
+  elapsedSeconds?: number;
   organizationSlug?: string;
   onApproveTool?: (approvalId: string) => void;
   onDenyTool?: (approvalId: string) => void;
