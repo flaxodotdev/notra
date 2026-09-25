@@ -751,12 +751,64 @@ function paperSubpathsToPathData(subs: PathSubpath[]): string {
     .join("");
 }
 
-// Paper's importer ignores SVG clipPath/mask/filter, so a shape clipped by a
-// single convex clip contour (plain or rounded rect, circle) would paste
+/** Whether the element paints a visible stroke (attr or computed style). */
+function paperHasVisibleStroke(
+  el: Element,
+  getStyle: (target: Element) => CSSStyleDeclaration | null
+): boolean {
+  const cs = getStyle(el);
+  const stroke =
+    el.getAttribute("stroke") ?? cs?.getPropertyValue("stroke") ?? "none";
+  if (!stroke || stroke.trim() === "" || stroke.trim() === "none") {
+    return false;
+  }
+  const widthRaw =
+    el.getAttribute("stroke-width") ??
+    cs?.getPropertyValue("stroke-width") ??
+    "1";
+  const width = Number.parseFloat(widthRaw);
+  if (!(width > 0)) {
+    return false;
+  }
+  const opacityRaw =
+    el.getAttribute("stroke-opacity") ??
+    cs?.getPropertyValue("stroke-opacity") ??
+    "1";
+  const opacity = Number.parseFloat(opacityRaw);
+  return !(opacity <= 0);
+}
+
+const PAPER_CURVE_COMMAND_RE = /[CcSsQqTtAa]/;
+
+/** Whether the source geometry contains curves that flattening would facet. */
+function paperHasCurvedGeometry(el: Element): boolean {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "circle" || tag === "ellipse") {
+    return true;
+  }
+  if (tag === "rect") {
+    const rx = el.getAttribute("rx");
+    const ry = el.getAttribute("ry");
+    if (
+      (rx != null && rx !== "" && Number.parseFloat(rx) !== 0) ||
+      (ry != null && ry !== "" && Number.parseFloat(ry) !== 0)
+    ) {
+      return true;
+    }
+    return false;
+  }
+  if (tag === "path") {
+    return PAPER_CURVE_COMMAND_RE.test(el.getAttribute("d") ?? "");
+  }
+  return false;
+}
+
+// Paper's importer ignores SVG clipPath/mask/filter, so a convex shape
+// clipped by a single convex clip contour (plain rect, circle) would paste
 // unclipped. Bake that case into the geometry (rewrite as a clipped path)
-// and drop the clip-path ref. Everything else — concave clips, masks,
-// filters, transformed chains, multi-clips — passes through untouched
-// (documented limitation).
+// and drop the clip-path ref. Everything else — concave clips, concave or
+// curved or stroked sources, masks, filters, transformed chains, multi-clips
+// — passes through untouched (documented limitation).
 function bakePaperConvexClip(
   el: Element,
   getStyle: (target: Element) => CSSStyleDeclaration | null
@@ -816,7 +868,7 @@ function bakePaperConvexClip(
   const clipKid = clipKids[0];
   if (
     !clipKid ||
-    clipKid.getAttribute("transform") ||
+    paperHasTransform(clipKid, getStyle) ||
     !PAPER_BAKE_GEOMETRY_TAGS.has(clipKid.tagName.toLowerCase())
   ) {
     return null;
@@ -847,11 +899,29 @@ function bakePaperConvexClip(
   if (!cursor) {
     return null;
   }
+  // Baking rewrites the outline, so a stroked source would gain an
+  // artificial stroke along the clip boundary. Leave stroked shapes alone.
+  if (paperHasVisibleStroke(el, getStyle)) {
+    return null;
+  }
+  // Baking flattens curves into line segments, which would facet curved
+  // sources (circles, ellipses, rounded rects, curved paths) even far from
+  // the clip boundary. Only bake straight-edged sources.
+  if (paperHasCurvedGeometry(el)) {
+    return null;
+  }
   const subs = svgPrimitiveToSubpaths(
     el.tagName.toLowerCase(),
     paperSvgGeometryAttrs(el)
   );
   if (subs.length === 0 || subs.some((sub) => !sub.closed)) {
+    return null;
+  }
+  // A concave source clipped by a convex clip can split into disjoint
+  // pieces, but the Sutherland–Hodgman clip below emits a single polygon per
+  // subpath. Only bake convex sources (convex ∩ convex stays a single
+  // convex polygon).
+  if (subs.some((sub) => !isConvexSubpath(sub))) {
     return null;
   }
   const baked: PathSubpath[] = [];

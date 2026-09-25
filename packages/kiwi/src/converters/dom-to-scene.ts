@@ -46,6 +46,7 @@ import {
   parseOpacityValue,
   parseSvgTransformAttr,
   rectClipBounds,
+  signedSubpathArea,
   subpathBounds,
   triangulateSubpath,
   withWinding,
@@ -547,21 +548,53 @@ function refMatrixFingerprint(m: Affine): string {
   return `${r(m.a)},${r(m.b)},${r(m.c)},${r(m.d)},${r(m.e)},${r(m.f)}`;
 }
 
-// Prepare clip/mask contours for emit: normalize winding (positive fills,
-// negative holes) and decompose concave loops into convex triangles, which
-// pasted vectors render reliably. Convex loops pass through untouched.
-function emitClipSubpaths(
-  subs: PathSubpath[],
-  positive: boolean
-): PathSubpath[] {
+// Align one clip/mask child's contours so separate children union under
+// NONZERO while holes survive: the dominant (largest-area) closed contour is
+// made positive and every other closed contour in the same child is flipped
+// with it, preserving their relative winding. Without this, forcing every
+// contour positive turns an oppositely wound inner contour (a hole) solid.
+function normalizeChildWinding(subs: PathSubpath[]): PathSubpath[] {
+  let refArea = 0;
+  let hasRef = false;
+  for (const sub of subs) {
+    if (!sub.closed || sub.points.length < 3) {
+      continue;
+    }
+    const area = signedSubpathArea(sub);
+    if (!hasRef || Math.abs(area) > Math.abs(refArea)) {
+      refArea = area;
+      hasRef = true;
+    }
+  }
+  if (!hasRef || refArea >= 0) {
+    return subs;
+  }
+  return subs.map((sub) =>
+    sub.closed && sub.points.length >= 3
+      ? { closed: sub.closed, points: [...sub.points].reverse() }
+      : sub
+  );
+}
+
+// Prepare clip/mask contours for emit: decompose concave loops into convex
+// triangles, which pasted vectors render reliably. Convex loops pass through
+// untouched. Relative winding is preserved so holes stay holes; callers align
+// each child with normalizeChildWinding first.
+function emitClipSubpaths(subs: PathSubpath[]): PathSubpath[] {
   const out: PathSubpath[] = [];
   for (const sub of subs) {
-    const oriented = positive ? withWinding(sub, true) : sub;
-    if (!oriented.closed || isConvexSubpath(oriented)) {
-      out.push(oriented);
+    // SVG fill semantics implicitly close open contours, so an open subpath
+    // with at least three points is judged (and emitted) as closed.
+    const contour =
+      !sub.closed && sub.points.length >= 3
+        ? { ...sub, closed: true as const }
+        : sub;
+    if (!contour.closed || isConvexSubpath(contour)) {
+      out.push(contour);
     } else {
-      for (const t of triangulateSubpath(oriented)) {
-        out.push(positive ? withWinding(t, true) : t);
+      const subPositive = signedSubpathArea(contour) >= 0;
+      for (const t of triangulateSubpath(contour)) {
+        out.push(withWinding(t, subPositive));
       }
     }
   }
@@ -600,9 +633,10 @@ function resolveClipKey(
       if (child.evenOdd) {
         fillRule = "evenodd";
       }
-      // Shared orientation unions overlapping children under NONZERO
-      // (SVG clips OR their children); harmless under evenodd.
-      subpaths.push(...emitClipSubpaths(mapped, true));
+      // Each child is dominant-positive so overlapping children union under
+      // NONZERO (SVG clips OR their children); relative winding inside the
+      // child is preserved so holes stay holes. Harmless under evenodd.
+      subpaths.push(...emitClipSubpaths(normalizeChildWinding(mapped)));
     }
     if (subpaths.length === 0) {
       return null;
@@ -626,15 +660,18 @@ function resolveClipKey(
     if (child.dark) {
       darks.push(...mapped);
     } else {
-      lights.push(...mapped);
+      // Align each light child dominant-positive (union across children)
+      // while preserving holes inside the child.
+      lights.push(...normalizeChildWinding(mapped));
     }
   }
   if (lights.length === 0) {
     return null;
   }
-  // Normalize light winding so holes punch reliably, then encode each dark
-  // contour (clipped to the lit bounds) with opposite winding.
-  const lit = emitClipSubpaths(lights, true);
+  // Holes were preserved per child above; emit keeps their winding so they
+  // punch reliably, then each dark contour (clipped to the lit bounds) is
+  // encoded with opposite winding.
+  const lit = emitClipSubpaths(lights);
   const subpaths = [...lit];
   const litBounds = subpathBounds(lit);
   if (litBounds) {
@@ -649,7 +686,7 @@ function resolveClipKey(
       }
       cuts.push(withWinding(cut, false));
     }
-    subpaths.push(...emitClipSubpaths(cuts, false));
+    subpaths.push(...emitClipSubpaths(cuts));
   }
   resolved.set(key, { id: key, subpaths, fillRule: "nonzero" });
   return key;

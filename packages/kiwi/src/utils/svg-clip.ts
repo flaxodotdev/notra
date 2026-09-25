@@ -486,6 +486,10 @@ export function withWinding(sub: PathSubpath, positive: boolean): PathSubpath {
  * (Sutherland–Hodgman, edge by edge). Returns null when nothing survives.
  * The clip polygon must be convex and wound consistently; its orientation
  * decides the inside of each edge.
+ *
+ * The inside test is scale-relative: the signed distance from the edge
+ * (cross / edge length) is compared against 1e-9 of the clip's extent, so
+ * small-unit SVGs clip as correctly as large ones.
  */
 export function clipSubpathToPolygon(
   sub: PathSubpath,
@@ -499,6 +503,18 @@ export function clipSubpathToPolygon(
     return null;
   }
   const positive = clipArea > 0;
+  const scale = polygonExtent(clip);
+  // 1e-9 of the clip extent, in distance units (cross product is area-like,
+  // so divide by edge length before comparing).
+  const eps = 1e-9 * Math.max(scale, 1e-12);
+  const inside = (a: PathPoint, b: PathPoint, p: PathPoint): boolean => {
+    const edgeLen = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!(edgeLen > 0)) {
+      return true;
+    }
+    const dist = turnArea(a, b, p) / edgeLen;
+    return positive ? dist >= -eps : dist <= eps;
+  };
   let pts: PathPoint[] = sub.points.map((p) => ({ x: p.x, y: p.y }));
   for (let e = 0; e < clip.length; e += 1) {
     const a = clip[e];
@@ -513,12 +529,8 @@ export function clipSubpathToPolygon(
       if (!cur || !prev) {
         continue;
       }
-      const curIn = positive
-        ? turnArea(a, b, cur) >= -1e-9
-        : turnArea(a, b, cur) <= 1e-9;
-      const prevIn = positive
-        ? turnArea(a, b, prev) >= -1e-9
-        : turnArea(a, b, prev) <= 1e-9;
+      const curIn = inside(a, b, cur);
+      const prevIn = inside(a, b, prev);
       if (curIn) {
         if (!prevIn) {
           const t = intersectSegmentEdge(prev, cur, a, b);
@@ -637,16 +649,77 @@ function turnArea(a: PathPoint, b: PathPoint, c: PathPoint): number {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
+/** Largest bbox dimension; used to scale geometric tolerances. */
+function polygonExtent(pts: PathPoint[]): number {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const p of pts) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      continue;
+    }
+    if (p.x < minX) {
+      minX = p.x;
+    }
+    if (p.x > maxX) {
+      maxX = p.x;
+    }
+    if (p.y < minY) {
+      minY = p.y;
+    }
+    if (p.y > maxY) {
+      maxY = p.y;
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return 0;
+  }
+  return Math.max(maxX - minX, maxY - minY, 0);
+}
+
+/** Proper intersection of open segments (touching at endpoints excluded). */
+function segmentsCross(
+  p: PathPoint,
+  q: PathPoint,
+  a: PathPoint,
+  b: PathPoint,
+  eps: number
+): boolean {
+  const d1 = turnArea(a, b, p);
+  const d2 = turnArea(a, b, q);
+  const d3 = turnArea(p, q, a);
+  const d4 = turnArea(p, q, b);
+  // Endpoint touches don't make a polygon non-simple on their own.
+  if (
+    Math.abs(d1) <= eps ||
+    Math.abs(d2) <= eps ||
+    Math.abs(d3) <= eps ||
+    Math.abs(d4) <= eps
+  ) {
+    return false;
+  }
+  return d1 > 0 !== d2 > 0 && d3 > 0 !== d4 > 0;
+}
+
 /**
- * Whether a closed polygon is convex (all turns share a sign). Convex loops
- * pass through to Figma untouched; concave loops are triangulated because
- * pasted concave contours misrender.
+ * Whether a closed polygon is convex. Convex loops pass through to Figma
+ * untouched; concave loops are triangulated because pasted concave contours
+ * misrender.
+ *
+ * A same-sign turn test alone is not enough: self-intersecting contours such
+ * as a pentagram also turn the same way at every vertex. Every other vertex
+ * must additionally lie on the interior side of each directed edge, and no
+ * two non-adjacent edges may properly cross. Tolerances scale with the
+ * polygon extent so small-unit SVGs classify like large ones.
  */
 export function isConvexSubpath(sub: PathSubpath): boolean {
   const pts = sub.points;
   if (!sub.closed || pts.length < 3) {
     return false;
   }
+  const extent = polygonExtent(pts);
+  const eps = 1e-9 * Math.max(extent * extent, 1e-24);
   let sign = 0;
   for (let i = 0; i < pts.length; i += 1) {
     const p = pts[i];
@@ -656,7 +729,7 @@ export function isConvexSubpath(sub: PathSubpath): boolean {
       return false;
     }
     const t = turnArea(p, q, r);
-    if (Math.abs(t) < 1e-9) {
+    if (Math.abs(t) <= eps) {
       continue;
     }
     const s = t > 0 ? 1 : -1;
@@ -666,7 +739,53 @@ export function isConvexSubpath(sub: PathSubpath): boolean {
       return false;
     }
   }
-  return sign !== 0;
+  if (sign === 0) {
+    return false;
+  }
+  // Every vertex must sit on the interior side of every directed edge.
+  for (let i = 0; i < pts.length; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    if (!a || !b) {
+      return false;
+    }
+    for (let k = 0; k < pts.length; k += 1) {
+      if (k === i || k === (i + 1) % pts.length) {
+        continue;
+      }
+      const v = pts[k];
+      if (!v) {
+        return false;
+      }
+      const t = turnArea(a, b, v);
+      if (sign > 0 ? t < -eps : t > eps) {
+        return false;
+      }
+    }
+  }
+  // Reject self-intersecting loops (pentagram, bow-tie) whose turns still
+  // agree in sign.
+  for (let i = 0; i < pts.length; i += 1) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    if (!p || !q) {
+      return false;
+    }
+    for (let j = i + 2; j < pts.length; j += 1) {
+      if (i === 0 && j === pts.length - 1) {
+        continue;
+      }
+      const a = pts[j];
+      const b = pts[(j + 1) % pts.length];
+      if (!a || !b) {
+        return false;
+      }
+      if (segmentsCross(p, q, a, b, eps)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 /**
