@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  RefreshIcon,
+  Refresh03Icon,
   SearchIcon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
@@ -242,7 +242,7 @@ function WriteCell({
               />
             }
           >
-            <HugeiconsIcon icon={RefreshIcon} size={15} />
+            <HugeiconsIcon icon={Refresh03Icon} size={15} />
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             {GEO_RESCAN_TOOLTIP}
