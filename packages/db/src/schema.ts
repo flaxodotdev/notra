@@ -1370,6 +1370,16 @@ export const projects = pgTable(
     brandSettingsId: text("brand_settings_id")
       .notNull()
       .references(() => brandSettings.id),
+    geoIngestTokenGeneration: integer("geo_ingest_token_generation")
+      .notNull()
+      .default(1),
+    gscSiteUrl: text("gsc_site_url"),
+    gscTopQueries: jsonb("gsc_top_queries")
+      .$type<GoogleSearchConsoleQuery[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    gscLastSyncedAt: timestamp("gsc_last_synced_at"),
+    gscLastError: text("gsc_last_error"),
     isSample: boolean("is_sample").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
@@ -1996,6 +2006,9 @@ export const geoPromptSuggestions = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
     prompt: text("prompt").notNull(),
     title: text("title"),
     source: text("source", { enum: ["search_console"] })
@@ -2030,8 +2043,12 @@ export const geoPromptSuggestions = pgTable(
       table.organizationId,
       table.status
     ),
-    uniqueIndex("geoPromptSuggestions_organizationId_prompt_uidx").on(
-      table.organizationId,
+    index("geoPromptSuggestions_projectId_status_idx").on(
+      table.projectId,
+      table.status
+    ),
+    uniqueIndex("geoPromptSuggestions_projectId_prompt_uidx").on(
+      table.projectId,
       table.prompt
     ),
   ]
@@ -3284,6 +3301,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   }),
   geoSettings: one(geoSettings),
   geoPrompts: many(geoPrompts),
+  geoPromptSuggestions: many(geoPromptSuggestions),
   geoPromptSequences: many(geoPromptSequences),
   geoCompetitors: many(geoCompetitors),
   geoShelfSources: many(geoShelfSources),
@@ -3448,6 +3466,10 @@ export const geoPromptSuggestionsRelations = relations(
     organization: one(organizations, {
       fields: [geoPromptSuggestions.organizationId],
       references: [organizations.id],
+    }),
+    project: one(projects, {
+      fields: [geoPromptSuggestions.projectId],
+      references: [projects.id],
     }),
     acceptedPrompt: one(geoPrompts, {
       fields: [geoPromptSuggestions.acceptedPromptId],
