@@ -55,8 +55,10 @@ export interface SentimentThemesEmptyProps {
   title: string;
   message: string;
   canAnalyze: boolean;
+  analyzing?: boolean;
   retrying: boolean;
   analyze: () => void;
+  inline?: boolean;
 }
 
 export interface SentimentThemesStateInput {
@@ -86,3 +88,15 @@ export interface AnswerSentimentProps {
     "mentioned" | "sentiment" | "answer" | "excerpt"
   >;
 }
+
+export type SentimentThemesMessage =
+  | { kind: "text"; text: string }
+  | { kind: "key"; key: "noSupportedThemes" | "couldNotFind" | "notConfigured" }
+  | { kind: "empty"; key: "noSavedAnswers" | "noRatedMentions" };
+
+export type SentimentAnalysisStatusKey =
+  | "finding"
+  | "stalePrevious"
+  | "failedPrevious"
+  | "failedRetry"
+  | "unavailable";

@@ -2,21 +2,21 @@
 
 import { AGENT_FEEDBACK_STATUSES } from "@notra/db/constants/agent-feedback";
 import {
-  ResponsiveDialog,
-  ResponsiveDialogClose,
-  ResponsiveDialogContent,
-  ResponsiveDialogDescription,
-  ResponsiveDialogFooter,
-  ResponsiveDialogHeader,
-  ResponsiveDialogTitle,
-} from "@notra/ui/components/shared/responsive-dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@notra/ui/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetScrollArea,
+  SheetTitle,
+} from "@notra/ui/components/ui/sheet";
 import { cn } from "@notra/ui/lib/utils";
+import { useTranslations } from "next-intl";
 
 import { AgentFeedbackAgent } from "@/components/agent-feedback/feedback-agent-icon";
 import {
@@ -24,13 +24,14 @@ import {
   AgentFeedbackSentimentLabel,
   AgentFeedbackStatusBadge,
 } from "@/components/agent-feedback/feedback-badges";
-import { Button } from "@/components/button";
+import { Discussion } from "@/components/comments/discussion";
+import { useFormatRelative } from "@/lib/hooks/use-format-relative";
+import { useRetainedDetail } from "@/lib/hooks/use-retained-detail";
 import type {
   AgentFeedbackDetailDialogProps,
   AgentFeedbackDetailFieldProps,
 } from "@/types/agent-feedback";
 import { isAgentFeedbackStatus } from "@/utils/agent-feedback";
-import { formatRelative } from "@/utils/format-relative";
 
 function DetailField({
   label,
@@ -45,7 +46,11 @@ function DetailField({
     <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-3 py-1.5">
       <div className="text-muted-foreground pt-0.5 text-xs">{label}</div>
       {children ?? (
-        <p className={cn(mono ? "font-mono text-xs break-all" : "text-sm")}>
+        <p
+          className={cn(
+            mono ? "font-mono text-xs break-all" : "text-sm wrap-anywhere"
+          )}
+        >
           {value}
         </p>
       )}
@@ -54,31 +59,35 @@ function DetailField({
 }
 
 export function AgentFeedbackDetailDialog({
-  item,
+  item: selectedDetail,
   open,
   onOpenChange,
   onStatusChange,
   isUpdating,
 }: AgentFeedbackDetailDialogProps) {
+  const t = useTranslations("feedback.detail");
+  const tCommon = useTranslations("common");
+  const formatRelative = useFormatRelative();
+  const item = useRetainedDetail(selectedDetail);
   const metadataJson =
     item?.metadata && Object.keys(item.metadata).length > 0
       ? JSON.stringify(item.metadata, null, 2)
       : null;
 
   return (
-    <ResponsiveDialog onOpenChange={onOpenChange} open={open}>
-      <ResponsiveDialogContent className="flex max-h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[36rem]">
-        <ResponsiveDialogHeader className="shrink-0 border-b p-4 pr-14">
-          <ResponsiveDialogTitle className="wrap-break-word">
-            {item?.title ?? "Feedback"}
-          </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
+    <Sheet onOpenChange={onOpenChange} open={open}>
+      <SheetContent variant="inset">
+        <SheetHeader className="shrink-0 border-b p-4 pr-14">
+          <SheetTitle className="wrap-break-word">
+            {item?.title ?? tCommon("labels.feedback")}
+          </SheetTitle>
+          <SheetDescription>
             {item ? (
               <span className="inline-flex flex-wrap items-center gap-x-1.5">
-                Received {formatRelative(item.createdAt)}
+                {t("received", { time: formatRelative(item.createdAt) })}
                 {item.agentClient ? (
                   <>
-                    <span aria-hidden="true">via</span>
+                    <span aria-hidden="true">{t("via")}</span>
                     <AgentFeedbackAgent
                       className="text-muted-foreground"
                       client={item.agentClient}
@@ -87,85 +96,119 @@ export function AgentFeedbackDetailDialog({
                 ) : null}
               </span>
             ) : (
-              "Inspect this feedback."
+              t("inspect")
             )}
-          </ResponsiveDialogDescription>
-        </ResponsiveDialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
         {item ? (
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-            <section className="space-y-2">
-              <div className="text-muted-foreground text-xs">Labels</div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <AgentFeedbackKindBadge kind={item.kind} />
-                  <AgentFeedbackSentimentLabel sentiment={item.sentiment} />
+          <SheetScrollArea>
+            <div className="mx-auto w-full max-w-3xl space-y-6">
+              <section className="space-y-2">
+                <div className="text-muted-foreground text-xs">
+                  {t("labels")}
                 </div>
-                <Select
-                  disabled={isUpdating}
-                  onValueChange={(value) => {
-                    if (value && isAgentFeedbackStatus(value)) {
-                      onStatusChange(value);
-                    }
-                  }}
-                  value={item.status}
-                >
-                  <SelectTrigger
-                    aria-label="Feedback status"
-                    className="hover:bg-background bg-background h-8 w-auto shrink-0 gap-1.5"
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <AgentFeedbackKindBadge kind={item.kind} />
+                    <AgentFeedbackSentimentLabel sentiment={item.sentiment} />
+                  </div>
+                  <Select
+                    disabled={isUpdating}
+                    onValueChange={(value) => {
+                      if (value && isAgentFeedbackStatus(value)) {
+                        onStatusChange(value);
+                      }
+                    }}
+                    value={item.status}
                   >
-                    <AgentFeedbackStatusBadge status={item.status} />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    {AGENT_FEEDBACK_STATUSES.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        <AgentFeedbackStatusBadge status={status} />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </section>
-
-            <section className="space-y-1.5">
-              <div className="text-muted-foreground text-xs">Message</div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {item.message}
-              </p>
-            </section>
-
-            <section className="divide-y">
-              <DetailField label="Agent">
-                <AgentFeedbackAgent
-                  className="text-sm"
-                  client={item.agentClient}
-                />
-              </DetailField>
-              <DetailField label="Model" value={item.agentModel} />
-              <DetailField label="Tool version" value={item.toolVersion} />
-              <DetailField label="Source" value={item.source} />
-              <DetailField label="External ID" mono value={item.externalId} />
-              <DetailField label="Project" mono value={item.projectId} />
-              <DetailField label="Context URL" mono value={item.contextUrl} />
-              <DetailField label="User agent" mono value={item.userAgent} />
-            </section>
-
-            {metadataJson ? (
-              <section className="space-y-1.5">
-                <div className="text-muted-foreground text-xs">Metadata</div>
-                <pre className="bg-muted/40 max-h-64 overflow-auto rounded-md border p-3 font-mono text-xs">
-                  {metadataJson}
-                </pre>
+                    <SelectTrigger
+                      aria-label={t("statusLabel")}
+                      className="hover:bg-background bg-background h-8 w-auto shrink-0 gap-1.5"
+                    >
+                      <AgentFeedbackStatusBadge status={item.status} />
+                    </SelectTrigger>
+                    <SelectContent align="end" alignItemWithTrigger={false}>
+                      {AGENT_FEEDBACK_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          <AgentFeedbackStatusBadge status={status} />
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </section>
-            ) : null}
-          </div>
+
+              <section className="space-y-1.5">
+                <div className="text-muted-foreground text-xs">
+                  {t("message")}
+                </div>
+                <p className="text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap">
+                  {item.message}
+                </p>
+              </section>
+
+              <section className="divide-y">
+                <DetailField label={tCommon("labels.agent")}>
+                  <AgentFeedbackAgent
+                    className="text-sm"
+                    client={item.agentClient}
+                  />
+                </DetailField>
+                <DetailField
+                  label={tCommon("labels.model")}
+                  value={item.agentModel}
+                />
+                <DetailField
+                  label={t("fields.toolVersion")}
+                  value={item.toolVersion}
+                />
+                <DetailField
+                  label={tCommon("labels.source")}
+                  value={item.source}
+                />
+                <DetailField
+                  label={t("fields.externalId")}
+                  mono
+                  value={item.externalId}
+                />
+                <DetailField
+                  label={tCommon("labels.project")}
+                  mono
+                  value={item.projectId}
+                />
+                <DetailField
+                  label={t("fields.contextUrl")}
+                  mono
+                  value={item.contextUrl}
+                />
+                <DetailField
+                  label={t("fields.userAgent")}
+                  mono
+                  value={item.userAgent}
+                />
+              </section>
+
+              {metadataJson ? (
+                <section className="space-y-1.5">
+                  <div className="text-muted-foreground text-xs">
+                    {t("metadata")}
+                  </div>
+                  <pre className="bg-muted/40 max-h-64 overflow-auto rounded-md border p-3 font-mono text-xs">
+                    {metadataJson}
+                  </pre>
+                </section>
+              ) : null}
+              <Discussion
+                key={item.id}
+                organizationId={item.organizationId}
+                targetId={item.id}
+                targetType="feedback"
+              />
+            </div>
+          </SheetScrollArea>
         ) : null}
-        <ResponsiveDialogFooter className="bg-muted/50 mx-0 mb-0 shrink-0 flex-row items-center justify-end gap-3 rounded-b-xl border-t p-4">
-          <ResponsiveDialogClose render={<Button variant="outline" />}>
-            Done
-          </ResponsiveDialogClose>
-        </ResponsiveDialogFooter>
-      </ResponsiveDialogContent>
-    </ResponsiveDialog>
+      </SheetContent>
+    </Sheet>
   );
 }

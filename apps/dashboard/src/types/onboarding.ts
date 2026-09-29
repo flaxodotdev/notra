@@ -1,4 +1,5 @@
 import type {
+  GeoAudienceType,
   GeoBrandSearchResult,
   GeoCompetitor,
   GeoDiscoveredPrompt,
@@ -7,6 +8,8 @@ import type {
 } from "@notra/geo-core/types/geo";
 import type { onboardingWorkspaceSchema } from "@notra/schemas/dashboard/onboarding/workspace";
 import type * as z from "zod";
+
+import type { OnboardingStep } from "@/types/analytics/events";
 
 export type OnboardingWorkspaceInput = z.infer<
   typeof onboardingWorkspaceSchema
@@ -21,6 +24,7 @@ export interface CompanyLogoResult {
 export type OnboardingProgressHrefs = readonly (string | null)[];
 
 export interface PricingClientProps {
+  canSkipOnboarding: boolean;
   slug: string;
   progressHrefs?: OnboardingProgressHrefs;
 }
@@ -43,6 +47,10 @@ export interface WorkspaceFormProps {
 
 export interface OnboardingSplitLayoutProps {
   children: React.ReactNode;
+}
+
+export interface OnboardingStepLayoutProps extends OnboardingSplitLayoutProps {
+  step: OnboardingStep;
 }
 
 export interface OnboardingProgressProps {
@@ -168,6 +176,7 @@ export interface CompetitorSearchResultRowProps {
 export interface VisibilityBrandDraft {
   companyName: string;
   aliases: readonly string[];
+  audienceType?: GeoAudienceType;
   prompts: readonly GeoDiscoveredPrompt[];
 }
 
@@ -230,3 +239,12 @@ export interface OnboardingEmailPrefsProps {
   onDailySummaryChange: (checked: boolean) => void;
   onMarketingEmailsChange: (checked: boolean) => void;
 }
+
+export type LogoFileValidationError = "invalidType" | "tooLarge";
+
+export type WorkspaceFormField =
+  | "name"
+  | "slug"
+  | "websiteUrl"
+  | "heardAboutNotraSource"
+  | "heardAboutNotraOther";

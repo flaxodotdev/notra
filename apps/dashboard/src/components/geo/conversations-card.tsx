@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AiMagicIcon,
   Delete02Icon,
   Loading03Icon,
   PencilEdit02Icon,
@@ -8,6 +9,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { GEO_MAX_SEQUENCES } from "@notra/geo-core/constants/geo";
 import type { GeoPromptSequence } from "@notra/geo-core/types/geo";
 import { Switch } from "@notra/ui/components/ui/switch";
 import {
@@ -15,14 +17,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/button";
 import { ConversationBuilderDialog } from "@/components/geo/conversation-builder-dialog";
 import { ConversationResultsDialog } from "@/components/geo/conversation-results-dialog";
+import { StatusSpinner } from "@/components/geo/status-spinner";
 import { Table, type TableColumn } from "@/components/motion/table";
 import { TABLE_ROW_HEIGHT } from "@/constants/table";
-import { useGeoRunSequence } from "@/lib/hooks/use-geo";
+import {
+  useGeoRunSequence,
+  useGeoSequencesGenerate,
+} from "@/lib/hooks/use-geo";
 import { useGeoSequencesDb } from "@/lib/hooks/use-geo-db";
 import type { ConversationsCardProps } from "@/types/geo";
 import { tableHeightFor } from "@/utils/table";
@@ -49,13 +56,17 @@ function ConversationRowActions({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const t = useTranslations("geo.conversationsCard");
+  const tGeoShared = useTranslations("geo.shared");
+  const tCommon2 = useTranslations("common");
+  const tCommon = useTranslations("common.actions");
   return (
     <div className="flex items-center justify-end gap-1">
       <Tooltip>
         <TooltipTrigger
           render={
             <Button
-              aria-label={`Run ${sequence.name} now`}
+              aria-label={t("runNamed", { name: sequence.name })}
               disabled={isRunPending}
               onClick={(event) => {
                 event.stopPropagation();
@@ -73,9 +84,7 @@ function ConversationRowActions({
           />
         </TooltipTrigger>
         <TooltipContent>
-          {isRunning
-            ? "Playing against the engines…"
-            : "Run this conversation now"}
+          {isRunning ? tGeoShared("playingAgainstTheEngines") : t("runThis")}
         </TooltipContent>
       </Tooltip>
       <Tooltip>
@@ -84,8 +93,8 @@ function ConversationRowActions({
             <Switch
               aria-label={
                 sequence.enabled
-                  ? `Pause ${sequence.name}`
-                  : `Enable ${sequence.name}`
+                  ? tCommon2("labels.pauseName", { name: sequence.name })
+                  : tCommon2("labels.enableName", { name: sequence.name })
               }
               checked={sequence.enabled}
               className="mx-2"
@@ -98,14 +107,14 @@ function ConversationRowActions({
           }
         />
         <TooltipContent>
-          {sequence.enabled ? "Included in scans" : "Paused — skipped in scans"}
+          {sequence.enabled ? t("includedInScans") : t("pausedInScans")}
         </TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger
           render={
             <Button
-              aria-label={`Edit ${sequence.name}`}
+              aria-label={tCommon2("labels.editName", { name: sequence.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 onEdit();
@@ -117,13 +126,13 @@ function ConversationRowActions({
         >
           <HugeiconsIcon icon={PencilEdit02Icon} size={14} />
         </TooltipTrigger>
-        <TooltipContent>Edit</TooltipContent>
+        <TooltipContent>{tCommon("edit")}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger
           render={
             <Button
-              aria-label={`Delete ${sequence.name}`}
+              aria-label={t("deleteNamed", { name: sequence.name })}
               disabled={isPending}
               onClick={(event) => {
                 event.stopPropagation();
@@ -136,16 +145,25 @@ function ConversationRowActions({
         >
           <HugeiconsIcon icon={Delete02Icon} size={14} />
         </TooltipTrigger>
-        <TooltipContent>Delete</TooltipContent>
+        <TooltipContent>{tCommon("delete")}</TooltipContent>
       </Tooltip>
     </div>
   );
 }
 
 export function ConversationsCard({ organizationId }: ConversationsCardProps) {
-  const { sequences, pendingSequenceIds, updateSequence, removeSequence } =
-    useGeoSequencesDb(organizationId);
+  const {
+    sequences,
+    isLoading,
+    pendingSequenceIds,
+    updateSequence,
+    removeSequence,
+  } = useGeoSequencesDb(organizationId);
   const runSequence = useGeoRunSequence(organizationId);
+  const t = useTranslations("geo.conversationsCard");
+  const tCommon3 = useTranslations("common");
+  const tGeoShared = useTranslations("geo.shared");
+  const generateSequences = useGeoSequencesGenerate(organizationId);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<GeoPromptSequence | null>(null);
   const [viewing, setViewing] = useState<GeoPromptSequence | null>(null);
@@ -160,7 +178,7 @@ export function ConversationsCard({ organizationId }: ConversationsCardProps) {
         key: "name",
         header: (
           <span className="inline-flex items-center gap-1.5">
-            Conversation
+            {tGeoShared("conversation")}
             <span className="text-muted-foreground font-normal tabular-nums">
               ({sequences.length})
             </span>
@@ -184,7 +202,7 @@ export function ConversationsCard({ organizationId }: ConversationsCardProps) {
       },
       {
         key: "turns",
-        header: "Turns",
+        header: tGeoShared("turns"),
         width: CONVERSATION_TURNS_WIDTH,
         minWidth: CONVERSATION_TURNS_WIDTH,
         sortable: true,
@@ -225,6 +243,7 @@ export function ConversationsCard({ organizationId }: ConversationsCardProps) {
       runSequence,
       runningSequenceId,
       sequences.length,
+      t,
       updateSequence,
     ]
   );
@@ -233,22 +252,44 @@ export function ConversationsCard({ organizationId }: ConversationsCardProps) {
     <section className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Conversations</h2>
+          <h2 className="text-sm font-semibold">
+            {tGeoShared("conversations")}
+          </h2>
           <p className="text-muted-foreground text-sm">
-            Multi-turn questions where buying decisions happen
+            {tGeoShared("multiTurnQuestionsWhereBuying")}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setBuilderOpen(true);
-          }}
-          size="sm"
-          variant="outline"
-        >
-          <HugeiconsIcon icon={PlusSignIcon} size={14} />
-          New Conversation
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isLoading && sequences.length < GEO_MAX_SEQUENCES ? (
+            <Button
+              disabled={generateSequences.isPending}
+              onClick={() => generateSequences.mutate()}
+              size="sm"
+              variant="ghost"
+            >
+              {generateSequences.isPending ? (
+                <StatusSpinner />
+              ) : (
+                <HugeiconsIcon icon={AiMagicIcon} size={14} />
+              )}
+              {generateSequences.isPending
+                ? tCommon3("labels.generating")
+                : t("generate")}
+            </Button>
+          ) : null}
+          <Button
+            disabled={isLoading || sequences.length >= GEO_MAX_SEQUENCES}
+            onClick={() => {
+              setEditing(null);
+              setBuilderOpen(true);
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={14} />
+            {tGeoShared("newConversation")}
+          </Button>
+        </div>
       </div>
 
       <Table
@@ -256,9 +297,12 @@ export function ConversationsCard({ organizationId }: ConversationsCardProps) {
         columns={columns}
         data={sequences}
         defaultSort={{ key: "name", direction: "asc" }}
-        emptyState="Track an opening question plus the follow-ups that close the deal"
+        emptyState={
+          generateSequences.isPending ? t("emptyGenerating") : t("empty")
+        }
         getRowId={(row) => row.id}
         height={tableHeightFor(Math.max(sequences.length, 2))}
+        loading={isLoading}
         onRowClick={setViewing}
         resizable
         rowHeight={TABLE_ROW_HEIGHT}

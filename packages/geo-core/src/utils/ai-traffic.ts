@@ -2,6 +2,7 @@ import { parseClickHouseDateTime } from "@notra/analytics/utils/datetime";
 
 import {
   GEO_SOURCE_LABELS,
+  GEO_AGENT_LABELS,
   GEO_JOURNEY_BROWSE_CATEGORY,
   GEO_JOURNEY_CHIP_LENGTH,
   GEO_JOURNEY_EXPLICIT_PREFIX,
@@ -40,9 +41,32 @@ export function isTrackedGeoVisitorType(value: GeoVisitorType): boolean {
   return !GEO_UNTRACKED_VISITOR_TYPES.includes(value);
 }
 
+/**
+ * Own string members only: sources and agents come from request headers, so a
+ * visitor sending "constructor" would otherwise be labelled with an inherited
+ * `Object` member instead of a string.
+ */
+function lookupLabel(
+  labels: Record<string, string>,
+  key: string,
+  fallback: string
+): string {
+  if (!Object.hasOwn(labels, key)) {
+    return fallback;
+  }
+  const label = labels[key];
+  return typeof label === "string" ? label : fallback;
+}
+
 export function formatGeoSource(source: string): string {
   const trimmed = source.trim();
-  return GEO_SOURCE_LABELS[trimmed.toLowerCase()] ?? trimmed;
+  return lookupLabel(GEO_SOURCE_LABELS, trimmed.toLowerCase(), trimmed);
+}
+
+/** Bot name as its vendor writes it, e.g. "meta-externalagent" → "Meta-ExternalAgent". */
+export function formatGeoAgent(agent: string): string {
+  const trimmed = agent.trim();
+  return lookupLabel(GEO_AGENT_LABELS, trimmed.toLowerCase(), trimmed);
 }
 
 export function isCitedTrafficSource(
@@ -99,19 +123,20 @@ export function toGeoTrafficPreviousTotals(
   );
 }
 
-const timestampFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-export function formatAiTrafficTimestamp(value: string): string {
+export function formatAiTrafficTimestamp(
+  value: string,
+  locale = "en-US"
+): string {
   const date = parseClickHouseDateTime(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return timestampFormatter.format(date);
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 const MS_PER_MINUTE = 60_000;
@@ -126,22 +151,6 @@ export function toGeoJourneyKind(journeyId: string): "tagged" | "fingerprint" {
   return journeyId.startsWith(GEO_JOURNEY_EXPLICIT_PREFIX)
     ? "tagged"
     : "fingerprint";
-}
-
-export function formatGeoTrafficFilterLabel(
-  base: string,
-  noun: string,
-  selected: readonly string[],
-  options: readonly { value: string; label: string }[]
-): string {
-  const first = selected[0];
-  if (first === undefined) {
-    return base;
-  }
-  if (selected.length === 1) {
-    return options.find((option) => option.value === first)?.label ?? first;
-  }
-  return `${noun} (${selected.length})`;
 }
 
 export function toggleGeoTrafficFilterValue<T extends string>(
@@ -167,7 +176,9 @@ export function toGeoTrafficLogPurposeFilter(
 
 export function formatGeoJourneySpan(
   firstSeenAt: string,
-  lastSeenAt: string
+  lastSeenAt: string,
+  underAMinuteLabel = "under a minute",
+  locale?: string
 ): string {
   const start = parseClickHouseDateTime(firstSeenAt);
   const end = parseClickHouseDateTime(lastSeenAt);
@@ -180,17 +191,23 @@ export function formatGeoJourneySpan(
     0
   );
   if (minutes < 1) {
-    return "under a minute";
+    return underAMinuteLabel;
   }
+  const unit = (value: number, name: "minute" | "hour" | "day") =>
+    new Intl.NumberFormat(locale, {
+      style: "unit",
+      unit: name,
+      unitDisplay: "narrow",
+    }).format(value);
   if (minutes < MINUTES_PER_HOUR) {
-    return `${minutes}m`;
+    return unit(minutes, "minute");
   }
 
   const hours = Math.floor(minutes / MINUTES_PER_HOUR);
   if (hours < HOURS_PER_DAY) {
-    return `${hours}h ${minutes % MINUTES_PER_HOUR}m`;
+    return `${unit(hours, "hour")} ${unit(minutes % MINUTES_PER_HOUR, "minute")}`;
   }
-  return `${Math.floor(hours / HOURS_PER_DAY)}d ${hours % HOURS_PER_DAY}h`;
+  return `${unit(Math.floor(hours / HOURS_PER_DAY), "day")} ${unit(hours % HOURS_PER_DAY, "hour")}`;
 }
 
 export function formatMarkdownShare(markdown: number, visits: number): string {
@@ -217,7 +234,8 @@ export function trafficSparklineDays(
 }
 
 export function buildTrafficTrendRows(
-  points: readonly GeoTrafficPoint[]
+  points: readonly GeoTrafficPoint[],
+  locale?: string
 ): GeoTrafficTrendRow[] {
   const byDay = new Map<string, { crawler: number; aiReferral: number }>();
 
@@ -242,7 +260,7 @@ export function buildTrafficTrendRows(
   return [...byDay.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([day, values]) => ({
-      day: formatDayLabel(day),
+      day: formatDayLabel(day, locale),
       rawDay: day,
       [GEO_TRAFFIC_TREND_CRAWLER_KEY]: values.crawler,
       [GEO_TRAFFIC_TREND_REFERRAL_KEY]: values.aiReferral,
@@ -289,22 +307,6 @@ export function trafficVisitDelta(
 
 export function isGeoStatDeltaNew(delta: number): boolean {
   return delta === GEO_STAT_DELTA_NEW;
-}
-
-export function isGeoTrafficCitationsOnly(
-  categories: GeoTrafficLogFilters["categories"]
-): boolean {
-  return (
-    categories.length === 1 && categories[0] === GEO_JOURNEY_BROWSE_CATEGORY
-  );
-}
-
-export function toggleGeoTrafficCitationsOnly(
-  categories: GeoTrafficLogFilters["categories"]
-): GeoTrafficLogFilters["categories"] {
-  return isGeoTrafficCitationsOnly(categories)
-    ? []
-    : [GEO_JOURNEY_BROWSE_CATEGORY];
 }
 
 export function formatGeoTrafficRequestCount(total: number): string {

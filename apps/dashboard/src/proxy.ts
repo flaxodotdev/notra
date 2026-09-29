@@ -25,6 +25,13 @@ function localDevProxy(request: NextRequest) {
 }
 
 export default async function proxy(request: NextRequest) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    /^\/design-system(?:\/|$)/.test(request.nextUrl.pathname)
+  ) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   // Local impersonation has no WorkOS session and still requires loopback.
   if (isLocalDevAuthEnabled()) {
     return localDevProxy(request);
@@ -47,6 +54,6 @@ export default async function proxy(request: NextRequest) {
 // only adds an invocation per webhook, ingest event, cron and workflow callback.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|badges(?:/|$)|favicon.ico|apple-icon.png|icon0.svg|icon1.png|robots.txt|api/webhooks/|api/geo/ingest(?:/|$)|api/cron/|api/healthcheck(?:/|$)|api/workflows/|api/internal/|\\.well-known/workflow/|ingest/).*)",
+    "/((?!_next/static|_next/image|badges(?:/|$)|favicon.ico|apple-icon.png|icon0.svg|icon1.png|robots.txt|design\\.md(?:/|$)|api/webhooks/|api/geo/ingest(?:/|$)|api/cron/|api/healthcheck(?:/|$)|api/workflows/|api/internal/|\\.well-known/workflow/|ingest/).*)",
   ],
 };

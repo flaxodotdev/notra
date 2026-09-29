@@ -1,9 +1,19 @@
 import path from "node:path";
 
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
+  // Only recognize page.dev.tsx/layout.dev.tsx in next dev; design-system
+  // previews should not become routes or bundles in a production build.
+  pageExtensions: [
+    ...(process.env.NODE_ENV === "development" ? ["dev.tsx"] : []),
+    "tsx",
+    "ts",
+    "jsx",
+    "js",
+  ],
   allowedDevOrigins: process.env.APP_URL
     ? [new URL(process.env.APP_URL).hostname]
     : [],
@@ -13,11 +23,25 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  outputFileTracingIncludes: {
-    "/*": ["./src/lib/ai/skills/**/*", "../../packages/ai/src/skills/**/*"],
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === "production"
+        ? { exclude: ["error", "warn"] }
+        : false,
   },
   experimental: {
-    optimizePackageImports: ["@hugeicons/core-free-icons", "lucide-react"],
+    optimizePackageImports: [
+      "@base-ui/react",
+      "@hugeicons/core-free-icons",
+      "@hugeicons/react",
+      "cmdk",
+      "date-fns",
+      "echarts",
+      "lucide-react",
+      "motion/react",
+      "nuqs",
+      "recharts",
+    ],
     hideLogsAfterAbort: true,
     instantInsights: {
       validationLevel: "manual-warning",
@@ -39,10 +63,13 @@ const nextConfig: NextConfig = {
     "@usenotra/geo",
   ],
   serverExternalPackages: [
+    // Let Next.js remove the guarded import before devtools filesystem tracing.
+    ...(process.env.NODE_ENV === "production" ? ["@ai-sdk/devtools"] : []),
     "@resvg/resvg-js",
     "@cursor/sdk",
     "@ai-sdk/code-mode",
     "run",
+    "sharp",
   ],
   skipTrailingSlashRedirect: true,
   async rewrites() {
@@ -88,11 +115,6 @@ const nextConfig: NextConfig = {
         source: "/landing",
         destination: "https://www.usenotra.com/landing",
         permanent: true,
-      },
-      {
-        source: "/",
-        destination: "/login",
-        permanent: false,
       },
       {
         source: "/:slug/settings",
@@ -198,4 +220,15 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withWorkflow(nextConfig);
+const withNextIntl = createNextIntlPlugin({
+  experimental: {
+    messages: {
+      path: "./messages",
+      format: "json",
+      locales: ["en", "de"],
+      precompile: true,
+    },
+  },
+});
+
+export default withWorkflow(withNextIntl(nextConfig));

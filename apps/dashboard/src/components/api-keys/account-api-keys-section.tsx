@@ -53,6 +53,7 @@ import {
   SelectValue,
 } from "@notra/ui/components/ui/select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -76,7 +77,7 @@ interface AccountKeyItem {
   expires: number | null;
   enabled: boolean;
   accessMode: ApiKeyAccessMode;
-  permission: keyof typeof API_KEY_PERMISSION_SUMMARY;
+  permission: (typeof API_KEY_PERMISSION_SUMMARY)[number];
   permissions: string[];
   createdBy: string | null;
   accountWide: boolean;
@@ -114,6 +115,7 @@ function getAccountEditExpiration(
 }
 
 export function AccountApiKeysSection() {
+  const t = useTranslations("apiKeys");
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -132,9 +134,9 @@ export function AccountApiKeysSection() {
   const [deletingKey, setDeletingKey] = useState<AccountKeyItem | null>(null);
 
   const accountListKey = dashboardOrpc.apiKeys.account.list.queryKey();
-  const { data: keys = [], isPending } = useQuery<AccountKeyItem[]>({
-    ...dashboardOrpc.apiKeys.account.list.queryOptions(),
-  });
+  const { data: keys = [], isPending } = useQuery(
+    dashboardOrpc.apiKeys.account.list.queryOptions()
+  );
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateApiKeyInput) =>
@@ -253,7 +255,7 @@ export function AccountApiKeysSection() {
       header: "Permission",
       width: "1fr",
       minWidth: "9rem",
-      cell: (key) => API_KEY_PERMISSION_SUMMARY[key.permission],
+      cell: (key) => key.permission,
     },
     {
       key: "expires",
@@ -424,7 +426,7 @@ export function AccountApiKeysSection() {
                     <SelectContent>
                       {API_KEY_EXPIRATION_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {t("expirationOption", { value: option.value })}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -510,7 +512,7 @@ export function AccountApiKeysSection() {
                   <SelectContent>
                     {API_KEY_EXPIRATION_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        {t("expirationOption", { value: option.value })}
                       </SelectItem>
                     ))}
                   </SelectContent>

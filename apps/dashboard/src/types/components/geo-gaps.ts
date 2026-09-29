@@ -1,4 +1,5 @@
 import type {
+  GeoAiSearchGapRow,
   GeoCompetitor,
   GeoGapWriteAction,
   GeoPromptGapRow,
@@ -22,47 +23,31 @@ export interface GeoGapsWriteCellProps {
   rescanDisabled?: boolean;
   onIgnore?: () => void;
   isIgnoring?: boolean;
+  /** Render Ignore as an icon button so the table's action column stays narrow. */
+  compact?: boolean;
 }
 
-export type GeoGapsTab = "prompt" | "search";
-
-export type GeoGapDetailSelection =
-  | { kind: "prompt"; id: string }
-  | { kind: "search"; id: string };
-
-export type GeoGapDetailRow =
-  | { kind: "prompt"; row: GeoPromptGapRow }
-  | { kind: "search"; row: GeoSearchGapRow };
+export type GeoGapsTab = "prompt" | "search" | "ai";
 
 export interface GeoGapDetailSheetProps {
   prompt: GeoPromptGapRow | null;
-  search: GeoSearchGapRow | null;
-  competitors: GeoCompetitor[];
-  maxOpportunity: number;
+  organizationId: string;
+  isScanning: boolean;
   actions?: ReactNode;
   onOpenChange: (open: boolean) => void;
 }
 
-export interface GeoGapDetailSectionProps {
-  title: string;
-  readout?: string;
-  children: ReactNode;
+export interface GeoSearchGapDetailSheetProps {
+  row: GeoSearchGapRow | null;
+  actions?: ReactNode;
+  onOpenChange: (open: boolean) => void;
 }
 
-export interface GeoGapDetailStatProps {
-  label: string;
-  value: string;
-}
-
-export interface GeoGapEngineListProps {
-  families: readonly string[];
-  emptyLabel: string;
-}
-
-export interface GeoGapBrandListProps {
-  competitors: GeoCompetitor[];
-  tracked: readonly string[];
-  discovered: readonly string[];
+export interface GeoGapAnswerPanelProps {
+  organizationId: string;
+  promptId: string;
+  prompt: string;
+  isScanning: boolean;
 }
 
 export type GeoGapsMeterTone = "empty" | "low" | "mid" | "high";
@@ -86,18 +71,22 @@ export type GeoGapsEmptyKind =
   | "no-scan"
   | "no-prompt-gaps"
   | "no-search-gaps"
+  | "no-ai-search-gaps"
   | "no-matches";
 
 export interface GeoGapsTableProps {
   promptGaps: GeoPromptGapRow[];
   searchGaps: GeoSearchGapRow[];
+  aiSearchGaps: GeoAiSearchGapRow[];
   competitors: GeoCompetitor[];
   hasScanData: boolean;
   isScanning: boolean;
+  organizationId: string;
   organizationSlug: string;
   onRunScan: () => void;
   onWritePrompt: (row: GeoPromptGapRow) => void;
   onWriteSearch: (row: GeoSearchGapRow, existingPageUrl?: string) => void;
+  onWriteAiSearch: (row: GeoAiSearchGapRow) => void;
   onDismissSearch: (row: GeoSearchGapRow) => void;
   dismissingSearchId: string | null;
   onRescanPrompt: (row: GeoPromptGapRow) => void;
@@ -128,11 +117,21 @@ export interface GeoGapsEmptyProps {
 export interface GeoGapsTabsProps {
   tab: GeoGapsTab;
   onTabChange: (tab: GeoGapsTab) => void;
-  promptCount: number;
-  searchCount: number;
+  counts: Record<GeoGapsTab, number>;
+}
+
+export interface GeoGapEngineLogosProps {
+  engines: readonly string[];
+  detail: string;
+}
+
+export interface GeoGapCompetitorFields {
+  competitors: string[];
+  discoveredCompetitors: string[];
 }
 
 export interface GeoGapsFiltersProps {
+  tab: GeoGapsTab;
   query: string;
   onQueryChange: (value: string) => void;
   engine: string;

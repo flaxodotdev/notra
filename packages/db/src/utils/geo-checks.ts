@@ -18,6 +18,7 @@ import { db } from "../drizzle";
 import { geoMentionChecks, geoScans, geoSettings } from "../schema";
 import type {
   GeoCheckCompetitorPromptRow,
+  GeoCheckCompetitorPromptSummaryRow,
   GeoCheckCompetitorShareRow,
   GeoCheckCompetitorShareTimeseriesRow,
   GeoCheckCompetitorShareTrendRow,
@@ -66,6 +67,7 @@ export async function queryGeoCheckSentiment(
       lastCheckedAt: sql<string>`to_char(max(${geoMentionChecks.capturedAt}), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
     })
     .from(geoMentionChecks)
+    .$withCache(GEO_CHECK_AGGREGATE_CACHE)
     .where(
       and(
         mentionFilters(scope, window, {
@@ -152,6 +154,7 @@ export async function queryGeoSentimentAnalysisSnapshot(
       >`to_char(max(${geoMentionChecks.capturedAt}), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
     })
     .from(geoMentionChecks)
+    .$withCache(GEO_CHECK_AGGREGATE_CACHE)
     .where(
       and(
         mentionFilters(scope, window, {
@@ -290,6 +293,8 @@ function capturedWithin(window: GeoCheckWindow | undefined): SQL[] {
  */
 const withoutPersonaRows = isNull(geoMentionChecks.personaId);
 const withoutPersonaRowsSql = sql`and ${geoMentionChecks.personaId} is null`;
+const unnestedCompetitorBrand = sql`unnest(${geoMentionChecks.competitors}) as brand`;
+const competitorBrand = sql<string>`brand`;
 
 function mentionOptionFilters(options?: GeoCheckFilterOptions): SQL[] {
   const parts: SQL[] = [];
@@ -589,7 +594,6 @@ export async function queryGeoCheckPromptSummaries(
       lastCheckedAt: geoMentionChecks.capturedAt,
     })
     .from(geoMentionChecks)
-    .$withCache(GEO_CHECK_AGGREGATE_CACHE)
     .where(
       mentionFilters(scope, window, { sequences: "single", englishOnly: true })
     )
@@ -603,6 +607,7 @@ export async function queryGeoCheckPromptSummaries(
   const rows = db
     .select()
     .from(latest)
+    .$withCache(GEO_CHECK_AGGREGATE_CACHE)
     .where(
       and(
         query?.engine ? eq(latest.engine, query.engine) : undefined,
@@ -665,31 +670,20 @@ export async function queryGeoCheckCompetitorShare(
   limit: number,
   options?: GeoCheckFilterOptions
 ): Promise<GeoCheckCompetitorShareRow[]> {
-  const withinParts = capturedWithin(window);
-  const projectFilter = scope.projectId
-    ? sql`and ${geoMentionChecks.projectId} = ${scope.projectId}`
-    : sql``;
-  const windowFilter =
-    withinParts.length > 0 ? sql`and ${and(...withinParts)}` : sql``;
-  const optionParts = mentionOptionFilters(options);
-  const optionFilter =
-    optionParts.length > 0 ? sql`and ${and(...optionParts)}` : sql``;
+  const rows = await db
+    .select({
+      brand: competitorBrand,
+      mentions: sql<number>`count(*)::int`,
+    })
+    .from(geoMentionChecks)
+    .crossJoinLateral(unnestedCompetitorBrand)
+    .$withCache(GEO_CHECK_AGGREGATE_CACHE)
+    .where(mentionFilters(scope, window, options))
+    .groupBy(competitorBrand)
+    .orderBy(sql`count(*) desc`)
+    .limit(limit);
 
-  const result = await db.execute<{ brand: string; mentions: number }>(sql`
-    select brand, count(*)::int as mentions
-    from ${geoMentionChecks}
-    cross join lateral unnest(${geoMentionChecks.competitors}) as brand
-    where ${geoMentionChecks.organizationId} = ${scope.organizationId}
-      ${projectFilter}
-      ${windowFilter}
-      ${withoutPersonaRowsSql}
-      ${optionFilter}
-    group by brand
-    order by mentions desc
-    limit ${limit}
-  `);
-
-  return (result.rows as { brand: string; mentions: number }[]).map((row) => ({
+  return rows.map((row) => ({
     brand: row.brand,
     mentions: toNumber(row.mentions),
   }));
@@ -699,35 +693,21 @@ export async function queryGeoCheckCompetitorShareTimeseries(
   scope: GeoCheckScope,
   window: GeoCheckWindow | undefined
 ): Promise<GeoCheckCompetitorShareTimeseriesRow[]> {
-  const withinParts = capturedWithin(window);
-  const projectFilter = scope.projectId
-    ? sql`and ${geoMentionChecks.projectId} = ${scope.projectId}`
-    : sql``;
-  const windowFilter =
-    withinParts.length > 0 ? sql`and ${and(...withinParts)}` : sql``;
+  const day = sql<string>`(${geoMentionChecks.capturedAt})::date`;
+  const rows = await db
+    .select({
+      brand: competitorBrand,
+      day,
+      mentions: sql<number>`count(*)::int`,
+    })
+    .from(geoMentionChecks)
+    .crossJoinLateral(unnestedCompetitorBrand)
+    .$withCache(GEO_CHECK_AGGREGATE_CACHE)
+    .where(mentionFilters(scope, window))
+    .groupBy(competitorBrand, day)
+    .orderBy(day);
 
-  const result = await db.execute<{
-    brand: string;
-    day: string;
-    mentions: number;
-  }>(sql`
-    select
-      brand,
-      (${geoMentionChecks.capturedAt})::date as day,
-      count(*)::int as mentions
-    from ${geoMentionChecks}
-    cross join lateral unnest(${geoMentionChecks.competitors}) as brand
-    where ${geoMentionChecks.organizationId} = ${scope.organizationId}
-      ${projectFilter}
-      ${windowFilter}
-      ${withoutPersonaRowsSql}
-    group by brand, (${geoMentionChecks.capturedAt})::date
-    order by day asc
-  `);
-
-  return (
-    result.rows as { brand: string; day: string; mentions: number }[]
-  ).map((row) => ({
+  return rows.map((row) => ({
     brand: row.brand,
     day: toDay(row.day),
     mentions: toNumber(row.mentions),
@@ -739,6 +719,7 @@ export async function queryGeoCheckCompetitorShareTrends(
   window: GeoCheckWindow | undefined,
   limit: number
 ): Promise<GeoCheckCompetitorShareTrendRow[]> {
+  // ponytail: db.execute has no $withCache; nested subqueries drop join aliases
   const withinParts = capturedWithin(window);
   const projectFilter = scope.projectId
     ? sql`and ${geoMentionChecks.projectId} = ${scope.projectId}`
@@ -871,6 +852,53 @@ export async function queryGeoCheckCompetitorPrompts(
     .sort(
       (left, right) => right.capturedAt.getTime() - left.capturedAt.getTime()
     );
+}
+
+export async function queryGeoCheckCompetitorPromptSummary(
+  scope: GeoCheckScope,
+  brand: string,
+  window: GeoCheckWindow | undefined
+): Promise<GeoCheckCompetitorPromptSummaryRow> {
+  const latest = db
+    .selectDistinctOn([geoMentionChecks.promptId, geoMentionChecks.engine], {
+      promptId: geoMentionChecks.promptId,
+      engine: geoMentionChecks.engine,
+      mentioned: geoMentionChecks.mentioned,
+    })
+    .from(geoMentionChecks)
+    .where(
+      and(
+        scopeWhere(scope),
+        withoutPersonaRows,
+        sql`${geoMentionChecks.competitors} @> array[${brand}]::text[]`,
+        ...capturedWithin(window)
+      )
+    )
+    .orderBy(
+      geoMentionChecks.promptId,
+      geoMentionChecks.engine,
+      desc(geoMentionChecks.capturedAt)
+    )
+    .as("latest_geo_competitor_prompts");
+
+  const [row] = await db
+    .select({
+      answers: sql<number>`count(*)::int`,
+      prompts: sql<number>`count(distinct ${latest.promptId})::int`,
+      engineIds: sql<
+        string[]
+      >`coalesce(array_agg(distinct ${latest.engine}), '{}')`,
+      ownMentioned: sql<number>`count(*) filter (where ${latest.mentioned})::int`,
+    })
+    .from(latest)
+    .$withCache(GEO_CHECK_AGGREGATE_CACHE);
+
+  return {
+    answers: toNumber(row?.answers),
+    prompts: toNumber(row?.prompts),
+    engineIds: row?.engineIds ?? [],
+    ownMentioned: toNumber(row?.ownMentioned),
+  };
 }
 
 export async function queryGeoCheckLanguageShare(
@@ -1080,6 +1108,7 @@ export async function queryGeoScanComparison(
       promptId: geoMentionChecks.promptId,
       prompt: geoMentionChecks.prompt,
       mentioned: geoMentionChecks.mentioned,
+      ownedSourceCited: geoMentionChecks.ownedSourceCited,
       position: geoMentionChecks.position,
       competitors: geoMentionChecks.competitors,
       // The diff only reads source domains. Search queries and titles make up
@@ -1120,6 +1149,7 @@ export async function queryGeoScanComparison(
       promptId: row.promptId,
       prompt: row.prompt,
       mentioned: row.mentioned,
+      ownedSourceCited: row.ownedSourceCited,
       position: row.position,
       competitors: row.competitors,
       grounding: parseGeoCheckGrounding(row.grounding),

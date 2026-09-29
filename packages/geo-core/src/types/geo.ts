@@ -15,6 +15,7 @@ import type { GeoScanUsageByRole } from "@notra/db/types/geo-scan";
 import type { GeoContentBriefStatus } from "@notra/db/types/geo-writer";
 import type { FinishReason, LanguageModel, ToolSet } from "ai";
 
+import type { GEO_AUDIENCE_TYPES } from "../constants/geo-model-catalog";
 import type { GeoModelTokenUsage } from "./token-usage";
 
 export interface GeoProject {
@@ -457,6 +458,7 @@ export interface DueGeoScanRow {
   projectId: string;
   scanIntervalHours: number;
   nextScanAt: Date | null;
+  scanFirstFailedAt: Date | null;
   lastScanAt: Date | null;
 }
 
@@ -812,6 +814,7 @@ export type GeoGroundedProvider =
   | "gateway-openai"
   | "gateway-anthropic"
   | "gateway-google"
+  | "gateway-perplexity"
   | "direct-openai"
   | "direct-anthropic"
   | "direct-perplexity";
@@ -850,11 +853,35 @@ export interface GeoDiscoveredPrompt {
   title: string;
 }
 
+export type GeoAudienceType = (typeof GEO_AUDIENCE_TYPES)[number];
+
 export interface GeoWebsiteDiscovery {
   companyName: string;
   aliases: string[];
+  audienceType: GeoAudienceType;
   competitors: GeoCompetitorSeed[];
   prompts: GeoDiscoveredPrompt[];
+  conversations: GeoGeneratedConversation[];
+}
+
+export interface GeoGeneratedConversation {
+  name: string;
+  steps: string[];
+}
+
+export interface GeoConversationGenerationContext {
+  companyName: string;
+  companyDescription: string | null;
+  audience: string | null;
+  language: string | null;
+  competitors: string[];
+  prompts: string[];
+  existingNames: string[];
+  count: number;
+}
+
+export interface GeoSequencesGenerateResponse {
+  sequences: GeoPromptSequence[];
 }
 
 export interface GeoGenerateFromWebsiteResult {
@@ -862,6 +889,7 @@ export interface GeoGenerateFromWebsiteResult {
   aliases: string[];
   competitors: string[];
   promptsAdded: number;
+  conversationsAdded: number;
 }
 
 export interface GeoDiscoverWebsiteResult {
@@ -878,6 +906,7 @@ export interface GeoOnboardingBrandInput {
   aliases: string[];
   prompts: GeoDiscoveredPrompt[];
   languages?: string[];
+  audienceType?: GeoAudienceType;
   engines?: string[];
   enforceZdr?: boolean;
   nonZdrApprovedEngines?: string[];
@@ -1004,12 +1033,10 @@ export type GeoTrafficLogPurposeFilter =
 
 export interface GeoTrafficLogVisitorOption {
   value: GeoTrafficLogVisitorFilter;
-  label: string;
 }
 
 export interface GeoTrafficLogPurposeOption {
   value: GeoTrafficLogPurposeFilter;
-  label: string;
 }
 
 export interface GeoTrafficLogFilters {
@@ -1033,12 +1060,52 @@ export interface GeoJourney {
   distinctPaths: number;
   firstSeenAt: string;
   lastSeenAt: string;
+  /** First page fetched in the journey; `samplePaths` has no ordering. */
+  entryPath: string;
   samplePaths: string[];
 }
 
 export interface GeoTrafficJourneysResponse {
   configured: boolean;
   journeys: GeoJourney[];
+}
+
+export interface GeoJourneyDailyPoint {
+  day: string;
+  journeys: number;
+}
+
+/** Exact journey counts for one source; journeys count toward the window they started in. */
+export interface GeoJourneySourceStats {
+  source: string;
+  visitorType: GeoVisitorType;
+  journeys: number;
+  previousJourneys: number;
+  pages: number;
+  singleFetch: number;
+  deepCrawls: number;
+  lastSeenAt: string | null;
+  /** Days with at least one journey in the current window, oldest first. */
+  daily: GeoJourneyDailyPoint[];
+}
+
+export interface GeoJourneyPageStats {
+  path: string;
+  journeys: number;
+  previousJourneys: number;
+  /** Journeys whose first fetch was this page. */
+  entries: number;
+  lastSeenAt: string | null;
+  daily: GeoJourneyDailyPoint[];
+}
+
+export interface GeoJourneyStatsResponse {
+  configured: boolean;
+  sources: GeoJourneySourceStats[];
+  pages: GeoJourneyPageStats[];
+  /** Distinct pages in the window; can exceed `pages.length`. */
+  totalPages: number;
+  previousTotalPages: number;
 }
 
 export interface GeoJourneyEvent {
@@ -1312,6 +1379,7 @@ export type GeoModelProviderId =
   | "spacexai"
   | "deepseek"
   | "mistral"
+  | "perplexity"
   | "cursor"
   | "opencode"
   | "claude-code"
@@ -1369,8 +1437,6 @@ export interface GeoModelCatalog {
 export interface GeoResolvedModelCatalog extends GeoModelCatalog {
   models: (GeoModelCatalogEntry & { supportsGroundedChecks: boolean })[];
 }
-
-export type GeoScanSizeSeverity = "ok" | "warn" | "danger";
 
 export interface GeoScanSizeInput {
   promptCount: number;
@@ -1500,17 +1566,20 @@ export interface GeoCompetitorPromptRow {
   position: number | null;
 }
 
+/** Rows are the latest answer per prompt and engine that named the competitor. */
 export interface GeoCompetitorPromptSummary {
-  mentioned: number;
-  total: number;
-  bestPosition: number | null;
+  answers: number;
+  prompts: number;
   engines: number;
+  /** Answers that also mentioned your own brand. */
+  ownMentioned: number;
 }
 
 export interface GeoCompetitorDetailResponse {
   configured: boolean;
   points: GeoCompetitorTimeseriesPoint[];
   prompts: GeoCompetitorPromptRow[];
+  summary?: GeoCompetitorPromptSummary;
 }
 
 export type GeoCompetitorTypeFilter = "all" | GeoCompetitorKind;
@@ -1528,7 +1597,8 @@ export type GeoWriterSourceKind =
   | "manual"
   | "gap"
   | "prompt"
-  | "search_console";
+  | "search_console"
+  | "ai_search";
 
 export interface GeoWriterPlanInput {
   topic: string;
@@ -1603,6 +1673,43 @@ export interface GeoGapOpportunityInput {
   engineCoverage: number;
 }
 
+export interface GeoGapScore {
+  competitors: string[];
+  discoveredCompetitors: string[];
+  ownMentionRate: number;
+  opportunity: number;
+}
+
+export type GeoAiSearchQueryDbRow = {
+  query: string;
+  check_ids: string[];
+  mentioned_check_ids: string[];
+  covered_check_ids: string[];
+  engines: string[];
+  prompts: string[];
+  competitors: string[][];
+};
+
+export interface GeoAiSearchQueryRow {
+  query: string;
+  checkIds: string[];
+  mentionedCheckIds: string[];
+  coveredCheckIds: string[];
+  engines: string[];
+  prompts: string[];
+  competitors: string[][];
+}
+
+export interface GeoAiSearchAgg {
+  variants: Map<string, number>;
+  prompts: Set<string>;
+  engines: Set<string>;
+  checkIds: Set<string>;
+  mentionedCheckIds: Set<string>;
+  coveredCheckIds: Set<string>;
+  competitors: string[];
+}
+
 export interface GeoPromptGapRow {
   id: string;
   prompt: string;
@@ -1611,6 +1718,7 @@ export interface GeoPromptGapRow {
   mentionedEngines: string[];
   competitors: string[];
   discoveredCompetitors: string[];
+  searchQueries: string[];
   ownMentionRate: number;
   engineCoverage: number;
   opportunity: number;
@@ -1668,9 +1776,24 @@ export interface GeoSearchGapRecommendation {
   targets: GeoContentCollisionMatch[];
 }
 
+export interface GeoAiSearchGapRow {
+  id: string;
+  query: string;
+  variants: string[];
+  prompts: string[];
+  engines: string[];
+  searches: number;
+  ownMentionRate: number;
+  competitors: string[];
+  discoveredCompetitors: string[];
+  opportunity: number;
+  brief: GeoGapBriefRef | null;
+}
+
 export interface GeoContentGapsResponse {
   promptGaps: GeoPromptGapRow[];
   searchGaps: GeoSearchGapRow[];
+  aiSearchGaps: GeoAiSearchGapRow[];
   hasScanData: boolean;
 }
 
@@ -1721,6 +1844,7 @@ export type GeoChangeKind =
   | "competitor_displaced"
   | "citation_added"
   | "citation_removed"
+  | "competitor_cited"
   | "new_engine";
 
 export interface GeoChangeCheckState {
@@ -1732,6 +1856,7 @@ export interface GeoScanCheckSnapshot extends GeoChangeCheckState {
   promptId: string;
   prompt: string;
   engine: string;
+  ownedSourceCited: boolean;
   competitors: string[];
   domains: string[];
 }
@@ -1760,7 +1885,6 @@ export type GeoChangesSummaryGroupKey = "mentions" | "position" | "citations";
 
 export interface GeoChangesSummaryGroup {
   key: GeoChangesSummaryGroupKey;
-  label: string;
   up: keyof GeoChangesSummary;
   down: keyof GeoChangesSummary;
 }

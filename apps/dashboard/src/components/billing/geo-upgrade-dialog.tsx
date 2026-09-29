@@ -1,9 +1,5 @@
 "use client";
 
-import {
-  GEO_UPGRADE_DESCRIPTION,
-  GEO_UPGRADE_TITLE,
-} from "@notra/geo-core/constants/geo";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
 import {
   ResponsiveDialog,
@@ -16,6 +12,7 @@ import { Badge } from "@notra/ui/components/ui/badge";
 import { Skeleton } from "@notra/ui/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@notra/ui/components/ui/tabs";
 import { useListPlans } from "autumn-js/react";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -38,6 +35,7 @@ import {
   getProductPrice,
   groupBillingPlans,
   planGroupDescription,
+  planRenewalTerms,
   selectPlanVariant,
   zdrAddonToggle,
 } from "@/utils/billing-plans";
@@ -46,7 +44,13 @@ export function GeoUpgradeDialog({
   slug,
   open,
   onOpenChange,
+  onOpenChangeComplete,
 }: GeoUpgradeDialogProps) {
+  const t = useTranslations("billing.geoUpgrade");
+  const tCommon2 = useTranslations("common");
+  const tCommon = useTranslations("common.states");
+  const tBilling = useTranslations("billing");
+  const locale = useLocale();
   const { data: plans, isLoading: plansLoading } = useListPlans({
     queryOptions: { enabled: open },
   });
@@ -56,7 +60,9 @@ export function GeoUpgradeDialog({
   const [includeZdr, setIncludeZdr] = useState(false);
 
   const planGroups = groupBillingPlans(plans);
-  const intervalLabel = isYearly ? "year" : "month";
+  const intervalLabel = isYearly
+    ? tCommon2("labels.year")
+    : tCommon2("labels.month");
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
@@ -117,7 +123,7 @@ export function GeoUpgradeDialog({
       toast.error(
         err instanceof Error
           ? err.message
-          : "Could not start checkout. Please try again."
+          : tCommon2("messages.couldNotStartCheckoutPlease")
       );
     }
     setLoading(null);
@@ -129,17 +135,21 @@ export function GeoUpgradeDialog({
       return null;
     }
     const featured = group.id === FEATURED_PLAN_TIER;
-    let label = getPricingButtonText(plan);
+    let label = getPricingButtonText(plan, tBilling);
     if (loading === plan.id) {
-      label = "Loading...";
+      label = tCommon("loading");
     }
     return (
       <PlanCard
-        action={featured ? <Badge>Most popular</Badge> : undefined}
+        action={
+          featured ? <Badge>{tCommon2("labels.mostPopular")}</Badge> : undefined
+        }
         addon={zdrAddonToggle(
           findZdrAddonPlan(plans, plan.id),
           includeZdr,
-          handleIncludeZdrChange
+          handleIncludeZdrChange,
+          tBilling,
+          locale
         )}
         button={{
           label,
@@ -147,25 +157,30 @@ export function GeoUpgradeDialog({
           variant: featured ? "default" : "outline",
           onClick: () => handleSelectPlan(plan.id),
         }}
-        description={planGroupDescription(group)}
+        description={planGroupDescription(group, tBilling)}
         featured={featured}
-        features={getProductFeatures(plan)}
+        features={getProductFeatures(plan, tBilling, locale)}
         highlighted={false}
         intervalLabel={intervalLabel}
         key={group.id}
         name={group.name}
         price={getProductPrice(plan).amount}
+        renewalTerms={planRenewalTerms(plan)}
       />
     );
   }
 
   return (
-    <ResponsiveDialog onOpenChange={handleOpenChange} open={open}>
+    <ResponsiveDialog
+      onOpenChange={handleOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+      open={open}
+    >
       <ResponsiveDialogContent className="flex max-h-[90svh] flex-col overflow-hidden sm:max-w-5xl">
         <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>{GEO_UPGRADE_TITLE}</ResponsiveDialogTitle>
+          <ResponsiveDialogTitle>{t("title")}</ResponsiveDialogTitle>
           <ResponsiveDialogDescription>
-            {GEO_UPGRADE_DESCRIPTION}
+            {tCommon2("messages.aiVisibilityTrackingIsIncluded")}
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         <div className="flex justify-center">
@@ -174,11 +189,13 @@ export function GeoUpgradeDialog({
             value={isYearly ? "yearly" : "monthly"}
           >
             <TabsList variant="line">
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
+              <TabsTrigger value="monthly">
+                {tCommon2("labels.monthly")}
+              </TabsTrigger>
               <TabsTrigger className="flex items-center gap-1.5" value="yearly">
-                Yearly
+                {tCommon2("labels.yearly")}
                 <span className="bg-success/10 text-success rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-                  Save 20%
+                  {tCommon2("labels.savePercent", { percent: 20 })}
                 </span>
               </TabsTrigger>
             </TabsList>

@@ -364,15 +364,23 @@ export async function scrapeWebsiteForBrandAnalysis(
 
 async function scrapeBrandAnalysisPages(urls: string[]) {
   const settledPages = await Promise.allSettled(
-    urls.map((pageUrl) =>
-      fetchWebpage({
+    urls.map(async (pageUrl) => {
+      const page = await fetchWebpage({
         includeImages: false,
         includeLinks: true,
         onlyMainContent: true,
         timeoutMS: 20_000,
         url: pageUrl,
-      })
-    )
+      });
+      const sourceHost = normalizeBrandHostname(new URL(pageUrl).hostname);
+      const finalHost = normalizeBrandHostname(
+        new URL(page.metadata?.finalUrl ?? page.url, page.url).hostname
+      );
+      if (finalHost !== sourceHost && !finalHost.endsWith(`.${sourceHost}`)) {
+        throw new Error("Scraped page redirected to a different website");
+      }
+      return page;
+    })
   );
 
   const firstError = settledPages.find(
@@ -432,7 +440,8 @@ export async function fetchWebpage(
 }
 
 export async function crawlSitemap(
-  input: ContextDevCrawlSitemapInput
+  input: ContextDevCrawlSitemapInput,
+  options?: { signal?: AbortSignal }
 ): Promise<ContextDevCrawlSitemapResponse> {
   const params = new URLSearchParams({
     domain: input.domain,
@@ -450,7 +459,7 @@ export async function crawlSitemap(
 
   return requestContextDev<ContextDevCrawlSitemapResponse>(
     `/web/scrape/sitemap?${params.toString()}`,
-    { method: "GET" }
+    { method: "GET", signal: options?.signal }
   );
 }
 

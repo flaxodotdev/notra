@@ -1,5 +1,5 @@
 import { Avatar, Style } from "@dicebear/core";
-import personasStyle from "@dicebear/styles/personas.json";
+import micahStyle from "@dicebear/styles/micah.json";
 import type { GeoSequenceTurnResult } from "@notra/geo-core/types/geo";
 import type {
   GeoPersonaMemory,
@@ -9,7 +9,6 @@ import type {
 import {
   GEO_PERSONA_AVATAR_BACKGROUNDS,
   GEO_PERSONA_AVATAR_SIZE,
-  GEO_PERSONA_MEMORY_KIND_LABELS,
   GEO_PERSONA_MEMORY_KIND_ORDER,
 } from "@/constants/geo-personas";
 import type { GeoSequenceEngineThread } from "@/types/geo";
@@ -41,7 +40,6 @@ export function groupPersonaMemories(
     if (matching.length > 0) {
       groups.push({
         kind,
-        label: GEO_PERSONA_MEMORY_KIND_LABELS[kind],
         memories: matching,
       });
     }
@@ -49,7 +47,7 @@ export function groupPersonaMemories(
   return groups;
 }
 
-const personaAvatarStyle = new Style(personasStyle);
+const personaAvatarStyle = new Style(micahStyle);
 
 /** Deterministic illustrated portrait for a persona, keyed by its id. */
 export function personaAvatarDataUri(seed: string): string {

@@ -2,21 +2,20 @@
 
 import {
   GEO_SPARKLINE_MIN_POINTS,
-  GEO_TRAFFIC_CONVERSIONS_NOT_CONFIGURED_LABEL,
-  GEO_TRAFFIC_CONVERSIONS_SETUP_LABEL,
   GEO_TRAFFIC_FUNNEL_STAGES,
-  GEO_TRAFFIC_STAT_TREND_HINT,
+  GEO_TRAFFIC_OTHER_GROUP,
   GEO_TRAFFIC_TREND_CRAWLER_KEY,
-  GEO_TRAFFIC_TREND_CRAWLER_LABEL,
   GEO_TRAFFIC_TREND_REFERRAL_KEY,
-  GEO_TRAFFIC_TREND_REFERRAL_LABEL,
 } from "@notra/geo-core/constants/geo";
+import type { GeoTrafficFunnelStageKey } from "@notra/geo-core/types/geo";
 import {
   trafficSparklineDays,
   trafficVisitDelta,
 } from "@notra/geo-core/utils/ai-traffic";
 import { todayIsoDate } from "@notra/geo-core/utils/day-label";
+import { AnimatedNumber } from "@notra/ui/components/animated-number";
 import { Button } from "@notra/ui/components/ui/button";
+import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -45,8 +44,10 @@ import {
   buildTrafficTrendRowsForProviders,
   buildTrafficTrendSeries,
   toggleTrafficTrendKey,
+  trafficTrendProviderKey,
   trafficTrendProviderTypeKey,
 } from "@/utils/ai-traffic-trend";
+import { formatFullDayLabel } from "@/utils/analytics-charts";
 import { seriesColors } from "@/utils/chart-colors";
 import { engineIconHtml } from "@/utils/engine-icon-html";
 import { formatChartInteger } from "@/utils/geo-charts";
@@ -68,9 +69,12 @@ function metricDelta(
 }
 
 function TrafficHeroMetric({ metric, settingsHref }: TrafficHeroMetricProps) {
+  const t = useTranslations("geo.trafficHero");
+  const tCommon = useTranslations("common");
+  const tGeoShared = useTranslations("geo.shared");
   return (
     <div className={TRAFFIC_HERO_METRIC_CELL_CLASS}>
-      <p className="text-foreground/75 text-sm leading-5 font-semibold tracking-tight text-pretty @sm/hero:text-base @sm/hero:leading-6">
+      <p className="text-foreground/75 text-sm leading-5 font-semibold tracking-tight text-pretty">
         {metric.label}
       </p>
       {metric.value === null ? (
@@ -81,32 +85,30 @@ function TrafficHeroMetric({ metric, settingsHref }: TrafficHeroMetricProps) {
               "text-muted-foreground",
               TRAFFIC_HERO_METRIC_VALUE_CLASS
             )}
-            title={GEO_TRAFFIC_CONVERSIONS_NOT_CONFIGURED_LABEL}
+            title={t("notConfigured")}
           >
             —
           </span>
-          <span className="sr-only">
-            {GEO_TRAFFIC_CONVERSIONS_NOT_CONFIGURED_LABEL}
-          </span>
+          <span className="sr-only">{t("notConfigured")}</span>
           <Button
             nativeButton={false}
             render={<Link href={settingsHref} />}
             size="sm"
-            title={GEO_TRAFFIC_CONVERSIONS_SETUP_LABEL}
+            title={t("setUpTitle")}
             variant="outline"
           >
-            Set up
+            {tCommon("labels.setUp")}
           </Button>
         </div>
       ) : (
         <div className="flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 self-start">
-          <span className={TRAFFIC_HERO_METRIC_VALUE_CLASS}>
-            {metric.value.toLocaleString()}
-          </span>
+          <AnimatedNumber
+            className={TRAFFIC_HERO_METRIC_VALUE_CLASS}
+            value={metric.value}
+          />
           <GeoStatDelta
-            className="rounded-md px-2 py-1.5 text-xs leading-4 [&>span]:hidden"
             delta={metric.delta}
-            hint={GEO_TRAFFIC_STAT_TREND_HINT}
+            hint={tGeoShared("vsPreviousPeriodOfThe")}
             label={metric.label}
           />
         </div>
@@ -123,6 +125,18 @@ export function TrafficHero({
   points,
   settingsHref,
 }: TrafficHeroProps) {
+  const t = useTranslations("geo.trafficHero");
+  const tShared = useTranslations("geo.shared");
+  const tCommon2 = useTranslations("common");
+  const tInstrument = useTranslations("geo.directions.instrument");
+  const tGeoSharedStages = useTranslations("geo.shared");
+  const stageLabels: Record<GeoTrafficFunnelStageKey, string> = {
+    crawler: t("stages.crawler.label"),
+    cited: tGeoSharedStages("citedInAnswer"),
+    aiReferral: tGeoSharedStages("aiReferrals"),
+    conversions: t("stages.conversions.label"),
+  };
+  const locale = useLocale();
   const [hiddenKeys, setHiddenKeys] = useState<ReadonlySet<string>>(
     () => new Set()
   );
@@ -133,8 +147,8 @@ export function TrafficHero({
   const metrics: TrafficTrendMetric[] = GEO_TRAFFIC_FUNNEL_STAGES.map(
     (stage) => ({
       key: stage.key,
-      label: stage.label,
-      description: stage.description,
+      label: stageLabels[stage.key],
+      description: t(`stages.${stage.key}.description`),
       value: totals[stage.key],
       delta: metricDelta(
         totals[stage.key],
@@ -145,21 +159,26 @@ export function TrafficHero({
 
   const providers = buildTrafficTrendProviders(
     groups.flatMap((group) => group.members)
+  ).map((provider) =>
+    provider.key === trafficTrendProviderKey(GEO_TRAFFIC_OTHER_GROUP.key)
+      ? { ...provider, label: tCommon2("labels.other") }
+      : provider
   );
   const providerSeries = buildTrafficTrendSeries(providers);
   const chartRows = buildTrafficTrendRowsForProviders(
     points,
     providers,
     days,
-    hiddenKeys
+    hiddenKeys,
+    locale
   );
   const config: ChartConfig = {
     [GEO_TRAFFIC_TREND_CRAWLER_KEY]: {
-      label: GEO_TRAFFIC_TREND_CRAWLER_LABEL,
+      label: tShared("crawlers"),
       colors: seriesColors(CHART_PRIMARY_COLOR),
     },
     [GEO_TRAFFIC_TREND_REFERRAL_KEY]: {
-      label: GEO_TRAFFIC_TREND_REFERRAL_LABEL,
+      label: tShared("referrals"),
       colors: seriesColors(CHART_SECONDARY_COLOR),
     },
     ...Object.fromEntries(
@@ -219,12 +238,22 @@ export function TrafficHero({
       {showTrend ? (
         <div
           className={TRAFFIC_HERO_CHART_SURFACE_CLASS}
-          data-chart-title="AI traffic"
+          data-chart-title={tInstrument("aiTraffic")}
         >
+          <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+            <h2 className="text-sm font-medium">{t("activity")}</h2>
+            <TrafficProviderLegend
+              hiddenKeys={hiddenKeys}
+              onToggle={(key) =>
+                setHiddenKeys((current) => toggleTrafficTrendKey(current, key))
+              }
+              series={providerSeries}
+            />
+          </div>
           <EChartsAreaChart
             animation={false}
             chartOptions={HERO_CHART_OPTIONS}
-            className="h-52 w-full @md/hero:h-72"
+            className="h-52 w-full cursor-crosshair @md/hero:h-72"
             config={config}
             curveType="monotone"
             data={chartRows}
@@ -256,21 +285,18 @@ export function TrafficHero({
             <EChartsAreaChart.Tooltip
               confine={false}
               hideZeros
-              layout="bars"
+              labelFormatter={(day: string) => formatFullDayLabel(day, locale)}
+              labelKey="rawDay"
+              layout="activity"
               position="fixed"
               rowGroups={tooltipGroups}
               roundness="xl"
-              valueFormatter={formatChartInteger}
+              scrub
+              valueFormatter={(value: number) =>
+                formatChartInteger(value, locale)
+              }
             />
           </EChartsAreaChart>
-          <TrafficProviderLegend
-            config={config}
-            hiddenKeys={hiddenKeys}
-            onToggle={(key) =>
-              setHiddenKeys((current) => toggleTrafficTrendKey(current, key))
-            }
-            series={providerSeries}
-          />
         </div>
       ) : null}
     </div>
