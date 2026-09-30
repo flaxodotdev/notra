@@ -74,15 +74,28 @@ export interface FigmaEffect {
   type: string;
   visible?: boolean;
   blendMode?: string;
-  color?: { r: number; g: number; b: number; a: number };
+  color?: Color;
   offset?: { x: number; y: number };
   radius?: number;
   spread?: number;
-  opacity?: number;
   showShadowBehindNode?: boolean;
 }
 
-export interface AddFrameOptions {
+export interface DropShadowOptions {
+  dx: number;
+  dy: number;
+  blur: number;
+  color: RGBA;
+}
+
+export interface NodeExtras {
+  opacity?: number;
+  blendMode?: string;
+  effects?: FigmaEffect[];
+  mask?: boolean;
+}
+
+export interface AddFrameOptions extends NodeExtras {
   parent?: Guid;
   name?: string;
   x?: number;
@@ -98,11 +111,6 @@ export interface AddFrameOptions {
   stackSpacing?: number;
   padding?: [number, number, number, number];
   clipsContent?: boolean;
-  opacity?: number;
-  blendMode?: string;
-  effects?: FigmaEffect[];
-  mask?: boolean | null;
-  maskType?: string | null;
 }
 
 export interface AddTextOptions {
@@ -126,7 +134,7 @@ export interface AddTextOptions {
   derivedTextData?: DerivedTextData;
 }
 
-export interface AddVectorOptions {
+export interface AddVectorOptions extends NodeExtras {
   parent: Guid;
   name?: string;
   x?: number;
@@ -141,9 +149,4 @@ export interface AddVectorOptions {
   strokeJoin?: string;
   strokeWeight?: number;
   network: VectorNetwork;
-  opacity?: number;
-  blendMode?: string;
-  effects?: FigmaEffect[];
-  mask?: boolean | null;
-  maskType?: string | null;
 }

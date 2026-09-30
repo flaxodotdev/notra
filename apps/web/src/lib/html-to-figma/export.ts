@@ -9,11 +9,6 @@ const EXPORT_HEIGHT = "630px";
 const FONT_RENDER_DELAY_MS = 50;
 
 function createExportElement(html: string): HTMLDivElement {
-  // The export is rendered inside this page, so it would pick up the page's
-  // cascade: inherited properties (text color, color-scheme, fonts) and any
-  // global selector that matches the snippet's descendants. A shadow root stops
-  // the selectors, `all: initial` on the host stops the inheritance, and Kiwi
-  // then exports the same computed styles a fresh document would produce.
   const host = document.createElement("div");
   host.style.all = "initial";
   host.style.position = "fixed";
@@ -83,9 +78,6 @@ export function copyHtmlAsFigma(
   );
 }
 
-export function copyHtmlAsPaper(
-  html: string,
-  _label: string
-): Promise<HtmlExportResult> {
+export function copyHtmlAsPaper(html: string): Promise<HtmlExportResult> {
   return copyHtml(html, (element) => copyAsPaper(element));
 }

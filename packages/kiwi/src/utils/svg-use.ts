@@ -20,12 +20,10 @@ function useTarget(useEl: Element): Element | null {
   if (!id) {
     return null;
   }
-  // A shadow root is its own id scope, so ownerDocument cannot resolve ids
-  // inside it; ask the element's own root first, then fall back to the document.
-  const root = useEl.getRootNode() as Partial<Pick<Document, "getElementById">>;
-  return (
-    root.getElementById?.(id) ?? useEl.ownerDocument.getElementById(id) ?? null
-  );
+  const root = useEl.getRootNode();
+  const scoped =
+    root instanceof DocumentFragment ? root.getElementById(id) : null;
+  return scoped ?? useEl.ownerDocument.getElementById(id);
 }
 
 function inlineUse(useEl: Element, depth: number): Element | null {

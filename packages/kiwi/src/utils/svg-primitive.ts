@@ -161,3 +161,23 @@ export function svgPrimitiveToSubpaths(
   }
   return parseSvgPath(d);
 }
+
+export function svgPrimitiveAttrs(el: Element): SvgPrimitiveAttrs {
+  return {
+    d: el.getAttribute("d"),
+    cx: el.getAttribute("cx"),
+    cy: el.getAttribute("cy"),
+    r: el.getAttribute("r"),
+    rx: el.getAttribute("rx"),
+    ry: el.getAttribute("ry"),
+    x: el.getAttribute("x"),
+    y: el.getAttribute("y"),
+    width: el.getAttribute("width"),
+    height: el.getAttribute("height"),
+    x1: el.getAttribute("x1"),
+    y1: el.getAttribute("y1"),
+    x2: el.getAttribute("x2"),
+    y2: el.getAttribute("y2"),
+    points: el.getAttribute("points"),
+  };
+}

@@ -54,7 +54,7 @@ export interface TextInfo {
   parentHeight: number;
 }
 
-export interface SvgShape {
+export interface SvgShape extends SvgStyling {
   subpaths: PathSubpath[];
   fill: string | null;
   fillRule: "nonzero" | "evenodd";
@@ -66,6 +66,9 @@ export interface SvgShape {
   clipChain: string[];
   effectGroup: string | null;
   filterOutside: boolean;
+}
+
+export interface SvgStyling {
   opacity: number | undefined;
   blendMode: string | undefined;
   effects: FigmaEffect[];
@@ -77,14 +80,11 @@ export interface SvgClip {
   fillRule: "nonzero" | "evenodd";
 }
 
-export interface SvgEffectGroup {
+export interface SvgEffectGroup extends SvgStyling {
   id: string;
-  effects: FigmaEffect[];
-  opacity: number | undefined;
-  blendMode: string | undefined;
 }
 
-export interface SvgInfo {
+export interface SvgInfo extends SvgStyling {
   kind: "svg";
   name: string;
   x: number;
@@ -97,11 +97,7 @@ export interface SvgInfo {
   shapes: SvgShape[];
   clips: SvgClip[];
   effectGroups: SvgEffectGroup[];
-  /** Mirror the SVG viewport: clip overflowing content unless overflow is visible. */
   clipsContent: boolean;
-  opacity: number | undefined;
-  blendMode: string | undefined;
-  effects: FigmaEffect[];
 }
 
 export type LayoutNode = ElementInfo | TextInfo | SvgInfo;
