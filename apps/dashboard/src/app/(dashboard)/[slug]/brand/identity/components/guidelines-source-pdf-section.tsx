@@ -13,6 +13,7 @@ import {
   BRAND_GUIDELINE_PDF_MIME_TYPE,
   MAX_BRAND_GUIDELINE_PDF_FILE_SIZE,
 } from "@notra/schemas/constants/dashboard/upload";
+import { useFormatter } from "next-intl";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,7 +27,6 @@ import { uploadFile } from "@/lib/upload/client";
 import { cn } from "@/lib/utils";
 import type { GuidelinesPanelProps } from "@/types/brand-identity";
 import type { BrandGuideline } from "@/types/hooks/brand-guidelines";
-import { formatRelativeTime } from "@/utils/format";
 
 const PDF_SIZE_LABEL = `PDF, max ${MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024}MB`;
 
@@ -36,6 +36,7 @@ export function GuidelinesSourcePdfSection({
   voiceId,
 }: GuidelinesPanelProps & { guideline: BrandGuideline | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const format = useFormatter();
   const [isUploading, setIsUploading] = useState(false);
   const attach = useAttachGuidelineSourcePdf(organizationId, voiceId);
   const remove = useRemoveGuidelineSourcePdf(organizationId, voiceId);
@@ -148,7 +149,7 @@ export function GuidelinesSourcePdfSection({
                 <p className="truncate text-sm font-medium">{filename}</p>
                 <p className="text-muted-foreground truncate text-xs">
                   {guideline?.sourcePdfUploadedAt
-                    ? formatRelativeTime(
+                    ? format.relativeTime(
                         new Date(guideline.sourcePdfUploadedAt)
                       )
                     : "PDF"}
