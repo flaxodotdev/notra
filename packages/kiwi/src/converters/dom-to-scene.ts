@@ -628,7 +628,7 @@ function extractLayout(node: Node): LayoutNode | null {
         })),
       }));
       const strokeScale = Math.hypot(ctm.a, ctm.b) || 1;
-      const clipRefs = svgClipRefs(geomEl, getStyle);
+      const clipRefs = svgClipRefs(geomEl, svg, getStyle);
       const clipChain = clipRefs.flatMap(({ id, ref }) => {
         const source = clipSources.get(id);
         const key =
@@ -801,7 +801,7 @@ function emitSvg(
       if (!bounds) {
         continue;
       }
-      const isRect = isRectClip(clip.subpaths);
+      const isRect = clip.opacity >= 1 && isRectClip(clip.subpaths);
       const next = {
         x: bounds.minX,
         y: bounds.minY,
@@ -820,7 +820,11 @@ function emitSvg(
       if (!isRect) {
         emitSvgSubpaths(
           sb,
-          { ...CLIP_MASK_SHAPE, fillRule: clip.fillRule },
+          {
+            ...CLIP_MASK_SHAPE,
+            fillRule: clip.fillRule,
+            opacity: clip.opacity < 1 ? clip.opacity : undefined,
+          },
           clip.subpaths,
           guid,
           next.x,

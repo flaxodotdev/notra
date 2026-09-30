@@ -6,7 +6,7 @@ import {
   DEFAULT_SHADOW_COLOR,
 } from "../constants/svg-clip";
 import type { SvgStyling } from "../types/dom-to-scene";
-import type { FigmaEffect } from "../types/scene";
+import type { FigmaEffect, RGBA } from "../types/scene";
 import type {
   ShapeAncestorGroup,
   ShapeStyling,
@@ -23,7 +23,8 @@ import {
 } from "./css-value";
 
 function numberAttr(el: Element, name: string, fallback: number): number {
-  return Number.parseFloat(el.getAttribute(name) ?? `${fallback}`) || 0;
+  const value = Number.parseFloat(el.getAttribute(name) ?? `${fallback}`);
+  return Number.isFinite(value) ? value : 0;
 }
 
 function filterElementEffects(filterEl: Element): FigmaEffect[] {
@@ -50,7 +51,7 @@ function filterElementEffects(filterEl: Element): FigmaEffect[] {
   return tag === "fegaussianblur" && blur > 0 ? [layerBlurEffect(blur)] : [];
 }
 
-function cssFilterEffects(value: string): FigmaEffect[] {
+function cssFilterEffects(value: string, currentColor: RGBA): FigmaEffect[] {
   const effects: FigmaEffect[] = [];
   let blur: number | null = null;
   for (const { name, args } of splitCssFunctions(value)) {
@@ -63,9 +64,9 @@ function cssFilterEffects(value: string): FigmaEffect[] {
             dx: shadow.dx,
             dy: shadow.dy,
             blur: shadow.blur,
-            color:
-              (shadow.color && parseColor(shadow.color)) ||
-              DEFAULT_SHADOW_COLOR,
+            color: shadow.color
+              ? (parseColor(shadow.color) ?? currentColor)
+              : currentColor,
           })
         );
       }
@@ -84,16 +85,16 @@ function filterEffects(
   style: CSSStyleDeclaration,
   svg: SVGSVGElement
 ): FigmaEffect[] {
-  const attr = el.getAttribute("filter") ?? "";
-  const attrRef = parseUrlRef(attr);
-  const css = style.getPropertyValue("filter") || (attrRef ? "" : attr);
-  const ref = attrRef ?? parseUrlRef(css);
+  const filter =
+    style.getPropertyValue("filter") || el.getAttribute("filter") || "";
+  const ref = parseUrlRef(filter);
   const filterEl = ref
     ? Array.from(svg.querySelectorAll("filter")).find((f) => f.id === ref)
     : undefined;
+  const currentColor = parseColor(style.color) ?? DEFAULT_SHADOW_COLOR;
   return [
     ...(filterEl ? filterElementEffects(filterEl) : []),
-    ...cssFilterEffects(css),
+    ...cssFilterEffects(filter, currentColor),
   ];
 }
 
@@ -119,8 +120,8 @@ export function svgShapeStyling(
 ): ShapeStyling {
   const ancestors: Element[] = [];
   for (
-    let node = el.parentElement;
-    node && node.tagName.toLowerCase() !== "svg";
+    let node: Element | null = el.parentElement;
+    node && node !== svg;
     node = node.parentElement
   ) {
     ancestors.unshift(node);

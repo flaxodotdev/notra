@@ -1,9 +1,10 @@
 import type { SvgShape } from "../types/dom-to-scene";
 import type { RGBA } from "../types/scene";
-import type { Affine } from "../types/svg-clip";
+import type { Affine, MaskPaint } from "../types/svg-clip";
 
 export const URL_REF_RE = /url\(\s*["']?#([^"')\s]+)["']?\s*\)/i;
 export const CSS_LENGTH_RE = /^(-?\d*\.?\d+(?:[eE][+-]?\d+)?)(px)?$/;
+export const OPACITY_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?%?$/i;
 export const SVG_TRANSFORM_FN_RE = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
 export const SVG_TRANSFORM_NUM_RE = /-?\d*\.?\d+(?:[eE][+-]?\d+)?/g;
 
@@ -34,6 +35,12 @@ export const DEFAULT_DROP_SHADOW_DY = 4;
 export const DEFAULT_DROP_SHADOW_BLUR = 4;
 
 export const MASK_DARK_LUMINANCE = 0.5;
+export const CLIP_CHILD_PAINT: MaskPaint = {
+  tone: "light",
+  alpha: 1,
+  strokeWidth: null,
+};
+export const DEFAULT_STROKE_WIDTH = 1;
 export const RECT_CLIP_TOLERANCE = 0.5;
 export const GEOMETRY_EPSILON = 1e-9;
 export const CLIP_FINGERPRINT_DIGITS = 3;

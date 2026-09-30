@@ -1,3 +1,4 @@
+import { SVG_NS } from "../constants/dom-to-scene";
 import type { BuildPaperPasteHtmlOptions } from "../types/paper";
 
 export type { BuildPaperPasteHtmlOptions } from "../types/paper";
@@ -28,13 +29,14 @@ function paperRootElement(
   return element;
 }
 
-function soleSvgChild(element: HTMLElement): SVGSVGElement | null {
+function soleSvgChild(element: HTMLElement): Element | null {
   const [only] = element.children;
   const hasText = Array.from(element.childNodes).some(
     (node) => node.nodeType === Node.TEXT_NODE && !isWhitespaceText(node)
   );
   return element.children.length === 1 &&
-    only instanceof SVGSVGElement &&
+    only?.namespaceURI === SVG_NS &&
+    only.localName === "svg" &&
     !hasText
     ? only
     : null;

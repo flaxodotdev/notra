@@ -47,6 +47,10 @@ export function solidFill(r: number, g: number, b: number, a = 1): SolidFill {
   };
 }
 
+function finiteOrZero(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
 export function dropShadowEffect({
   dx,
   dy,
@@ -57,9 +61,14 @@ export function dropShadowEffect({
     type: "DROP_SHADOW",
     visible: true,
     blendMode: "NORMAL",
-    color: { r, g, b, a: Math.max(0, Math.min(1, a)) },
-    offset: { x: dx, y: dy },
-    radius: Math.max(0, blur),
+    color: {
+      r: finiteOrZero(r),
+      g: finiteOrZero(g),
+      b: finiteOrZero(b),
+      a: Math.max(0, Math.min(1, finiteOrZero(a))),
+    },
+    offset: { x: finiteOrZero(dx), y: finiteOrZero(dy) },
+    radius: Math.max(0, finiteOrZero(blur)),
     spread: 0,
     showShadowBehindNode: false,
   };
@@ -69,7 +78,7 @@ export function layerBlurEffect(radius: number): FigmaEffect {
   return {
     type: "FOREGROUND_BLUR",
     visible: true,
-    radius: Math.max(0, radius),
+    radius: Math.max(0, finiteOrZero(radius)),
   };
 }
 

@@ -1,4 +1,9 @@
-import { HEX_RE, RGB_RE, WHITESPACE_RE } from "../constants/dom-to-scene";
+import {
+  HEX_RE,
+  RGB_ALPHA_SLASH_RE,
+  RGB_RE,
+  WHITESPACE_RE,
+} from "../constants/dom-to-scene";
 import type { RGBA } from "../types/scene";
 
 export function normalizeCssColorWithContext(
@@ -23,12 +28,14 @@ export function normalizeCssColorWithContext(
 
 let colorParseContext: CanvasRenderingContext2D | null | undefined;
 
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
 function parseColorChannel(value: string): number {
   const trimmed = value.trim();
-  if (trimmed.endsWith("%")) {
-    return Number.parseFloat(trimmed) / 100;
-  }
-  return Number.parseFloat(trimmed) / 255;
+  const parsed = Number.parseFloat(trimmed);
+  return clampUnit(trimmed.endsWith("%") ? parsed / 100 : parsed / 255);
 }
 
 function parseAlphaChannel(value: string | undefined): number {
@@ -36,10 +43,8 @@ function parseAlphaChannel(value: string | undefined): number {
     return 1;
   }
   const trimmed = value.trim();
-  if (trimmed.endsWith("%")) {
-    return Number.parseFloat(trimmed) / 100;
-  }
-  return Number.parseFloat(trimmed);
+  const parsed = Number.parseFloat(trimmed);
+  return clampUnit(trimmed.endsWith("%") ? parsed / 100 : parsed);
 }
 
 function normalizeCssColor(value: string): string | null {
@@ -86,7 +91,7 @@ function parseKnownColor(s: string): RGBA | null {
   const parts = inner.includes(",")
     ? inner.split(",").map((p) => p.trim())
     : inner
-        .replace(" / ", " ")
+        .replace(RGB_ALPHA_SLASH_RE, " ")
         .split(WHITESPACE_RE)
         .map((p) => p.trim());
   const [rs, gs, bs, as] = parts;

@@ -305,3 +305,37 @@ export function convexContours(subs: PathSubpath[]): PathSubpath[] {
     return triangulateSubpath(contour).map((t) => withWinding(t, positive));
   });
 }
+
+function segmentQuad(a: PathPoint, b: PathPoint, half: number): PathSubpath {
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  const ux = ((b.x - a.x) / length) * half;
+  const uy = ((b.y - a.y) / length) * half;
+  return withWinding(
+    {
+      closed: true,
+      points: [
+        { x: a.x - ux - uy, y: a.y - uy + ux },
+        { x: b.x + ux - uy, y: b.y + uy + ux },
+        { x: b.x + ux + uy, y: b.y + uy - ux },
+        { x: a.x - ux + uy, y: a.y - uy - ux },
+      ],
+    },
+    true
+  );
+}
+
+export function strokeOutline(
+  subs: PathSubpath[],
+  width: number
+): PathSubpath[] {
+  return subs.flatMap((sub) => {
+    const [first] = sub.points;
+    const points = sub.closed && first ? [...sub.points, first] : sub.points;
+    return points.slice(1).flatMap((b, i) => {
+      const a = points[i];
+      return a && (a.x !== b.x || a.y !== b.y)
+        ? [segmentQuad(a, b, width / 2)]
+        : [];
+    });
+  });
+}

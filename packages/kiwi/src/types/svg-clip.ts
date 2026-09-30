@@ -38,11 +38,18 @@ export interface ClipRef {
 
 export type MaskChildTone = "skip" | "light" | "dark";
 
+export interface MaskPaint {
+  tone: MaskChildTone;
+  alpha: number;
+  strokeWidth: number | null;
+}
+
 export interface ClipChildSource {
   el: Element;
   subs: PathSubpath[];
   evenOdd: boolean;
   dark: boolean;
+  alpha: number;
 }
 
 export interface ClipSource {

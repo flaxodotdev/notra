@@ -78,6 +78,7 @@ export interface SvgClip {
   id: string;
   subpaths: PathSubpath[];
   fillRule: "nonzero" | "evenodd";
+  opacity: number;
 }
 
 export interface SvgEffectGroup extends SvgStyling {

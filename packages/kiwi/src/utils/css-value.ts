@@ -2,6 +2,7 @@ import { WHITESPACE_RE } from "../constants/dom-to-scene";
 import {
   BLEND_MODE_MAP,
   CSS_LENGTH_RE,
+  OPACITY_RE,
   URL_REF_RE,
 } from "../constants/svg-clip";
 import type { CssFunction, ParsedDropShadow } from "../types/svg-clip";
@@ -19,20 +20,41 @@ export function parseBlendMode(
 export function parseOpacityValue(
   value: string | null | undefined
 ): number | undefined {
-  if (value == null) {
+  const trimmed = value?.trim() ?? "";
+  const parsed = Number.parseFloat(trimmed);
+  if (!(OPACITY_RE.test(trimmed) && Number.isFinite(parsed))) {
     return undefined;
   }
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-  const opacity = value.trim().endsWith("%") ? parsed / 100 : parsed;
+  const opacity = trimmed.endsWith("%") ? parsed / 100 : parsed;
   return Math.max(0, Math.min(1, opacity));
 }
 
 export function parseCssLength(token: string | undefined): number | null {
   const match = CSS_LENGTH_RE.exec(token?.trim() ?? "");
-  return match?.[1] ? Number.parseFloat(match[1]) : null;
+  const length = match?.[1] ? Number.parseFloat(match[1]) : null;
+  return length !== null && Number.isFinite(length) ? length : null;
+}
+
+function splitTopLevelTokens(value: string): string[] {
+  const tokens: string[] = [];
+  let depth = 0;
+  let token = "";
+  for (const char of value) {
+    if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+    }
+    if (depth === 0 && WHITESPACE_RE.test(char)) {
+      if (token) {
+        tokens.push(token);
+      }
+      token = "";
+    } else {
+      token += char;
+    }
+  }
+  return token ? [...tokens, token] : tokens;
 }
 
 export function splitCssFunctions(value: string): CssFunction[] {
@@ -60,7 +82,7 @@ export function splitCssFunctions(value: string): CssFunction[] {
 }
 
 export function parseDropShadowArgs(args: string): ParsedDropShadow | null {
-  const parts = args.trim().split(WHITESPACE_RE).filter(Boolean);
+  const parts = splitTopLevelTokens(args);
   for (let k = 0; k + 1 < parts.length; k += 1) {
     const dx = parseCssLength(parts[k]);
     const dy = parseCssLength(parts[k + 1]);
@@ -71,13 +93,13 @@ export function parseDropShadowArgs(args: string): ParsedDropShadow | null {
     const blur = parseCssLength(rest[0]);
     const leadingColor = parts.slice(0, k).join(" ") || null;
     const trailingColor = rest.slice(blur === null ? 0 : 1).join(" ") || null;
-    if (leadingColor && trailingColor) {
+    if ((leadingColor && trailingColor) || (blur !== null && blur < 0)) {
       return null;
     }
     return {
       dx,
       dy,
-      blur: Math.max(0, blur ?? 0),
+      blur: blur ?? 0,
       color: leadingColor ?? trailingColor,
     };
   }
