@@ -1,3 +1,4 @@
+import type { GeoSparklinePoint } from "@notra/geo-core/types/geo";
 import type {
   GeoPersona,
   GeoPersonaActivityPoint,
@@ -263,17 +264,17 @@ export function currentPersonaSnapshotVersion(
 }
 
 /**
- * Daily mention rates (0-100, null = no scan that day) for one persona,
- * oldest first, capped at the latest `maxBars` calendar days of the
- * response window. Days without observations yield `null` so bars stay
- * aligned with the range and sparse histories show gaps, not shifts.
+ * Daily mention rates for one persona as sparkline points, oldest first,
+ * capped at the latest `maxDays` calendar days of the response window.
+ * Days without observations read as 0 so points stay aligned with the
+ * range — the same slot-per-day shape the GeoRateSparkline consumers use.
  */
-export function personaSparklineValues(
+export function personaSparklinePoints(
   activity: GeoPersonaActivityResponse,
   personaId: string,
   snapshotVersion: string | undefined,
-  maxBars = 30
-): (number | null)[] {
+  maxDays = 30
+): GeoSparklinePoint[] {
   if (!snapshotVersion) {
     return [];
   }
@@ -301,8 +302,9 @@ export function personaSparklineValues(
     cursor.setUTCDate(cursor.getUTCDate() + 1);
     day = cursor.toISOString().slice(0, 10);
   }
-  return days.slice(Math.max(0, days.length - maxBars)).map((day) => {
+  return days.slice(Math.max(0, days.length - maxDays)).map((day) => {
     const point = byDay.get(day);
-    return point ? mentionRate(point) : null;
+    const value = point ? mentionRate(point) : null;
+    return { day, value: value ?? 0 };
   });
 }

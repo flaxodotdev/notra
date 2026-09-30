@@ -2995,10 +2995,7 @@
       "nounSingular": "persona",
       "nounPlural": "personas",
       "archiving": "Archiving…",
-      "archiveTitle": "Archive persona?",
-      "activity": "Activity",
-      "activityHint": "Daily mention rate per scan day over the selected range",
-      "activityLabel": "Mention-rate activity for {name}"
+      "archiveTitle": "Archive persona?"
     },
     "projectBrandSection": {
       "description": "This identity supplies the project's brand website and the default voice and sitemaps for new articles. You can choose another identity for an individual article.",

@@ -1,5 +1,6 @@
 "use client";
 
+import { GEO_SPARKLINE_MIN_POINTS } from "@notra/geo-core/constants/geo";
 import {
   GEO_PERSONA_MAX_COUNT,
   GEO_PERSONA_MAX_TURNS,
@@ -19,10 +20,10 @@ import { useMutationState } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
+import { GeoRateSparkline } from "@/components/geo/geo-rate-sparkline";
 import { GeoRemoveDialog } from "@/components/geo/geo-remove-dialog";
 import { PersonaAvatar } from "@/components/geo/persona-avatar";
 import { PersonaDetailDialog } from "@/components/geo/persona-detail-dialog";
-import { PersonaSparkline } from "@/components/geo/persona-sparkline";
 import {
   PersonaTableContextMenu,
   PersonaTableRowActions,
@@ -31,7 +32,7 @@ import { Table, type TableColumn } from "@/components/motion/table";
 import { useGeoProjectScope } from "@/components/providers/geo-project-provider";
 import {
   GEO_PERSONAS_ACTIONS_COLUMN_WIDTH,
-  GEO_PERSONAS_ACTIVITY_COLUMN_WIDTH,
+  GEO_PERSONAS_TREND_COLUMN_WIDTH,
   GEO_PERSONAS_MEMORIES_COLUMN_WIDTH,
   GEO_PERSONAS_MIN_TABLE_ROWS,
   GEO_PERSONAS_TURNS_COLUMN_WIDTH,
@@ -53,7 +54,7 @@ import { accountSeriesColorPair } from "@/utils/chart-colors";
 import { geoPersonaUpdateMutationKey } from "@/utils/geo-persona-queries";
 import {
   currentPersonaSnapshotVersion,
-  personaSparklineValues,
+  personaSparklinePoints,
 } from "@/utils/persona-activity";
 import { tableHeightFor } from "@/utils/table";
 
@@ -211,33 +212,27 @@ export function PersonasTable({
         ),
       },
       {
-        key: "activity",
-        header: (
-          <Tooltip>
-            <TooltipTrigger render={<span className="cursor-help" />}>
-              {t("activity")}
-            </TooltipTrigger>
-            <TooltipContent>{t("activityHint")}</TooltipContent>
-          </Tooltip>
-        ),
-        width: GEO_PERSONAS_ACTIVITY_COLUMN_WIDTH,
-        minWidth: GEO_PERSONAS_ACTIVITY_COLUMN_WIDTH,
+        key: "trend",
+        header: tGeoShared("trendLabel"),
+        width: GEO_PERSONAS_TREND_COLUMN_WIDTH,
+        minWidth: GEO_PERSONAS_TREND_COLUMN_WIDTH,
         align: "center",
         cell: (row) => {
           const version = activityData
             ? currentPersonaSnapshotVersion(activityData, row.id)
             : undefined;
-          const values = activityData
-            ? personaSparklineValues(activityData, row.id, version)
+          const points = activityData
+            ? personaSparklinePoints(activityData, row.id, version)
             : [];
+          if (points.length < GEO_SPARKLINE_MIN_POINTS) {
+            return <span className="text-muted-foreground text-xs">-</span>;
+          }
           return (
-            <PersonaSparkline
-              values={values}
-              colors={accountSeriesColorPair(
-                personaColorIndex.get(row.id) ?? 0
-              )}
-              label={t("activityLabel", { name: row.name })}
-              dimmed={Boolean(row.archivedAt)}
+            <GeoRateSparkline
+              color={
+                accountSeriesColorPair(personaColorIndex.get(row.id) ?? 0).light
+              }
+              points={points}
             />
           );
         },
