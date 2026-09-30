@@ -191,3 +191,44 @@ export function personaMentionRate(
   }
   return checks ? (mentions / checks) * 100 : null;
 }
+
+/** Snapshot version with the most recent check — mirrors the card's "current" series. */
+export function currentPersonaSnapshotVersion(
+  activity: GeoPersonaActivityResponse,
+  personaId: string
+): string | undefined {
+  let latest: { version: string; at: string } | null = null;
+  for (const point of activity.points) {
+    if (point.personaId !== personaId) {
+      continue;
+    }
+    if (!latest || point.lastCheckedAt > latest.at) {
+      latest = { version: point.snapshotVersion, at: point.lastCheckedAt };
+    }
+  }
+  return latest?.version;
+}
+
+/**
+ * Daily mention rates (0-100, null = no scan that day) for one persona,
+ * oldest first, capped at the most recent `maxBars` days.
+ */
+export function personaSparklineValues(
+  activity: GeoPersonaActivityResponse,
+  personaId: string,
+  snapshotVersion: string | undefined,
+  maxBars = 30
+): (number | null)[] {
+  if (!snapshotVersion) {
+    return [];
+  }
+  const values = activity.points
+    .filter(
+      (point) =>
+        point.personaId === personaId &&
+        point.snapshotVersion === snapshotVersion
+    )
+    .toSorted((left, right) => left.day.localeCompare(right.day))
+    .map((point) => mentionRate(point));
+  return values.slice(Math.max(0, values.length - maxBars));
+}

@@ -2994,7 +2994,10 @@
       "nounSingular": "Persona",
       "nounPlural": "Personas",
       "archiving": "Wird archiviert…",
-      "archiveTitle": "Persona archivieren?"
+      "archiveTitle": "Persona archivieren?",
+      "activity": "Aktivität",
+      "activityHint": "Tägliche Erwähnungsrate pro Scan-Tag im gewählten Zeitraum",
+      "activityLabel": "Erwähnungsaktivität für {name}"
     },
     "projectBrandSection": {
       "description": "Diese Identität liefert die Marken-Website des Projekts sowie die Standard-Tonalität und Sitemaps für neue Artikel. Für einzelne Artikel kannst du eine andere Identität wählen.",

@@ -22,6 +22,7 @@ import { useMemo, useState } from "react";
 import { GeoRemoveDialog } from "@/components/geo/geo-remove-dialog";
 import { PersonaAvatar } from "@/components/geo/persona-avatar";
 import { PersonaDetailDialog } from "@/components/geo/persona-detail-dialog";
+import { PersonaSparkline } from "@/components/geo/persona-sparkline";
 import {
   PersonaTableContextMenu,
   PersonaTableRowActions,
@@ -30,6 +31,7 @@ import { Table, type TableColumn } from "@/components/motion/table";
 import { useGeoProjectScope } from "@/components/providers/geo-project-provider";
 import {
   GEO_PERSONAS_ACTIONS_COLUMN_WIDTH,
+  GEO_PERSONAS_ACTIVITY_COLUMN_WIDTH,
   GEO_PERSONAS_MEMORIES_COLUMN_WIDTH,
   GEO_PERSONAS_MIN_TABLE_ROWS,
   GEO_PERSONAS_TURNS_COLUMN_WIDTH,
@@ -40,12 +42,19 @@ import {
   useGeoPersonaDelete,
   useGeoPersonaRestore,
   useGeoPersonaRun,
+  useGeoPersonaActivity,
   useGeoPersonasGenerate,
   useGeoPersonaUpdate,
 } from "@/lib/hooks/use-geo-personas";
+import { useGeoRange } from "@/lib/hooks/use-geo-range";
 import { cn } from "@/lib/utils";
 import type { PersonaTableProps } from "@/types/geo-personas-ui";
+import { accountSeriesColorPair } from "@/utils/chart-colors";
 import { geoPersonaUpdateMutationKey } from "@/utils/geo-persona-queries";
+import {
+  currentPersonaSnapshotVersion,
+  personaSparklineValues,
+} from "@/utils/persona-activity";
 import { tableHeightFor } from "@/utils/table";
 
 export function PersonasTable({
@@ -89,6 +98,16 @@ export function PersonasTable({
   const deletingPersonaId = deletePersona.isPending
     ? deletePersona.variables
     : null;
+  // Same query key as PersonaActivityCard — shared cache, no extra request.
+  const range = useGeoRange();
+  const { data: activityData } = useGeoPersonaActivity(
+    organizationId,
+    range.query
+  );
+  const personaColorIndex = useMemo(
+    () => new Map(personas.map((persona, index) => [persona.id, index])),
+    [personas]
+  );
   const autoOpenPersona =
     personas.find((persona) => persona.id === openPersonaId) ?? null;
   const displayedPersona = autoOpenPersona ?? viewing;
@@ -192,6 +211,38 @@ export function PersonasTable({
         ),
       },
       {
+        key: "activity",
+        header: (
+          <Tooltip>
+            <TooltipTrigger render={<span className="cursor-help" />}>
+              {t("activity")}
+            </TooltipTrigger>
+            <TooltipContent>{t("activityHint")}</TooltipContent>
+          </Tooltip>
+        ),
+        width: GEO_PERSONAS_ACTIVITY_COLUMN_WIDTH,
+        minWidth: GEO_PERSONAS_ACTIVITY_COLUMN_WIDTH,
+        align: "center",
+        cell: (row) => {
+          const version = activityData
+            ? currentPersonaSnapshotVersion(activityData, row.id)
+            : undefined;
+          const values = activityData
+            ? personaSparklineValues(activityData, row.id, version)
+            : [];
+          return (
+            <PersonaSparkline
+              values={values}
+              colors={accountSeriesColorPair(
+                personaColorIndex.get(row.id) ?? 0
+              )}
+              label={t("activityLabel", { name: row.name })}
+              dimmed={Boolean(row.archivedAt)}
+            />
+          );
+        },
+      },
+      {
         key: "actions",
         header: <span className="sr-only">{tCommon("labels.actions")}</span>,
         width: GEO_PERSONAS_ACTIONS_COLUMN_WIDTH,
@@ -216,9 +267,11 @@ export function PersonasTable({
     ],
     [
       activePersonaCount,
+      activityData,
       archivedPersonaCount,
       deletingPersonaId,
       pendingPersonaIds,
+      personaColorIndex,
       generationPending,
       generatingPersonaId,
       reactivatePersona,
