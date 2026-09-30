@@ -229,9 +229,11 @@ export function PersonasTable({
           }
           return (
             <GeoRateSparkline
+              className={cn(row.archivedAt && "opacity-60")}
               color={
                 accountSeriesColorPair(personaColorIndex.get(row.id) ?? 0).light
               }
+              label={t("trendLabel", { name: row.name })}
               points={points}
             />
           );

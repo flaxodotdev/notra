@@ -2995,7 +2995,8 @@
       "nounSingular": "Persona",
       "nounPlural": "Personas",
       "archiving": "Wird archiviert…",
-      "archiveTitle": "Persona archivieren?"
+      "archiveTitle": "Persona archivieren?",
+      "trendLabel": "Erwähnungstrend für {name}"
     },
     "projectBrandSection": {
       "description": "Diese Identität liefert die Marken-Website des Projekts sowie die Standard-Tonalität und Sitemaps für neue Artikel. Für einzelne Artikel kannst du eine andere Identität wählen.",
