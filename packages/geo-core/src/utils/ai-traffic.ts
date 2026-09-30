@@ -6,6 +6,7 @@ import {
   GEO_JOURNEY_BROWSE_CATEGORY,
   GEO_JOURNEY_CHIP_LENGTH,
   GEO_JOURNEY_EXPLICIT_PREFIX,
+  GEO_MAX_RANGE_DAYS,
   GEO_SPARKLINE_MIN_POINTS,
   GEO_SPARKLINE_FLAT_THRESHOLD,
   GEO_STAT_DELTA_NEW,
@@ -123,19 +124,20 @@ export function toGeoTrafficPreviousTotals(
   );
 }
 
-const timestampFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-export function formatAiTrafficTimestamp(value: string): string {
+export function formatAiTrafficTimestamp(
+  value: string,
+  locale = "en-US"
+): string {
   const date = parseClickHouseDateTime(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return timestampFormatter.format(date);
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 const MS_PER_MINUTE = 60_000;
@@ -175,7 +177,9 @@ export function toGeoTrafficLogPurposeFilter(
 
 export function formatGeoJourneySpan(
   firstSeenAt: string,
-  lastSeenAt: string
+  lastSeenAt: string,
+  underAMinuteLabel = "under a minute",
+  locale?: string
 ): string {
   const start = parseClickHouseDateTime(firstSeenAt);
   const end = parseClickHouseDateTime(lastSeenAt);
@@ -188,17 +192,23 @@ export function formatGeoJourneySpan(
     0
   );
   if (minutes < 1) {
-    return "under a minute";
+    return underAMinuteLabel;
   }
+  const unit = (value: number, name: "minute" | "hour" | "day") =>
+    new Intl.NumberFormat(locale, {
+      style: "unit",
+      unit: name,
+      unitDisplay: "narrow",
+    }).format(value);
   if (minutes < MINUTES_PER_HOUR) {
-    return `${minutes}m`;
+    return unit(minutes, "minute");
   }
 
   const hours = Math.floor(minutes / MINUTES_PER_HOUR);
   if (hours < HOURS_PER_DAY) {
-    return `${hours}h ${minutes % MINUTES_PER_HOUR}m`;
+    return `${unit(hours, "hour")} ${unit(minutes % MINUTES_PER_HOUR, "minute")}`;
   }
-  return `${Math.floor(hours / HOURS_PER_DAY)}d ${hours % HOURS_PER_DAY}h`;
+  return `${unit(Math.floor(hours / HOURS_PER_DAY), "day")} ${unit(hours % HOURS_PER_DAY, "hour")}`;
 }
 
 export function formatMarkdownShare(markdown: number, visits: number): string {
@@ -219,13 +229,37 @@ export function hasTrafficSourceSeries(
 }
 
 export function trafficSparklineDays(
-  points: readonly GeoTrafficPoint[]
+  points: readonly GeoTrafficPoint[],
+  from?: string,
+  to?: string
 ): string[] {
-  return [...new Set(points.map((point) => trafficDayKey(point.day)))].sort();
+  const observed = [
+    ...new Set(points.map((point) => trafficDayKey(point.day))),
+  ].sort();
+  if (observed.length === 0 || !from || !to) {
+    return observed;
+  }
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+    return observed;
+  }
+  const dayMs = 86_400_000;
+  const span = Math.floor((end - start) / dayMs) + 1;
+  if (span > GEO_MAX_RANGE_DAYS) {
+    return observed;
+  }
+  const days: string[] = [];
+  for (let time = start; time <= end; time += dayMs) {
+    days.push(new Date(time).toISOString().slice(0, 10));
+  }
+  return days;
 }
 
 export function buildTrafficTrendRows(
-  points: readonly GeoTrafficPoint[]
+  points: readonly GeoTrafficPoint[],
+  locale?: string,
+  days?: readonly string[]
 ): GeoTrafficTrendRow[] {
   const byDay = new Map<string, { crawler: number; aiReferral: number }>();
 
@@ -247,14 +281,15 @@ export function buildTrafficTrendRows(
     byDay.set(day, current);
   }
 
-  return [...byDay.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([day, values]) => ({
-      day: formatDayLabel(day),
+  return (days ?? [...byDay.keys()].sort()).map((day) => {
+    const values = byDay.get(day) ?? { crawler: 0, aiReferral: 0 };
+    return {
+      day: formatDayLabel(day, locale),
       rawDay: day,
       [GEO_TRAFFIC_TREND_CRAWLER_KEY]: values.crawler,
       [GEO_TRAFFIC_TREND_REFERRAL_KEY]: values.aiReferral,
-    }));
+    };
+  });
 }
 
 export function isTrafficPagePending({

@@ -1,6 +1,7 @@
 "use client";
 
 import { supportsPostSlug } from "@notra/ai/schemas/post";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { ContentDetailSourceMetadata } from "@/components/content/content-detail-source-metadata";
@@ -31,6 +32,9 @@ export function LongFormEditor({
   reviewPreviousMarkdown = null,
   organizationId,
 }: ContentEditorProps) {
+  const t = useTranslations("content.editors");
+  const tCommon = useTranslations("common");
+  const locale = useLocale();
   const titleInputRef = useRef<HTMLTextAreaElement>(null);
   const slugInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,7 +68,7 @@ export function LongFormEditor({
     <div className="w-full">
       <div className="flex items-start gap-2 text-2xl leading-tight md:text-3xl">
         <textarea
-          aria-label="Post title"
+          aria-label={tCommon("labels.postTitle")}
           className="placeholder:text-muted-foreground/40 block h-auto min-h-0 min-w-0 flex-1 resize-none overflow-hidden bg-transparent p-0 font-semibold tracking-tight outline-none"
           onChange={(e) => actions.setEditingTitle(e.target.value)}
           onFocus={(e) => {
@@ -82,7 +86,7 @@ export function LongFormEditor({
               titleInputRef.current?.blur();
             }
           }}
-          placeholder="Untitled"
+          placeholder={tCommon("labels.untitled")}
           readOnly={readOnly}
           ref={titleInputRef}
           rows={1}
@@ -95,56 +99,55 @@ export function LongFormEditor({
         )}
       </div>
       <div className="text-muted-foreground mt-4 space-y-2 text-sm">
-        {showSlug ? (
-          <div className="text-muted-foreground flex min-w-0 flex-1 items-start gap-1 font-mono text-xs">
-            <span className="shrink-0 leading-5">/</span>
-            <textarea
-              aria-label="Post slug"
-              className="placeholder:text-muted-foreground/50 focus:text-foreground min-h-0 min-w-0 flex-1 resize-none overflow-hidden bg-transparent p-0 text-base leading-5 break-all outline-none sm:text-sm"
-              onBlur={() => {
-                if (state.editingSlug !== null) {
-                  actions.setEditingSlug(
-                    state.editingSlug.replace(/^-+|-+$/g, "")
-                  );
-                }
-              }}
-              onChange={(e) => {
-                const nextSlug = e.target.value
-                  .toLowerCase()
-                  .replace(/[^a-z0-9\s-]/g, "")
-                  .replace(/\s+/g, "-")
-                  .replace(/-+/g, "-");
-                actions.setEditingSlug(nextSlug);
-              }}
-              onFocus={() => {
-                if (state.editingSlug === null) {
-                  actions.setEditingSlug(slug);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  slugInputRef.current?.blur();
-                }
-                if (e.key === "Escape") {
-                  actions.setEditingSlug(null);
-                  slugInputRef.current?.blur();
-                }
-              }}
-              placeholder="add-a-slug"
-              readOnly={readOnly}
-              ref={slugInputRef}
-              rows={1}
-              value={slug}
-            />
-          </div>
-        ) : null}
-        <time
-          className="text-muted-foreground mt-2 block text-sm"
-          dateTime={content.date}
-        >
-          {formatArticleDate(new Date(content.date))}
-        </time>
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+          {showSlug ? (
+            <div className="flex min-w-40 flex-1 items-start gap-1 font-mono text-xs">
+              <span className="shrink-0 leading-5">/</span>
+              <textarea
+                aria-label={t("postSlug")}
+                className="placeholder:text-muted-foreground/50 focus:text-foreground min-h-0 min-w-0 flex-1 resize-none overflow-hidden bg-transparent p-0 text-base leading-5 break-all outline-none sm:text-sm"
+                onBlur={() => {
+                  if (state.editingSlug !== null) {
+                    actions.setEditingSlug(
+                      state.editingSlug.replace(/^-+|-+$/g, "")
+                    );
+                  }
+                }}
+                onChange={(e) => {
+                  const nextSlug = e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9\s-]/g, "")
+                    .replace(/\s+/g, "-")
+                    .replace(/-+/g, "-");
+                  actions.setEditingSlug(nextSlug);
+                }}
+                onFocus={() => {
+                  if (state.editingSlug === null) {
+                    actions.setEditingSlug(slug);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    slugInputRef.current?.blur();
+                  }
+                  if (e.key === "Escape") {
+                    actions.setEditingSlug(null);
+                    slugInputRef.current?.blur();
+                  }
+                }}
+                placeholder={t("slugPlaceholder")}
+                readOnly={readOnly}
+                ref={slugInputRef}
+                rows={1}
+                value={slug}
+              />
+            </div>
+          ) : null}
+          <time className="ml-auto shrink-0 text-sm" dateTime={content.date}>
+            {formatArticleDate(new Date(content.date), locale)}
+          </time>
+        </div>
         {organizationId ? (
           <ContentDetailSourceMetadata
             organizationId={organizationId}

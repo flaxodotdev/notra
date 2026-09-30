@@ -45,6 +45,11 @@ export interface WorkspaceFormProps {
   progressHrefs?: OnboardingProgressHrefs;
 }
 
+export interface WorkspaceSlugCheck {
+  slug: string;
+  status: "checking" | "available" | "unavailable" | "error";
+}
+
 export interface OnboardingSplitLayoutProps {
   children: React.ReactNode;
 }
@@ -239,3 +244,12 @@ export interface OnboardingEmailPrefsProps {
   onDailySummaryChange: (checked: boolean) => void;
   onMarketingEmailsChange: (checked: boolean) => void;
 }
+
+export type LogoFileValidationError = "invalidType" | "tooLarge";
+
+export type WorkspaceFormField =
+  | "name"
+  | "slug"
+  | "websiteUrl"
+  | "heardAboutNotraSource"
+  | "heardAboutNotraOther";

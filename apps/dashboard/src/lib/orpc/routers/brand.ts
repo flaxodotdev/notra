@@ -52,7 +52,9 @@ import {
 import { ORPCError } from "@orpc/server";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { getTranslations } from "next-intl/server";
 
+import { REFERENCE_LIMIT_REACHED_CODE } from "@/constants/brand";
 import {
   BRAND_REFERENCE_SOURCES,
   REFERENCE_QUOTA_FEATURE,
@@ -193,13 +195,12 @@ function isMemorySyncFieldUpdate(data: {
   );
 }
 
-function normalizeBrandVoiceWebsiteUrl(rawUrl: string) {
+async function normalizeBrandVoiceWebsiteUrl(rawUrl: string) {
   const parseResult = publicWebsiteUrlSchema.safeParse(rawUrl);
 
   if (!parseResult.success) {
-    throw badRequest(
-      parseResult.error.issues[0]?.message ?? "Invalid website URL"
-    );
+    const tErrors = await getTranslations("errors.integrations");
+    throw badRequest(tErrors("publicUrlInvalid"));
   }
 
   return new URL(parseResult.data).href;
@@ -314,8 +315,10 @@ export const brandRouter = {
         const name =
           typeof input.name === "string" && input.name.trim()
             ? input.name.trim()
-            : "Untitled Brand Voice";
-        const websiteUrl = normalizeBrandVoiceWebsiteUrl(input.websiteUrl);
+            : (await getTranslations("brand.defaults"))("untitledIdentity");
+        const websiteUrl = await normalizeBrandVoiceWebsiteUrl(
+          input.websiteUrl
+        );
 
         const existingVoice = await db.query.brandSettings.findFirst({
           where: and(
@@ -325,7 +328,8 @@ export const brandRouter = {
         });
 
         if (existingVoice) {
-          throw conflict("A brand voice with this name already exists");
+          const tErrors = await getTranslations("errors.brand");
+          throw conflict(tErrors("voiceNameTaken"));
         }
 
         const hasAnyVoice = await db.query.brandSettings.findFirst({
@@ -367,7 +371,8 @@ export const brandRouter = {
           return { voice: serializeBrandVoice(createdVoice) };
         } catch (error) {
           if (isUniqueConstraintError(error)) {
-            throw conflict("A brand voice with this name already exists");
+            const tErrors = await getTranslations("errors.brand");
+            throw conflict(tErrors("voiceNameTaken"));
           }
 
           throw internalServerError("Failed to create brand voice", error);
@@ -394,7 +399,7 @@ export const brandRouter = {
           const normalizedWebsiteUrl =
             updates.websiteUrl === undefined
               ? undefined
-              : normalizeBrandVoiceWebsiteUrl(updates.websiteUrl);
+              : await normalizeBrandVoiceWebsiteUrl(updates.websiteUrl);
 
           await db
             .update(brandSettings)
@@ -425,7 +430,8 @@ export const brandRouter = {
           return { voices: voices.map(serializeBrandVoice) };
         } catch (error) {
           if (isUniqueConstraintError(error)) {
-            throw conflict("A brand voice with this name already exists");
+            const tErrors = await getTranslations("errors.brand");
+            throw conflict(tErrors("voiceNameTaken"));
           }
 
           throw internalServerError("Failed to update brand settings", error);
@@ -445,7 +451,8 @@ export const brandRouter = {
         );
 
         if (voice.isDefault) {
-          throw badRequest("Cannot delete the default voice");
+          const tErrors = await getTranslations("errors.brand");
+          throw badRequest(tErrors("defaultVoiceDelete"));
         }
 
         const affectedTriggers = await getTriggersForBrandVoice(
@@ -684,7 +691,8 @@ export const brandRouter = {
         );
 
         if (!voice.websiteUrl) {
-          throw badRequest("Set a website URL before generating guidelines");
+          const tErrors = await getTranslations("errors.brand");
+          throw badRequest(tErrors("websiteUrlRequired"));
         }
 
         await startBrandGuidelineGeneration(input.voiceId);
@@ -898,7 +906,8 @@ export const brandRouter = {
           return await getBrandGuidelines(input.voiceId);
         } catch (error) {
           if (isUniqueConstraintError(error)) {
-            throw conflict("A screenshot with this type already exists");
+            const tErrors = await getTranslations("errors.brand");
+            throw conflict(tErrors("screenshotTypeTaken"));
           }
           throw error;
         }
@@ -1090,7 +1099,8 @@ export const brandRouter = {
           });
 
           if (existing) {
-            throw conflict("This tweet has already been added as a reference");
+            const tErrors = await getTranslations("errors.brand");
+            throw conflict(tErrors("tweetAlreadyAdded"));
           }
         }
 
@@ -1132,9 +1142,10 @@ export const brandRouter = {
                 feature: REFERENCE_QUOTA_FEATURE,
               },
             });
-            throw forbidden(
-              "Reference limit reached. Upgrade your plan to add more."
-            );
+            const tErrors = await getTranslations("errors.brand");
+            throw forbidden(tErrors("referenceLimitAdd"), {
+              code: REFERENCE_LIMIT_REACHED_CODE,
+            });
           }
         }
 
@@ -1430,9 +1441,8 @@ export const brandRouter = {
         );
 
         if (!withinLimit) {
-          throw tooManyRequests(
-            "Too many import requests. Please try again shortly."
-          );
+          const tErrors = await getTranslations("errors.brand");
+          throw tooManyRequests(tErrors("tooManyImportRequests"));
         }
 
         await verifyVoiceOwnership(input.organizationId, input.voiceId);
@@ -1456,7 +1466,8 @@ export const brandRouter = {
         );
 
         if (!profileLookup) {
-          throw badRequest("Failed to fetch the X profile for this account");
+          const tErrors = await getTranslations("errors.brand");
+          throw badRequest(tErrors("fetchXProfileFailed"));
         }
 
         const { userId: twitterUserId, pinnedTweet } = profileLookup;
@@ -1668,9 +1679,10 @@ export const brandRouter = {
                 feature: REFERENCE_QUOTA_FEATURE,
               },
             });
-            throw forbidden(
-              "Reference limit reached. Upgrade your plan to import more."
-            );
+            const tErrors = await getTranslations("errors.brand");
+            throw forbidden(tErrors("referenceLimitImport"), {
+              code: REFERENCE_LIMIT_REACHED_CODE,
+            });
           }
         }
 
@@ -1818,7 +1830,8 @@ export const brandRouter = {
         );
 
         if (!withinLimit) {
-          throw tooManyRequests("Too many requests. Please try again shortly.");
+          const tErrors = await getTranslations("errors.brand");
+          throw tooManyRequests(tErrors("tooManyRequests"));
         }
 
         await verifyVoiceOwnership(input.organizationId, input.voiceId);

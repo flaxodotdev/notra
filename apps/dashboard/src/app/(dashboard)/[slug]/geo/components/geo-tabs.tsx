@@ -6,7 +6,8 @@ import {
   PermissionOption,
   PermissionRow,
 } from "@notra/ui/components/ui/permission-selector";
-import type { ReactNode } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { Activity, type ReactNode } from "react";
 
 import { BrandSentimentCard } from "@/components/geo/brand-sentiment-card";
 import { EngineRateTable } from "@/components/geo/engine-rate-table";
@@ -25,12 +26,13 @@ import { journeyTotals } from "@/utils/geo-journey";
 import { toGeoTab } from "@/utils/geo-tabs";
 
 function TriggerCount({ count }: { count: number }) {
+  const locale = useLocale();
   if (count <= 0) {
     return null;
   }
   return (
     <span className="text-xs tabular-nums opacity-70">
-      {count.toLocaleString()}
+      {count.toLocaleString(locale)}
     </span>
   );
 }
@@ -78,11 +80,14 @@ export function GeoTabs({
   journeysLoading,
   organizationId,
 }: GeoTabsProps) {
+  const t = useTranslations("geo.pages.tabs");
+  const tCommon = useTranslations("common");
+
   return (
     <div className="flex min-w-0 flex-col">
       <PermissionRow
         className="w-fit shrink-0"
-        label="GEO sections"
+        label={t("label")}
         layout="compact"
         onValueChange={(value) => {
           const tab = toGeoTab(value);
@@ -91,13 +96,15 @@ export function GeoTabs({
         }}
         value={activeTab}
       >
-        <PermissionOption value="visibility">Visibility</PermissionOption>
+        <PermissionOption value="visibility">
+          {tCommon("labels.visibility")}
+        </PermissionOption>
         <PermissionOption value="brand-sentiment">
-          Brand Sentiment
+          {tCommon("labels.brandSentiment")}
         </PermissionOption>
         <PermissionOption value="journeys">
           <span className="flex items-baseline gap-1.5">
-            Journeys
+            {tCommon("labels.journeys")}
             <TriggerCount
               count={
                 journeyStats
@@ -109,7 +116,7 @@ export function GeoTabs({
         </PermissionOption>
       </PermissionRow>
 
-      {activeTab === "visibility" ? (
+      <Activity mode={activeTab === "visibility" ? "visible" : "hidden"}>
         <div className="mt-6 flex flex-col gap-6 overflow-visible">
           <InstrumentGrid className="grid-cols-1 items-stretch gap-4 overflow-visible @min-[44rem]/main:grid-cols-12">
             <TabSection
@@ -184,7 +191,7 @@ export function GeoTabs({
             </TabSection>
           </InstrumentGrid>
         </div>
-      ) : null}
+      </Activity>
 
       {activeTab === "brand-sentiment" ? (
         <div className="mt-6">

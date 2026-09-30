@@ -1,5 +1,5 @@
 {
-  "id": "61938d55-5388-45c6-8130-83760150993e",
+  "id": "43d76477-b280-4273-8bc1-3fcce58e3eb9",
   "prevId": "a77d35a1-e56a-4953-bc60-ff699802b169",
   "version": "7",
   "dialect": "postgresql",
@@ -2889,36 +2889,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "source_pdf_filename": {
-          "name": "source_pdf_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_storage_key": {
-          "name": "source_pdf_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_url": {
-          "name": "source_pdf_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_text": {
-          "name": "source_pdf_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_uploaded_at": {
-          "name": "source_pdf_uploaded_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -12295,6 +12265,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "workos_user_id": {
           "name": "workos_user_id",

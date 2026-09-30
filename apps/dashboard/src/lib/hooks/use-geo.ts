@@ -58,12 +58,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { useGeoProjectScope } from "@/components/providers/geo-project-provider";
-import { localStorageKeys } from "@/constants/storage";
 import { trackEvent } from "@/lib/analytics/posthog-client";
 import { geoDbOrgQueryKey, geoDbQueryKey } from "@/lib/db/geo-collections";
 import type { GeoScanTrigger } from "@/types/analytics/geo-events";
@@ -74,6 +74,7 @@ import type {
   GeoSettingsUpsertOptions,
   GeoSuggestionIdInput,
   GeoTrafficLogQueryOptions,
+  GscSyncResultMessage,
 } from "@/types/geo";
 import { toErrorMessage } from "@/utils/error-message";
 import { geoCompetitorDetailPath } from "@/utils/geo-competitors";
@@ -87,6 +88,7 @@ import {
   geoTrafficPagesQueryInput,
 } from "@/utils/geo-query-input";
 import { toGeoWindowInput } from "@/utils/geo-range";
+import { formatGscSiteUrl } from "@/utils/gsc-site-url";
 
 import { dashboardOrpc } from "../orpc/query";
 import { useScopedPreviousData } from "./use-scoped-previous-data";
@@ -183,6 +185,24 @@ async function invalidateGeoScanResultQueries(queryClient: QueryClient) {
   ]);
 }
 
+// A quick single-prompt rescan can finish before the settings refetch sees
+// `isScanning`, so the true -> false transition never fires. Refresh the scan
+// results (sentiment included) here when the scan is already done.
+async function refreshSettingsAfterScanStart(
+  queryClient: QueryClient,
+  organizationId: string,
+  projectId: string | undefined
+) {
+  const settingsKey = dashboardOrpc.geo.settings.queryKey({
+    input: { organizationId, projectId },
+  });
+  await queryClient.invalidateQueries({ queryKey: settingsKey });
+  const settings = queryClient.getQueryData<GeoSettingsResponse>(settingsKey);
+  if (!settings?.settings?.isScanning) {
+    await invalidateGeoScanResultQueries(queryClient);
+  }
+}
+
 function geoStartScanMutationKey(
   organizationId: string,
   projectId: string | undefined
@@ -191,17 +211,19 @@ function geoStartScanMutationKey(
 }
 
 export function useGeoModelCatalog(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   return useQuery({
     ...dashboardOrpc.geo.modelCatalog.queryOptions({
       input: { organizationId },
     }),
     enabled: !!organizationId,
     staleTime: GEO_MODEL_CATALOG_STALE_MS,
-    meta: { errorMessage: "Failed to load the model catalog" },
+    meta: { errorMessage: tToast("loadModelCatalogFailed") },
   });
 }
 
 export function useGeoSettings(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   const wasScanningRef = useRef<boolean | null>(null);
@@ -216,7 +238,7 @@ export function useGeoSettings(organizationId: string) {
         ? GEO_SCAN_POLL_INTERVAL_MS
         : false,
     refetchIntervalInBackground: false,
-    meta: { errorMessage: "Failed to load AI visibility settings" },
+    meta: { errorMessage: tToast("loadAIVisibilitySettingsFailed") },
   });
 
   const isScanning = query.data?.settings?.isScanning ?? false;
@@ -236,6 +258,7 @@ export function useGeoSettingsUpsert(
   organizationId: string,
   options?: GeoSettingsUpsertOptions
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -248,17 +271,18 @@ export function useGeoSettingsUpsert(
     onSuccess: async () => {
       await invalidateCompetitorQueries(queryClient, organizationId, projectId);
       if (!options?.silentSuccess) {
-        toast.success("AI visibility settings saved");
+        toast.success(tToast("aiVisibilitySettingsSaved"));
       }
     },
     onError: (error) => {
       trackEvent(POSTHOG_EVENTS.GEO_SETTINGS_SAVE_FAILED);
-      toast.error(toErrorMessage(error, "Failed to save settings"));
+      toast.error(toErrorMessage(error, tToast("saveSettingsFailed")));
     },
   });
 }
 
 export function useGeoSettingsEngineAdd(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -272,12 +296,13 @@ export function useGeoSettingsEngineAdd(organizationId: string) {
       invalidateCompetitorQueries(queryClient, organizationId, projectId),
     onError: (error) => {
       trackEvent(POSTHOG_EVENTS.GEO_SETTINGS_SAVE_FAILED);
-      toast.error(toErrorMessage(error, "Failed to add model to tracking"));
+      toast.error(toErrorMessage(error, tToast("addModelTrackingFailed")));
     },
   });
 }
 
 export function useGeoSettingsLanguageAdd(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -291,7 +316,7 @@ export function useGeoSettingsLanguageAdd(organizationId: string) {
       invalidateCompetitorQueries(queryClient, organizationId, projectId),
     onError: (error) => {
       trackEvent(POSTHOG_EVENTS.GEO_SETTINGS_SAVE_FAILED);
-      toast.error(toErrorMessage(error, "Failed to add language to tracking"));
+      toast.error(toErrorMessage(error, tToast("addLanguageTrackingFailed")));
     },
   });
 }
@@ -301,6 +326,7 @@ export function useGeoOverview(
   range?: GeoRangeQuery,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoOverviewResponse>({
     ...dashboardOrpc.geo.overview.queryOptions({
@@ -308,7 +334,7 @@ export function useGeoOverview(
     }),
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
-    meta: { errorMessage: "Failed to load AI visibility overview" },
+    meta: { errorMessage: tToast("loadAIVisibilityOverviewFailed") },
   });
 }
 
@@ -317,6 +343,7 @@ export function useGeoTimeseries(
   range?: GeoRangeQuery,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoTimeseriesResponse>({
     ...dashboardOrpc.geo.timeseries.queryOptions({
@@ -324,7 +351,7 @@ export function useGeoTimeseries(
     }),
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
-    meta: { errorMessage: "Failed to load AI visibility trend" },
+    meta: { errorMessage: tToast("loadAIVisibilityTrendFailed") },
   });
 }
 
@@ -333,6 +360,7 @@ export function useGeoPromptResults(
   range?: GeoRangeQuery,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoPromptResultSummariesResponse>({
     ...dashboardOrpc.geo.promptResultSummaries.queryOptions({
@@ -340,7 +368,7 @@ export function useGeoPromptResults(
     }),
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
-    meta: { errorMessage: "Failed to load prompt results" },
+    meta: { errorMessage: tToast("loadPromptResultsFailed") },
   });
 }
 
@@ -367,6 +395,7 @@ export function useGeoPromptHistory(
   promptId: string,
   options: { enabled: boolean; scanId?: string }
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoPromptHistoryResponse>({
     ...dashboardOrpc.geo.promptHistory.queryOptions({
@@ -378,11 +407,12 @@ export function useGeoPromptHistory(
       },
     }),
     enabled: options.enabled && !!organizationId && !!promptId,
-    meta: { errorMessage: "Failed to load prompt history" },
+    meta: { errorMessage: tToast("loadPromptHistoryFailed") },
   });
 }
 
 export function useGeoChanges(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoChangesResponse>({
     ...dashboardOrpc.geo.changes.queryOptions({
@@ -390,7 +420,7 @@ export function useGeoChanges(organizationId: string) {
     }),
     enabled: !!organizationId,
     placeholderData: useScopedPreviousData<GeoChangesResponse>(projectId),
-    meta: { errorMessage: "Failed to load scan changes" },
+    meta: { errorMessage: tToast("loadScanChangesFailed") },
   });
 }
 
@@ -400,6 +430,7 @@ export function useGeoCompetitorShare(
   summaryOnly = false,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoCompetitorShareResponse>({
     ...dashboardOrpc.geo.competitorShare.queryOptions({
@@ -412,7 +443,7 @@ export function useGeoCompetitorShare(
     }),
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
-    meta: { errorMessage: "Failed to load competitor share" },
+    meta: { errorMessage: tToast("loadCompetitorShareFailed") },
   });
 }
 
@@ -421,6 +452,7 @@ export function useGeoCompetitorDetail(
   brand: string | null,
   range?: GeoRangeQuery
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoCompetitorDetailResponse>({
     ...dashboardOrpc.geo.competitorDetail.queryOptions({
@@ -433,7 +465,7 @@ export function useGeoCompetitorDetail(
     }),
     enabled: !!organizationId && !!brand,
     staleTime: Number.POSITIVE_INFINITY,
-    meta: { errorMessage: "Failed to load competitor detail" },
+    meta: { errorMessage: tToast("loadCompetitorDetailFailed") },
   });
 }
 
@@ -441,6 +473,7 @@ export function useGeoCompetitorPromptSummary(
   organizationId: string,
   brand: string | null
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoCompetitorDetailResponse>({
     ...dashboardOrpc.geo.competitorDetail.queryOptions({
@@ -453,7 +486,7 @@ export function useGeoCompetitorPromptSummary(
     }),
     enabled: !!organizationId && !!brand,
     staleTime: Number.POSITIVE_INFINITY,
-    meta: { errorMessage: "Failed to load competitor summary" },
+    meta: { errorMessage: tToast("loadCompetitorSummaryFailed") },
   });
 }
 
@@ -535,6 +568,7 @@ export function useGeoLanguageShare(
   range?: GeoRangeQuery,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoLanguageShareResponse>({
     ...dashboardOrpc.geo.languageShare.queryOptions({
@@ -542,11 +576,12 @@ export function useGeoLanguageShare(
     }),
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
-    meta: { errorMessage: "Failed to load language performance" },
+    meta: { errorMessage: tToast("loadLanguagePerformanceFailed") },
   });
 }
 
 export function useGeoGenerateFromWebsite(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -561,17 +596,18 @@ export function useGeoGenerateFromWebsite(organizationId: string) {
         invalidateCompetitorQueries(queryClient, organizationId, projectId),
         invalidatePromptQueries(queryClient, organizationId, projectId),
       ]);
-      toast.success("GEO tracking generated from website");
+      toast.success(tToast("geoTrackingGeneratedWebsite"));
     },
     onError: (error) => {
       toast.error(
-        toErrorMessage(error, "Failed to generate GEO tracking from website")
+        toErrorMessage(error, tToast("generateGEOTrackingWebsiteFailed"))
       );
     },
   });
 }
 
 export function useGeoImportPrompts(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -579,15 +615,25 @@ export function useGeoImportPrompts(organizationId: string) {
       dashboardOrpc.geo.promptsImport.call({ organizationId, projectId, rows }),
     onSuccess: async (result) => {
       await invalidatePromptQueries(queryClient, organizationId, projectId);
-      toast.success(describeGeoImportResult("prompts", result));
+      toast.success(
+        describeGeoImportResult(result)
+          .map((part) =>
+            tToast(`importResult.${part.key}`, {
+              kind: "prompts",
+              count: part.count,
+            })
+          )
+          .join(", ")
+      );
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to import prompts"));
+      toast.error(toErrorMessage(error, tToast("importPromptsFailed")));
     },
   });
 }
 
 export function useGeoImportCompetitors(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -599,10 +645,19 @@ export function useGeoImportCompetitors(organizationId: string) {
       }),
     onSuccess: async (result) => {
       await invalidateCompetitorQueries(queryClient, organizationId, projectId);
-      toast.success(describeGeoImportResult("competitors", result));
+      toast.success(
+        describeGeoImportResult(result)
+          .map((part) =>
+            tToast(`importResult.${part.key}`, {
+              kind: "competitors",
+              count: part.count,
+            })
+          )
+          .join(", ")
+      );
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to import competitors"));
+      toast.error(toErrorMessage(error, tToast("importCompetitorsFailed")));
     },
   });
 }
@@ -622,6 +677,7 @@ export function useGeoDiscoverWebsite(
 }
 
 export function useGeoOnboardingBrand(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useMutation({
     mutationFn: (
@@ -633,7 +689,7 @@ export function useGeoOnboardingBrand(organizationId: string) {
         projectId,
       }),
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to save your brand"));
+      toast.error(toErrorMessage(error, tToast("saveBrandFailed")));
     },
   });
 }
@@ -669,6 +725,7 @@ export function useGeoBrandSearch(organizationId: string, query: string) {
 }
 
 export function useGeoStartScan(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -687,23 +744,24 @@ export function useGeoStartScan(organizationId: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: dashboardOrpc.geo.scanRuns.queryKey({
+        queryKey: dashboardOrpc.geo.scanRun.key({
           input: { organizationId, projectId },
         }),
       });
-      await queryClient.invalidateQueries({
-        queryKey: dashboardOrpc.geo.settings.queryKey({
-          input: { organizationId, projectId },
-        }),
-      });
+      await refreshSettingsAfterScanStart(
+        queryClient,
+        organizationId,
+        projectId
+      );
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to start scan"));
+      toast.error(toErrorMessage(error, tToast("startScanFailed")));
     },
   });
 }
 
 export function useGeoRescanPrompt(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -721,18 +779,18 @@ export function useGeoRescanPrompt(organizationId: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: dashboardOrpc.geo.scanRuns.queryKey({
+        queryKey: dashboardOrpc.geo.scanRun.key({
           input: { organizationId, projectId },
         }),
       });
-      await queryClient.invalidateQueries({
-        queryKey: dashboardOrpc.geo.settings.queryKey({
-          input: { organizationId, projectId },
-        }),
-      });
+      await refreshSettingsAfterScanStart(
+        queryClient,
+        organizationId,
+        projectId
+      );
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to start rescan"));
+      toast.error(toErrorMessage(error, tToast("startRescanFailed")));
     },
   });
 }
@@ -747,6 +805,7 @@ export function useIsGeoScanning(organizationId: string) {
 }
 
 export function useAgentReadiness(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<AgentReadinessResponse>({
     ...dashboardOrpc.geo.agentReadiness.queryOptions({
@@ -758,11 +817,12 @@ export function useAgentReadiness(organizationId: string) {
         ? AGENT_READINESS_POLL_INTERVAL_MS
         : false,
     refetchIntervalInBackground: false,
-    meta: { errorMessage: "Failed to load agent readiness" },
+    meta: { errorMessage: tToast("loadAgentReadinessFailed") },
   });
 }
 
 export function useAgentReadinessScan(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -776,12 +836,13 @@ export function useAgentReadinessScan(organizationId: string) {
       });
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to start scan"));
+      toast.error(toErrorMessage(error, tToast("startScanFailed")));
     },
   });
 }
 
 export function useAiTraffic(organizationId: string, range?: GeoRangeQuery) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<AiTrafficResponse>({
     ...dashboardOrpc.geo.aiTraffic.queryOptions({
@@ -791,7 +852,7 @@ export function useAiTraffic(organizationId: string, range?: GeoRangeQuery) {
     placeholderData: useScopedPreviousData<AiTrafficResponse>(projectId),
     refetchInterval: GEO_TRAFFIC_LIVE_INTERVAL_MS,
     refetchIntervalInBackground: false,
-    meta: { errorMessage: "Failed to load AI traffic" },
+    meta: { errorMessage: tToast("loadAITrafficFailed") },
   });
 }
 
@@ -800,6 +861,7 @@ export function useGeoTrafficLog(
   filters: GeoTrafficLogFilters,
   options?: GeoTrafficLogQueryOptions
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoTrafficLogResponse>({
     ...dashboardOrpc.geo.trafficLog.queryOptions({
@@ -813,7 +875,7 @@ export function useGeoTrafficLog(
     placeholderData: useScopedPreviousData<GeoTrafficLogResponse>(projectId),
     refetchInterval: GEO_TRAFFIC_LIVE_INTERVAL_MS,
     refetchIntervalInBackground: false,
-    meta: { errorMessage: "Failed to load AI tracking log" },
+    meta: { errorMessage: tToast("loadAITrackingLogFailed") },
   });
 }
 
@@ -822,6 +884,7 @@ export function useGeoTrafficPages(
   range?: GeoRangeQuery,
   host?: string
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoTrafficPagesResponse>({
     ...dashboardOrpc.geo.trafficPages.queryOptions({
@@ -835,7 +898,7 @@ export function useGeoTrafficPages(
     placeholderData: useScopedPreviousData<GeoTrafficPagesResponse>(projectId),
     refetchInterval: GEO_TRAFFIC_LIVE_INTERVAL_MS,
     refetchIntervalInBackground: false,
-    meta: { errorMessage: "Failed to load top AI pages" },
+    meta: { errorMessage: tToast("loadTopAIPagesFailed") },
   });
 }
 
@@ -844,6 +907,7 @@ export function useGeoTrafficJourneys(
   range?: GeoRangeQuery,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoTrafficJourneysResponse>({
     ...dashboardOrpc.geo.trafficJourneys.queryOptions({
@@ -851,7 +915,7 @@ export function useGeoTrafficJourneys(
     }),
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
-    meta: { errorMessage: "Failed to load AI journeys" },
+    meta: { errorMessage: tToast("loadAIJourneysFailed") },
   });
 }
 
@@ -860,6 +924,7 @@ export function useGeoJourneyStats(
   range?: GeoRangeQuery,
   enabled = true
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoJourneyStatsResponse>({
     ...dashboardOrpc.geo.journeyStats.queryOptions({
@@ -868,7 +933,7 @@ export function useGeoJourneyStats(
     enabled: enabled && !!organizationId,
     placeholderData: keepPreviousData,
     meta: {
-      errorMessage: "Failed to load journey trends",
+      errorMessage: tToast("loadJourneyTrendsFailed"),
       showRetryAction: true,
     },
   });
@@ -879,6 +944,7 @@ export function useGeoJourneyDetail(
   journeyId: string | null,
   range?: GeoRangeQuery
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoJourneyDetailResponse>({
     ...dashboardOrpc.geo.journeyDetail.queryOptions({
@@ -890,7 +956,7 @@ export function useGeoJourneyDetail(
       },
     }),
     enabled: !!organizationId && !!journeyId,
-    meta: { errorMessage: "Failed to load journey detail" },
+    meta: { errorMessage: tToast("loadJourneyDetailFailed") },
   });
 }
 
@@ -916,17 +982,19 @@ export function usePrefetchGeoJourneyDetail(organizationId: string) {
 }
 
 export function useGeoIngestSetup(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoIngestSetupResponse>({
     ...dashboardOrpc.geo.ingestSetup.queryOptions({
       input: geoSettingsQueryInput({ organizationId, projectId }),
     }),
     enabled: !!organizationId,
-    meta: { errorMessage: "Failed to load tracking setup" },
+    meta: { errorMessage: tToast("loadTrackingSetupFailed") },
   });
 }
 
 export function useGeoIngestTokenRotate(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -944,15 +1012,16 @@ export function useGeoIngestTokenRotate(organizationId: string) {
           input: { organizationId, projectId },
         }),
       });
-      toast.success("Tracking token rotated");
+      toast.success(tToast("trackingTokenRotated"));
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to rotate the token"));
+      toast.error(toErrorMessage(error, tToast("rotateTokenFailed")));
     },
   });
 }
 
 export function useGeoRunSequence(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -967,12 +1036,10 @@ export function useGeoRunSequence(organizationId: string) {
         queryKey: dashboardOrpc.geo.sequenceResults.key(),
       });
       const engineCount = result.engines.length;
-      toast.success(
-        `Conversation played against ${engineCount} engine${engineCount === 1 ? "" : "s"}`
-      );
+      toast.success(tToast("conversationPlayed", { count: engineCount }));
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to run the conversation"));
+      toast.error(toErrorMessage(error, tToast("runConversationFailed")));
     },
   });
 }
@@ -981,61 +1048,65 @@ export function useGeoSequenceResults(
   organizationId: string,
   sequenceId?: string
 ) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoSequenceResultsResponse>({
     ...dashboardOrpc.geo.sequenceResults.queryOptions({
       input: { organizationId, projectId, sequenceId },
     }),
     enabled: Boolean(organizationId && sequenceId),
-    meta: { errorMessage: "Failed to load conversation results" },
+    meta: { errorMessage: tToast("loadConversationResultsFailed") },
   });
 }
 
-function describeSyncResult(result: GscSyncResult): string {
+function describeSyncResult(result: GscSyncResult): GscSyncResultMessage {
   if (result.status === "failed") {
-    return "Search Console sync failed";
+    return { key: "failed", count: 0 };
   }
   if (result.status !== "completed") {
-    return "Search Console sync skipped";
+    return { key: "skipped", count: 0 };
   }
   const added = result.suggestionsAdded ?? 0;
   if (added === 0) {
     return (result.keywords ?? 0) === 0
-      ? "Search Console has no search data for this property yet"
-      : "Search Console synced — no new prompt suggestions";
+      ? { key: "noData", count: 0 }
+      : { key: "noNewSuggestions", count: 0 };
   }
-  return `${added} new prompt suggestion${added === 1 ? "" : "s"} from Search Console`;
+  return { key: "suggestionsAdded", count: added };
 }
 
 export function useGscStatus(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoSearchConsoleStatus>({
     ...dashboardOrpc.geo.searchConsoleStatus.queryOptions({
       input: { organizationId, projectId },
     }),
     enabled: !!organizationId,
-    meta: { errorMessage: "Failed to load Search Console status" },
+    meta: { errorMessage: tToast("loadSearchConsoleStatusFailed") },
   });
 }
 
 export function useGscKeywords(organizationId: string, enabled = true) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GscKeywordsResponse>({
     ...dashboardOrpc.geo.searchConsoleKeywords.queryOptions({
       input: { organizationId, projectId },
     }),
     enabled: !!organizationId && enabled,
-    meta: { errorMessage: "Failed to load Search Console keywords" },
+    meta: { errorMessage: tToast("loadSearchConsoleKeywordsFailed") },
   });
 }
 
 export function useGscSites(organizationId: string, enabled: boolean) {
+  const tToast = useTranslations("geo.toasts");
   return useQuery<GscSitesResponse>({
     ...dashboardOrpc.geo.searchConsoleSites.queryOptions({
       input: { organizationId },
     }),
     enabled: !!organizationId && enabled,
-    meta: { errorMessage: "Failed to load Search Console properties" },
+    meta: { errorMessage: tToast("loadSearchConsolePropertiesFailed") },
   });
 }
 
@@ -1073,8 +1144,11 @@ export function useGscAnalyzing(organizationId: string): boolean {
 }
 
 export function useGscSelectSite(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const invalidate = useInvalidateGscQueries(organizationId, projectId);
+  // Scoped so a slow sync in one project isn't overwritten by another.
+  const toastId = `gsc-select-site:${organizationId}:${projectId ?? "default"}`;
   return useMutation({
     mutationKey: gscAnalyzeMutationKey(organizationId, projectId),
     mutationFn: (input: GscSelectSiteInput) =>
@@ -1083,21 +1157,39 @@ export function useGscSelectSite(organizationId: string) {
         organizationId,
         projectId,
       }),
+    // The first sync can take a while, so progress lives in a toast and the
+    // caller can close its dialog right away.
+    onMutate: (input) => {
+      toast.loading(
+        tToast("connectingProperty", {
+          property: formatGscSiteUrl(input.siteUrl),
+        }),
+        {
+          description: tToast("connectingPropertyDescription"),
+          id: toastId,
+        }
+      );
+    },
     onSuccess: async (result) => {
       await invalidate();
-      if (result.status === "failed") {
-        toast.error(describeSyncResult(result));
-      } else {
-        toast.success(describeSyncResult(result));
-      }
+      const message = describeSyncResult(result);
+      const notify = result.status === "failed" ? toast.error : toast.success;
+      notify(
+        tToast(`searchConsoleSync.${message.key}`, { count: message.count }),
+        { description: null, id: toastId }
+      );
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to select property"));
+      toast.error(toErrorMessage(error, tToast("selectPropertyFailed")), {
+        description: null,
+        id: toastId,
+      });
     },
   });
 }
 
 export function useGscSync(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const invalidate = useInvalidateGscQueries(organizationId, projectId);
   return useMutation({
@@ -1107,18 +1199,25 @@ export function useGscSync(organizationId: string) {
     onSuccess: async (result) => {
       await invalidate();
       if (result.status === "failed") {
-        toast.error(describeSyncResult(result));
+        const message = describeSyncResult(result);
+        toast.error(
+          tToast(`searchConsoleSync.${message.key}`, { count: message.count })
+        );
       } else {
-        toast.success(describeSyncResult(result));
+        const message = describeSyncResult(result);
+        toast.success(
+          tToast(`searchConsoleSync.${message.key}`, { count: message.count })
+        );
       }
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to sync Search Console"));
+      toast.error(toErrorMessage(error, tToast("syncSearchConsoleFailed")));
     },
   });
 }
 
 export function useGscDisconnect(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const invalidate = useInvalidateGscQueries(organizationId);
   const queryClient = useQueryClient();
   return useMutation({
@@ -1133,22 +1232,23 @@ export function useGscDisconnect(organizationId: string) {
           }),
         }),
       ]);
-      toast.success("Google Search Console disconnected");
+      toast.success(tToast("googleSearchConsoleDisconnected"));
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to disconnect"));
+      toast.error(toErrorMessage(error, tToast("disconnectFailed")));
     },
   });
 }
 
 export function useGeoSuggestions(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   return useQuery<GeoPromptSuggestionsResponse>({
     ...dashboardOrpc.geo.suggestionsList.queryOptions({
       input: { organizationId, projectId },
     }),
     enabled: !!organizationId,
-    meta: { errorMessage: "Failed to load prompt suggestions" },
+    meta: { errorMessage: tToast("loadPromptSuggestionsFailed") },
   });
 }
 
@@ -1180,6 +1280,7 @@ function useInvalidateSuggestionQueries(organizationId: string) {
 }
 
 export function useGeoSequencesGenerate(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const queryClient = useQueryClient();
   return useMutation({
@@ -1190,17 +1291,16 @@ export function useGeoSequencesGenerate(organizationId: string) {
         queryKey: geoDbOrgQueryKey("sequences", organizationId),
       });
       const count = response.sequences.length;
-      toast.success(
-        `Added ${count} ${count === 1 ? "conversation" : "conversations"}`
-      );
+      toast.success(tToast("conversationsAdded", { count }));
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to generate conversations"));
+      toast.error(toErrorMessage(error, tToast("generateConversationsFailed")));
     },
   });
 }
 
 export function useGeoSuggestionAccept(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const invalidate = useInvalidateSuggestionQueries(organizationId);
   return useMutation({
@@ -1212,15 +1312,16 @@ export function useGeoSuggestionAccept(organizationId: string) {
       }),
     onSuccess: async () => {
       await invalidate();
-      toast.success("Prompt added to tracking");
+      toast.success(tToast("promptAddedTracking"));
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to add prompt"));
+      toast.error(toErrorMessage(error, tToast("addPromptFailed")));
     },
   });
 }
 
 export function useGeoSuggestionsAcceptAll(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const invalidate = useInvalidateSuggestionQueries(organizationId);
   return useMutation({
@@ -1231,17 +1332,16 @@ export function useGeoSuggestionsAcceptAll(organizationId: string) {
       }),
     onSuccess: async (result) => {
       await invalidate();
-      toast.success(
-        `${result.accepted} prompt${result.accepted === 1 ? "" : "s"} added to tracking`
-      );
+      toast.success(tToast("promptsAddedTracking", { count: result.accepted }));
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to add prompts"));
+      toast.error(toErrorMessage(error, tToast("addPromptsFailed")));
     },
   });
 }
 
 export function useGeoSuggestionDismiss(organizationId: string) {
+  const tToast = useTranslations("geo.toasts");
   const { projectId } = useGeoProjectScope();
   const invalidate = useInvalidateSuggestionQueries(organizationId);
   return useMutation({
@@ -1255,35 +1355,7 @@ export function useGeoSuggestionDismiss(organizationId: string) {
       await invalidate();
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, "Failed to dismiss suggestion"));
+      toast.error(toErrorMessage(error, tToast("dismissSuggestionFailed")));
     },
   });
-}
-
-const gscCardDismissListeners = new Set<() => void>();
-
-function subscribeToGscCardDismissal(callback: () => void) {
-  gscCardDismissListeners.add(callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    gscCardDismissListeners.delete(callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-export function useGscCardDismissal(organizationId: string) {
-  const storageKey = localStorageKeys.gscCardDismissed(organizationId);
-  const dismissed = useSyncExternalStore(
-    subscribeToGscCardDismissal,
-    () => localStorage.getItem(storageKey) === "true",
-    () => false
-  );
-  const dismiss = () => {
-    localStorage.setItem(storageKey, "true");
-    trackEvent(POSTHOG_EVENTS.GSC_CARD_DISMISSED);
-    for (const listener of gscCardDismissListeners) {
-      listener();
-    }
-  };
-  return { dismiss, dismissed };
 }

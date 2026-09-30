@@ -13,17 +13,27 @@ import {
   ResponsiveAlertDialogTitle,
 } from "@notra/ui/components/shared/responsive-alert-dialog";
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@notra/ui/components/ui/empty";
+import {
   PermissionOption,
   PermissionRow,
 } from "@notra/ui/components/ui/permission-selector";
 import { cn } from "@notra/ui/lib/utils";
 import { Loader2Icon } from "lucide-react";
 import { useReducedMotion } from "motion/react";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { AgentFeedbackDetailDialog } from "@/components/agent-feedback/feedback-detail-dialog";
 import { AgentFeedbackEmpty } from "@/components/agent-feedback/feedback-empty";
 import { AgentFeedbackSetupDialog } from "@/components/agent-feedback/feedback-setup-dialog";
+import { AgentFeedbackStatusIcon } from "@/components/agent-feedback/feedback-status-icon";
 import { AgentFeedbackTable } from "@/components/agent-feedback/feedback-table";
 import { Button } from "@/components/button";
 import { PageContainer } from "@/components/layout/container";
@@ -35,6 +45,7 @@ import {
   useAgentFeedbackList,
   useAgentFeedbackUpdateStatus,
 } from "@/lib/hooks/use-agent-feedback";
+import { useAgentFeedbackStatusLabels } from "@/lib/hooks/use-agent-feedback-labels";
 import type {
   AgentFeedbackItem,
   AgentFeedbackPageClientProps,
@@ -52,12 +63,16 @@ const FEEDBACK_CONFETTI_COLORS = [
 ];
 
 export default function PageClient(_props: AgentFeedbackPageClientProps) {
+  const t = useTranslations("feedback");
+  const tCommon2 = useTranslations("common");
   const reduceMotion = useReducedMotion();
   const { activeOrganization } = useOrganizationsContext();
   const organizationId = activeOrganization?.id ?? "";
   const [statusFilter, setStatusFilter] =
     useState<AgentFeedbackStatusFilter>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Held as a snapshot so the sheet stays open when a status change moves the
+  // item out of the active filter.
+  const [selected, setSelected] = useState<AgentFeedbackItem | null>(null);
   const [deleteCandidate, setDeleteCandidate] =
     useState<AgentFeedbackItem | null>(null);
   const [resolvedCelebration, setResolvedCelebration] = useState(0);
@@ -71,7 +86,9 @@ export default function PageClient(_props: AgentFeedbackPageClientProps) {
   const totalCount = counts
     ? Object.values(counts).reduce((sum, value) => sum + value, 0)
     : 0;
-  const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const selectedItem = selected
+    ? (items.find((item) => item.id === selected.id) ?? selected)
+    : null;
   const isLoading = !!organizationId && list.isPending;
   const showEmptyState = !isLoading && totalCount === 0;
 
@@ -84,14 +101,20 @@ export default function PageClient(_props: AgentFeedbackPageClientProps) {
     }
 
     const wasResolved = item.status === "resolved";
+    const syncSelected = (next: AgentFeedbackItem) =>
+      setSelected((current) => (current?.id === next.id ? next : current));
+
+    syncSelected({ ...item, status });
     updateStatus.mutate(
-      { feedbackId: item.id, status },
+      { feedbackId: item.id, previousStatus: item.status, status },
       {
-        onSuccess: () => {
+        onSuccess: (updated) => {
+          syncSelected(updated);
           if (status === "resolved" && !wasResolved) {
             setResolvedCelebration((current) => current + 1);
           }
         },
+        onError: () => syncSelected(item),
       }
     );
   };
@@ -105,7 +128,7 @@ export default function PageClient(_props: AgentFeedbackPageClientProps) {
     deleteFeedback.mutate(feedbackId, {
       onSuccess: () => {
         setDeleteCandidate(null);
-        setSelectedId((current) => (current === feedbackId ? null : current));
+        setSelected((current) => (current?.id === feedbackId ? null : current));
       },
     });
   };
@@ -134,8 +157,8 @@ export default function PageClient(_props: AgentFeedbackPageClientProps) {
         )}
       >
         <PageHeading
-          description="What AI agents are saying about your product."
-          title="Feedback"
+          description={t("page.description")}
+          title={tCommon2("labels.feedback")}
         >
           {organizationId && !showEmptyState ? (
             <AgentFeedbackSetupDialog organizationId={organizationId} />
@@ -153,11 +176,11 @@ export default function PageClient(_props: AgentFeedbackPageClientProps) {
           hasNextPage={list.hasNextPage}
           onDelete={setDeleteCandidate}
           onLoadMore={() => list.fetchNextPage()}
-          onSelect={(item) => setSelectedId(item.id)}
+          onSelect={setSelected}
           onStatusChange={handleStatusChange}
           onStatusFilterChange={setStatusFilter}
           organizationId={organizationId}
-          selectedId={selectedId}
+          selectedId={selected?.id ?? null}
           showEmptyState={showEmptyState}
           statusFilter={statusFilter}
         />
@@ -166,9 +189,14 @@ export default function PageClient(_props: AgentFeedbackPageClientProps) {
       <AgentFeedbackDetailDialog
         isUpdating={updateStatus.isPending}
         item={selectedItem}
+        onDelete={() => {
+          if (selectedItem) {
+            setDeleteCandidate(selectedItem);
+          }
+        }}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedId(null);
+            setSelected(null);
           }
         }}
         onStatusChange={(status) => {
@@ -233,6 +261,8 @@ function FeedbackList({
   showEmptyState: boolean;
   statusFilter: AgentFeedbackStatusFilter;
 }) {
+  const tCommon = useTranslations("common");
+  const statusLabels = useAgentFeedbackStatusLabels();
   if (showEmptyState) {
     return <AgentFeedbackEmpty organizationId={organizationId} />;
   }
@@ -241,7 +271,7 @@ function FeedbackList({
     <>
       <PermissionRow
         className="w-fit shrink-0"
-        label="Filter by status"
+        label={tCommon("labels.filterByStatus")}
         layout="compact"
         onValueChange={(value) => {
           if (isAgentFeedbackStatusFilter(value)) {
@@ -254,7 +284,9 @@ function FeedbackList({
           const count = countFor(filter.value);
           return (
             <PermissionOption key={filter.value} value={filter.value}>
-              {filter.label}
+              {filter.value === "all"
+                ? tCommon("labels.all")
+                : statusLabels[filter.value]}
               {count !== null ? (
                 <span className="text-xs tabular-nums opacity-70">{count}</span>
               ) : null}
@@ -266,6 +298,14 @@ function FeedbackList({
       <div className="min-h-0 flex-1">
         <AgentFeedbackTable
           isDeleting={isDeleting}
+          emptyState={
+            statusFilter === "all" ? undefined : (
+              <FeedbackFilterEmpty
+                onShowAll={() => onStatusFilterChange("all")}
+                status={statusFilter}
+              />
+            )
+          }
           isPending={isLoading || isPlaceholderData}
           isUpdatingStatus={isUpdatingStatus}
           items={items}
@@ -287,11 +327,41 @@ function FeedbackList({
             {isFetchingNextPage ? (
               <Loader2Icon className="size-4 animate-spin" />
             ) : null}
-            Load more
+            {tCommon("actions.loadMore")}
           </Button>
         </div>
       ) : null}
     </>
+  );
+}
+
+function FeedbackFilterEmpty({
+  onShowAll,
+  status,
+}: {
+  onShowAll: () => void;
+  status: AgentFeedbackStatus;
+}) {
+  const t = useTranslations("feedback.table");
+  return (
+    <Empty className="py-8 md:py-8">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <AgentFeedbackStatusIcon className="size-5" status={status} />
+        </EmptyMedia>
+        <EmptyTitle className="text-foreground">
+          {t(`filterEmpty.${status}.title`)}
+        </EmptyTitle>
+        <EmptyDescription>
+          {t(`filterEmpty.${status}.description`)}
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button onClick={onShowAll} size="sm" variant="outline">
+          {t("showAll")}
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 
@@ -327,6 +397,8 @@ function FeedbackDeleteDialog({
   onConfirm: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useTranslations("feedback.delete");
+  const tCommon = useTranslations("common");
   return (
     <ResponsiveAlertDialog
       onOpenChange={onOpenChange}
@@ -334,18 +406,16 @@ function FeedbackDeleteDialog({
     >
       <ResponsiveAlertDialogContent>
         <ResponsiveAlertDialogHeader>
-          <ResponsiveAlertDialogTitle>
-            Delete feedback?
-          </ResponsiveAlertDialogTitle>
+          <ResponsiveAlertDialogTitle>{t("title")}</ResponsiveAlertDialogTitle>
           <ResponsiveAlertDialogDescription>
-            This will permanently delete &quot;
-            {deleteCandidate?.title ?? deleteCandidate?.message}&quot;. This
-            action cannot be undone.
+            {t("description", {
+              name: deleteCandidate?.title ?? deleteCandidate?.message ?? "",
+            })}
           </ResponsiveAlertDialogDescription>
         </ResponsiveAlertDialogHeader>
         <ResponsiveAlertDialogFooter>
           <ResponsiveAlertDialogCancel disabled={isPending}>
-            Cancel
+            {tCommon("actions.cancel")}
           </ResponsiveAlertDialogCancel>
           <ResponsiveAlertDialogAction
             disabled={isPending}
@@ -355,7 +425,7 @@ function FeedbackDeleteDialog({
             }}
             variant="destructive"
           >
-            {isPending ? "Deleting..." : "Delete"}
+            {isPending ? tCommon("labels.deleting") : tCommon("actions.delete")}
           </ResponsiveAlertDialogAction>
         </ResponsiveAlertDialogFooter>
       </ResponsiveAlertDialogContent>

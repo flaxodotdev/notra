@@ -145,7 +145,7 @@ export interface GeoTimeseriesPoint {
   avgPosition?: number | null;
 }
 
-export type GeoStatDeltaKind = "rate" | "mentions" | "position";
+export type GeoStatDeltaKind = "rate" | "mentions" | "position" | "score";
 
 export type GeoStatDeltaTone = "up" | "down" | "flat";
 
@@ -814,6 +814,7 @@ export type GeoGroundedProvider =
   | "gateway-openai"
   | "gateway-anthropic"
   | "gateway-google"
+  | "gateway-perplexity"
   | "direct-openai"
   | "direct-anthropic"
   | "direct-perplexity";
@@ -1032,12 +1033,10 @@ export type GeoTrafficLogPurposeFilter =
 
 export interface GeoTrafficLogVisitorOption {
   value: GeoTrafficLogVisitorFilter;
-  label: string;
 }
 
 export interface GeoTrafficLogPurposeOption {
   value: GeoTrafficLogPurposeFilter;
-  label: string;
 }
 
 export interface GeoTrafficLogFilters {
@@ -1380,6 +1379,7 @@ export type GeoModelProviderId =
   | "spacexai"
   | "deepseek"
   | "mistral"
+  | "perplexity"
   | "cursor"
   | "opencode"
   | "claude-code"
@@ -1437,8 +1437,6 @@ export interface GeoModelCatalog {
 export interface GeoResolvedModelCatalog extends GeoModelCatalog {
   models: (GeoModelCatalogEntry & { supportsGroundedChecks: boolean })[];
 }
-
-export type GeoScanSizeSeverity = "ok" | "warn" | "danger";
 
 export interface GeoScanSizeInput {
   promptCount: number;
@@ -1584,8 +1582,6 @@ export interface GeoCompetitorDetailResponse {
   summary?: GeoCompetitorPromptSummary;
 }
 
-export type GeoCompetitorTypeFilter = "all" | GeoCompetitorKind;
-
 export interface GeoSuggestionKeyword {
   query: string;
   clicks: number;
@@ -1599,7 +1595,8 @@ export type GeoWriterSourceKind =
   | "manual"
   | "gap"
   | "prompt"
-  | "search_console";
+  | "search_console"
+  | "ai_search";
 
 export interface GeoWriterPlanInput {
   topic: string;
@@ -1674,6 +1671,43 @@ export interface GeoGapOpportunityInput {
   engineCoverage: number;
 }
 
+export interface GeoGapScore {
+  competitors: string[];
+  discoveredCompetitors: string[];
+  ownMentionRate: number;
+  opportunity: number;
+}
+
+export type GeoAiSearchQueryDbRow = {
+  query: string;
+  check_ids: string[];
+  mentioned_check_ids: string[];
+  covered_check_ids: string[];
+  engines: string[];
+  prompts: string[];
+  competitors: string[][];
+};
+
+export interface GeoAiSearchQueryRow {
+  query: string;
+  checkIds: string[];
+  mentionedCheckIds: string[];
+  coveredCheckIds: string[];
+  engines: string[];
+  prompts: string[];
+  competitors: string[][];
+}
+
+export interface GeoAiSearchAgg {
+  variants: Map<string, number>;
+  prompts: Set<string>;
+  engines: Set<string>;
+  checkIds: Set<string>;
+  mentionedCheckIds: Set<string>;
+  coveredCheckIds: Set<string>;
+  competitors: string[];
+}
+
 export interface GeoPromptGapRow {
   id: string;
   prompt: string;
@@ -1682,6 +1716,7 @@ export interface GeoPromptGapRow {
   mentionedEngines: string[];
   competitors: string[];
   discoveredCompetitors: string[];
+  searchQueries: string[];
   ownMentionRate: number;
   engineCoverage: number;
   opportunity: number;
@@ -1739,9 +1774,24 @@ export interface GeoSearchGapRecommendation {
   targets: GeoContentCollisionMatch[];
 }
 
+export interface GeoAiSearchGapRow {
+  id: string;
+  query: string;
+  variants: string[];
+  prompts: string[];
+  engines: string[];
+  searches: number;
+  ownMentionRate: number;
+  competitors: string[];
+  discoveredCompetitors: string[];
+  opportunity: number;
+  brief: GeoGapBriefRef | null;
+}
+
 export interface GeoContentGapsResponse {
   promptGaps: GeoPromptGapRow[];
   searchGaps: GeoSearchGapRow[];
+  aiSearchGaps: GeoAiSearchGapRow[];
   hasScanData: boolean;
 }
 
@@ -1833,7 +1883,6 @@ export type GeoChangesSummaryGroupKey = "mentions" | "position" | "citations";
 
 export interface GeoChangesSummaryGroup {
   key: GeoChangesSummaryGroupKey;
-  label: string;
   up: keyof GeoChangesSummary;
   down: keyof GeoChangesSummary;
 }

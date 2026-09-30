@@ -14,8 +14,11 @@ import {
   SVG_MIME_TYPE,
 } from "@notra/schemas/constants/dashboard/upload";
 import { ORPCError } from "@orpc/server";
+import { getTranslations } from "next-intl/server";
 
 import type { UploadType } from "@/types/upload/client";
+
+const BYTES_PER_MEGABYTE = 1024 * 1024;
 
 const maxSizeByType = {
   avatar: MAX_AVATAR_FILE_SIZE,
@@ -39,7 +42,7 @@ function assertAllowedGeneralUploadType(fileType: string, label: string) {
   }
 }
 
-export function validateUpload({
+export async function validateUpload({
   type,
   fileType,
   fileSize,
@@ -50,8 +53,11 @@ export function validateUpload({
 }) {
   const maxSize = maxSizeByType[type];
   if (fileSize > maxSize) {
+    const tErrors = await getTranslations("errors.upload");
     throw new ORPCError("BAD_REQUEST", {
-      message: `File size exceeds the maximum limit of ${maxSize / 1024 / 1024}MB for ${type}.`,
+      message: tErrors("fileTooLarge", {
+        maxMb: maxSize / BYTES_PER_MEGABYTE,
+      }),
     });
   }
   switch (type) {

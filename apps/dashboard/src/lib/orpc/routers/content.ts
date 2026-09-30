@@ -1,43 +1,16 @@
-import {
-  checkContentBilling,
-  describeContentBillingDenial,
-} from "@notra/ai/billing/content-billing";
-import {
-  getGitHubAppBotLogin,
-  getGitHubAppInstallationPublishAccess,
-  getTokenForIntegrationId,
-  isGitHubAppConfigured,
-  listGitHubAppInstallationsByOrganization,
-} from "@notra/ai/integrations/github";
-import {
-  getGitHubPublishTokenEffect,
-  selectGitHubAppInstallationForOwner,
-} from "@notra/ai/integrations/github-publish-auth";
+import { checkContentBilling } from "@notra/ai/billing/content-billing";
+import { getTokenForIntegrationId } from "@notra/ai/integrations/github";
 import {
   getDecryptedLinearToken,
   getLinearIntegrationsByOrganization,
 } from "@notra/ai/integrations/linear";
 import { type ContentType, contentTypeSchema } from "@notra/ai/schemas/content";
 import { supportsPostSlug } from "@notra/ai/schemas/post";
-import {
-  findOpenContentPublicationForPost,
-  recordContentPublication,
-} from "@notra/ai/utils/content-publication";
-import { githubAppInstallationCanPublishContent } from "@notra/ai/utils/github-app-publish-access";
-import { getGitHubConnectionMethod } from "@notra/ai/utils/github-connection-method";
 import { createLinearClient } from "@notra/ai/utils/linear";
 import { createOctokit } from "@notra/ai/utils/octokit";
-import { retryWrite } from "@notra/ai/utils/retry-write";
 import { sanitizeMarkdownHtml } from "@notra/ai/utils/sanitize";
 import { db } from "@notra/db/drizzle";
-import {
-  githubAppInstallations,
-  githubIntegrations,
-  organizations,
-  postCollections,
-  posts,
-  repositoryOutputs,
-} from "@notra/db/schema";
+import { githubIntegrations, postCollections, posts } from "@notra/db/schema";
 import type { BlogPostSubtype } from "@notra/db/types/content";
 import { buildPostCollectionName } from "@notra/db/utils/post-collections";
 import { extractImageArtifactHtml } from "@notra/db/utils/post-image-artifacts";
@@ -46,7 +19,6 @@ import {
   projectScopeFilter,
 } from "@notra/db/utils/projects";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
-import { GITHUB_CONTENT_PATH_MAX_LENGTH } from "@notra/schemas/constants/dashboard/github";
 import {
   contentListQuerySchema,
   contentRecentsQuerySchema,
@@ -72,7 +44,6 @@ import {
   updateExpectedPostCountInputSchema,
 } from "@notra/schemas/dashboard/content";
 import { clearCompletedGenerationSchema } from "@notra/schemas/dashboard/generations";
-import { repositoryContentDirectoryConfigSchema } from "@notra/schemas/dashboard/integrations";
 import { slugify } from "@notra/utils/slugify";
 import {
   and,
@@ -88,6 +59,7 @@ import {
 } from "drizzle-orm";
 import { marked } from "marked";
 import { nanoid } from "nanoid";
+import { getTranslations } from "next-intl/server";
 import { after } from "next/server";
 
 import {
@@ -96,10 +68,6 @@ import {
   GITHUB_API_MAX_RESULTS,
   GITHUB_API_PAGE_SIZE,
 } from "@/constants/content-preview";
-import {
-  DEFAULT_GITHUB_CONTENT_DIRECTORIES,
-  DEFAULT_GITHUB_CONTENT_OUTPUT_ENABLED,
-} from "@/constants/github";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
 import { getEnabledDataPoints } from "@/lib/analytics/studio-events";
 import { assertOrganizationAccess } from "@/lib/auth/organization";
@@ -115,26 +83,9 @@ import {
   getCompletedGenerations,
 } from "@/lib/generations/tracking";
 import { requestGeoRescanForPublishedPost } from "@/lib/geo/rescan";
-import {
-  prepareR2GitHubContentAssets,
-  resolveGitHubImagePathTemplate,
-} from "@/lib/integrations/github/content-assets";
-import { clearGitHubPublishFailures } from "@/lib/integrations/github/github-publish-failure-state";
-import {
-  publishContentDraftPullRequest,
-  resolveGitHubContentPath,
-} from "@/lib/integrations/github/publish-content-to-github";
-import {
-  buildOpenInNotraBadgeUrls,
-  resolveNotraBaseUrl,
-} from "@/lib/integrations/github/pull-request-body";
+import { publishSavedContentToGitHub } from "@/lib/integrations/github/publish-saved-content";
 import { baseProcedure } from "@/lib/orpc/base";
-import { runOrpcEffect } from "@/lib/orpc/effect";
-import { toGitHubPublishOrpcError } from "@/lib/orpc/utils/github-publish-error";
-import {
-  startContentPublicationReconciliation,
-  startOnDemandRun,
-} from "@/lib/workflows/start";
+import { startOnDemandRun } from "@/lib/workflows/start";
 import type {
   CommitPreview,
   LinearIntegrationPreviewItem,
@@ -143,15 +94,12 @@ import type {
   RepositoryPreview,
   RepositoryPreviewFailure,
 } from "@/types/content/preview";
-import { toGitHubOperationOrpcError } from "@/utils/github-operation-error";
-import { getGitHubAppPermissionsRecovery } from "@/utils/github-publish-policy";
 import { resolveLookbackRange } from "@/utils/lookback";
 import { ratelimit } from "@/utils/ratelimit";
 
 import {
   badRequest,
   conflict,
-  forbidden,
   internalServerError,
   notFound,
   paymentRequired,
@@ -609,7 +557,9 @@ export const contentRouter = {
       const dateRange = getUtcDayRange(input.date ?? null);
 
       if (input.date && !dateRange) {
-        throw badRequest("Invalid date");
+        throw badRequest(
+          (await getTranslations("errors.actions"))("invalidInput")
+        );
       }
 
       const baseFilters = [eq(posts.organizationId, input.organizationId)];
@@ -728,11 +678,12 @@ export const contentRouter = {
         input.projectId &&
         !(await isProjectInOrganization(input.organizationId, input.projectId))
       ) {
-        throw badRequest("Project not found");
+        throw badRequest((await getTranslations("errors.server"))("notFound"));
       }
 
       if (input.slug && !supportsPostSlug(input.contentType)) {
-        throw badRequest("Slug can only be set for blog posts and changelogs");
+        const tErrors = await getTranslations("errors.content");
+        throw badRequest(tErrors("slugNotSupported"));
       }
 
       const now = new Date();
@@ -783,7 +734,8 @@ export const contentRouter = {
           "code" in error &&
           error.code === "23505"
         ) {
-          throw conflict("A post with this slug already exists");
+          const tErrors = await getTranslations("errors.content");
+          throw conflict(tErrors("slugTaken"));
         }
         throw error;
       }
@@ -833,9 +785,8 @@ export const contentRouter = {
 
       if (input.slug !== undefined) {
         if (!supportsPostSlug(existingPost.contentType)) {
-          throw badRequest(
-            "Slug can only be set for blog posts and changelogs"
-          );
+          const tErrors = await getTranslations("errors.content");
+          throw badRequest(tErrors("slugNotSupported"));
         }
         updateData.slug = input.slug;
       }
@@ -927,7 +878,8 @@ export const contentRouter = {
           "code" in error &&
           error.code === "23505"
         ) {
-          throw conflict("A post with this slug already exists");
+          const tErrors = await getTranslations("errors.content");
+          throw conflict(tErrors("slugTaken"));
         }
         throw error;
       }
@@ -949,416 +901,12 @@ export const contentRouter = {
           `${auth.user.id}:${input.organizationId}`
         );
         if (!withinLimit) {
-          throw tooManyRequests(
-            "Too many GitHub publish requests. Please try again shortly."
-          );
+          const tErrors = await getTranslations("errors.content");
+          throw tooManyRequests(tErrors("tooManyPublishRequests"));
         }
       }
 
-      const [post, integration, organization] = await Promise.all([
-        db.query.posts.findFirst({
-          where: and(
-            eq(posts.id, input.contentId),
-            eq(posts.organizationId, input.organizationId)
-          ),
-          columns: {
-            title: true,
-            slug: true,
-            markdown: true,
-            contentType: true,
-            githubPublish: true,
-          },
-        }),
-        db
-          .select({
-            id: githubIntegrations.id,
-            owner: githubIntegrations.owner,
-            repo: githubIntegrations.repo,
-            defaultBranch: githubIntegrations.defaultBranch,
-            installationId: githubAppInstallations.installationId,
-            installationAccountType: githubAppInstallations.accountType,
-            installationAccountLogin: githubAppInstallations.accountLogin,
-            githubAppInstallationId: githubIntegrations.githubAppInstallationId,
-            encryptedToken: githubIntegrations.encryptedToken,
-            outputConfig: repositoryOutputs.config,
-            outputEnabled: repositoryOutputs.enabled,
-            outputId: repositoryOutputs.id,
-          })
-          .from(githubIntegrations)
-          .leftJoin(
-            githubAppInstallations,
-            and(
-              eq(
-                githubIntegrations.githubAppInstallationId,
-                githubAppInstallations.id
-              ),
-              eq(githubAppInstallations.organizationId, input.organizationId)
-            )
-          )
-          .leftJoin(
-            repositoryOutputs,
-            and(
-              eq(repositoryOutputs.repositoryId, githubIntegrations.id),
-              eq(repositoryOutputs.outputType, input.contentType)
-            )
-          )
-          .where(
-            and(
-              eq(githubIntegrations.organizationId, input.organizationId),
-              eq(githubIntegrations.id, input.repositoryId),
-              eq(githubIntegrations.enabled, true),
-              eq(githubIntegrations.repositoryEnabled, true)
-            )
-          )
-          .limit(1)
-          .then(([result]) => result),
-        db.query.organizations.findFirst({
-          columns: { slug: true },
-          where: eq(organizations.id, input.organizationId),
-        }),
-      ]);
-
-      if (!post) {
-        throw notFound("Content not found");
-      }
-      if (post.contentType !== input.contentType) {
-        throw badRequest("Content type does not match the saved post");
-      }
-      if (!post.markdown) {
-        throw badRequest("Save the content before publishing it to GitHub");
-      }
-      const savedMarkdown = post.markdown;
-      if (!(integration?.owner && integration.repo)) {
-        throw notFound("Selected GitHub repository not found");
-      }
-      if (!integration.defaultBranch) {
-        throw badRequest(
-          "Selected GitHub repository does not have a default branch"
-        );
-      }
-      const connectionMethod = isGitHubAppConfigured()
-        ? "github-app"
-        : getGitHubConnectionMethod(integration);
-      if (connectionMethod === "unauthenticated") {
-        throw forbidden(
-          "Connect this repository through the GitHub App before publishing.",
-          { code: "github_repository_connection_required" }
-        );
-      }
-      let contentOutput = integration.outputId
-        ? {
-            id: integration.outputId,
-            config: integration.outputConfig,
-            enabled: integration.outputEnabled ?? false,
-          }
-        : null;
-      if (!contentOutput) {
-        if (!DEFAULT_GITHUB_CONTENT_OUTPUT_ENABLED[input.contentType]) {
-          throw forbidden("GitHub content publishing is paused", {
-            code: "github_content_publishing_paused",
-          });
-        }
-
-        await db
-          .insert(repositoryOutputs)
-          .values({
-            id: nanoid(),
-            repositoryId: integration.id,
-            outputType: input.contentType,
-            enabled: true,
-            config: null,
-          })
-          .onConflictDoNothing({
-            target: [
-              repositoryOutputs.repositoryId,
-              repositoryOutputs.outputType,
-            ],
-          });
-        contentOutput =
-          (await db.query.repositoryOutputs.findFirst({
-            where: and(
-              eq(repositoryOutputs.repositoryId, integration.id),
-              eq(repositoryOutputs.outputType, input.contentType)
-            ),
-            columns: { id: true, config: true, enabled: true },
-          })) ?? null;
-      }
-      if (!contentOutput) {
-        throw internalServerError("Failed to configure GitHub publishing");
-      }
-      if (!contentOutput.enabled) {
-        throw forbidden("GitHub content publishing is paused", {
-          code: "github_content_publishing_paused",
-        });
-      }
-      const outputConfig = repositoryContentDirectoryConfigSchema.safeParse(
-        contentOutput.config
-      );
-      const directory = outputConfig.success
-        ? (outputConfig.data.directory ??
-          DEFAULT_GITHUB_CONTENT_DIRECTORIES[input.contentType])
-        : DEFAULT_GITHUB_CONTENT_DIRECTORIES[input.contentType];
-      const path = resolveGitHubContentPath({
-        contentId: input.contentId,
-        customPath: input.path,
-        directory,
-        pathTemplate: outputConfig.success
-          ? outputConfig.data.contentPath
-          : null,
-        slug: post.slug,
-        title: post.title,
-      });
-      if (path.length > GITHUB_CONTENT_PATH_MAX_LENGTH) {
-        throw badRequest(
-          "The configured directory and content slug exceed GitHub's file path limit"
-        );
-      }
-
-      const contentSlug =
-        slugify(post.slug ?? "") || slugify(post.title) || input.contentId;
-
-      const notraBaseUrl = resolveNotraBaseUrl();
-      let publishInstallationId = integration.installationId ?? null;
-      let publishInstallationAccountType = integration.installationAccountType;
-      let publishInstallationAccountLogin =
-        integration.installationAccountLogin;
-      if (connectionMethod === "github-app" && !publishInstallationId) {
-        const fallback = selectGitHubAppInstallationForOwner(
-          await listGitHubAppInstallationsByOrganization(input.organizationId),
-          integration.owner
-        );
-        if (fallback) {
-          publishInstallationId = fallback.installationId;
-          publishInstallationAccountType = fallback.accountType;
-          publishInstallationAccountLogin = fallback.accountLogin;
-        }
-      }
-      if (connectionMethod === "github-app" && publishInstallationId) {
-        const publishAccess = await getGitHubAppInstallationPublishAccess(
-          publishInstallationId
-        );
-        if (githubAppInstallationCanPublishContent(publishAccess) === false) {
-          const recovery = getGitHubAppPermissionsRecovery({
-            installationId: publishInstallationId,
-            installationAccountType: publishInstallationAccountType,
-            installationAccountLogin: publishInstallationAccountLogin,
-          });
-          throw forbidden(recovery.message, recovery.data);
-        }
-      }
-
-      const token = await runOrpcEffect(
-        getGitHubPublishTokenEffect(integration.id, {
-          organizationId: input.organizationId,
-        }),
-        toGitHubOperationOrpcError
-      );
-
-      const storedPublish = postGitHubPublishSchema.safeParse(
-        post.githubPublish
-      );
-      const linkedPullRequest =
-        storedPublish.success &&
-        storedPublish.data.repositoryId === integration.id &&
-        storedPublish.data.owner.toLowerCase() ===
-          integration.owner.toLowerCase() &&
-        storedPublish.data.repo.toLowerCase() === integration.repo.toLowerCase()
-          ? {
-              branchName: storedPublish.data.branchName,
-              number: storedPublish.data.pullRequestNumber,
-            }
-          : undefined;
-
-      const octokit = createOctokit(token);
-      const publisherLogin =
-        getGitHubAppBotLogin() ??
-        (await octokit
-          .request("GET /user")
-          .then(({ data }) => data.login)
-          .catch(() => undefined));
-
-      try {
-        const publishedAt = new Date().toISOString();
-        const previousPublication = await findOpenContentPublicationForPost({
-          organizationId: input.organizationId,
-          postId: input.contentId,
-        });
-        const result = await publishContentDraftPullRequest(octokit, {
-          contentId: input.contentId,
-          contentType: input.contentType,
-          owner: integration.owner,
-          repo: integration.repo,
-          defaultBranch: integration.defaultBranch,
-          path,
-          title: post.title,
-          markdown: savedMarkdown,
-          organizationId: input.organizationId,
-          ...(linkedPullRequest ? { linkedPullRequest } : {}),
-          ...(input.linkedOnly ? { requireLinkedPullRequest: true } : {}),
-          ...(publisherLogin ? { publisherLogin } : {}),
-          prepareContent: async (contentPath: string) => {
-            const preparedContent = await prepareR2GitHubContentAssets({
-              contentPath,
-              imagePathTemplate: resolveGitHubImagePathTemplate(
-                contentPath,
-                outputConfig.success ? outputConfig.data.imagePath : null
-              ),
-              markdown: savedMarkdown,
-              organizationId: input.organizationId,
-              slug: contentSlug,
-            });
-            if (
-              preparedContent.assets.some(
-                (asset) => asset.path.length > GITHUB_CONTENT_PATH_MAX_LENGTH
-              )
-            ) {
-              throw badRequest(
-                "The configured image path exceeds GitHub's path limit"
-              );
-            }
-            return preparedContent;
-          },
-          ...(notraBaseUrl && organization
-            ? {
-                badgeUrls: buildOpenInNotraBadgeUrls(notraBaseUrl),
-                contentUrl: `${notraBaseUrl}/${organization.slug}/content/${input.contentId}`,
-              }
-            : {}),
-        });
-        await clearGitHubPublishFailures({
-          organizationId: input.organizationId,
-          outputType: input.contentType,
-          repositoryId: integration.id,
-        });
-        const githubPublish = postGitHubPublishSchema.safeParse({
-          branchName: result.branchName,
-          owner: integration.owner,
-          path: result.path,
-          pullRequestNumber: result.pullRequestNumber,
-          pullRequestUrl: result.pullRequestUrl,
-          repo: integration.repo,
-          repositoryId: integration.id,
-        });
-        if (!githubPublish.success) {
-          throw badRequest("GitHub did not return a linkable pull request");
-        }
-        await db
-          .update(posts)
-          .set({ githubPublish: githubPublish.data })
-          .where(
-            and(
-              eq(posts.id, input.contentId),
-              eq(posts.organizationId, input.organizationId)
-            )
-          );
-        // The pull request already exists; losing the mention mapping must not
-        // report the publish as failed. Retry the mapping so a later mention
-        // can still find the post.
-        const publication = {
-          organizationId: input.organizationId,
-          postId: input.contentId,
-          repositoryId: integration.id,
-          owner: integration.owner,
-          repo: integration.repo,
-          path: result.path,
-          branch: result.branchName,
-          pullRequestNumber: result.pullRequestNumber,
-          pullRequestUrl: result.pullRequestUrl,
-          headSha: result.headSha,
-          previousHeadSha: previousPublication?.headSha ?? null,
-        };
-        const logContext = {
-          organizationId: input.organizationId,
-          contentId: input.contentId,
-          pullRequestUrl: result.pullRequestUrl,
-        };
-        // Queue the durable insert/close reconciliation before making the
-        // mapping visible. A close event cannot be lost in the gap.
-        let reconciliationScheduled = false;
-        try {
-          await startContentPublicationReconciliation(publication, publishedAt);
-          reconciliationScheduled = true;
-        } catch (error) {
-          console.error("Failed to start content publication reconciliation", {
-            ...logContext,
-            error,
-          });
-        }
-        try {
-          const recordedPublication = await retryWrite(() =>
-            recordContentPublication(publication, publishedAt)
-          );
-          if (
-            recordedPublication &&
-            recordedPublication.headSha !== result.headSha
-          ) {
-            const currentPublication = await findOpenContentPublicationForPost({
-              organizationId: input.organizationId,
-              postId: input.contentId,
-            });
-            if (
-              currentPublication?.id === recordedPublication.id &&
-              currentPublication.headSha === recordedPublication.headSha
-            ) {
-              await retryWrite(() =>
-                recordContentPublication(
-                  {
-                    ...publication,
-                    previousHeadSha: currentPublication.headSha,
-                  },
-                  publishedAt
-                )
-              );
-            }
-          }
-          if (!reconciliationScheduled) {
-            try {
-              await startContentPublicationReconciliation(
-                publication,
-                publishedAt
-              );
-            } catch (startError) {
-              console.error(
-                "Failed to start content publication reconciliation",
-                { ...logContext, error: startError }
-              );
-            }
-          }
-        } catch (error) {
-          console.error("Failed to record content publication", {
-            ...logContext,
-            error,
-          });
-          // The PR already exists, so hand the idempotent mapping write to a
-          // durable workflow instead of relying on this request process. The
-          // publish itself succeeded, whatever happens to the handover.
-          if (!reconciliationScheduled) {
-            try {
-              await startContentPublicationReconciliation(
-                publication,
-                publishedAt
-              );
-            } catch (startError) {
-              console.error(
-                "Failed to start content publication reconciliation",
-                { ...logContext, error: startError }
-              );
-            }
-          }
-        }
-        return result;
-      } catch (error) {
-        throw await toGitHubPublishOrpcError(error, {
-          organizationId: input.organizationId,
-          repositoryId: integration.id,
-          outputId: contentOutput.id,
-          outputType: input.contentType,
-          connectionMethod,
-          installationId: publishInstallationId,
-          installationAccountType: publishInstallationAccountType,
-          installationAccountLogin: publishInstallationAccountLogin,
-        });
-      }
+      return publishSavedContentToGitHub(input);
     }),
   delete: baseProcedure
     .input(contentInputSchema)
@@ -2014,7 +1562,7 @@ export const contentRouter = {
         input.projectId &&
         !(await isProjectInOrganization(input.organizationId, input.projectId))
       ) {
-        throw badRequest("Project not found");
+        throw badRequest((await getTranslations("errors.server"))("notFound"));
       }
 
       const now = new Date();
@@ -2063,7 +1611,8 @@ export const contentRouter = {
         !input.dataPoints.includeReleases &&
         !input.dataPoints.includeLinearData
       ) {
-        throw badRequest("At least one data source must be enabled.");
+        const tErrors = await getTranslations("errors.content");
+        throw badRequest(tErrors("dataSourceRequired"));
       }
 
       if (input.selectedItems) {
@@ -2074,7 +1623,8 @@ export const contentRouter = {
           (input.selectedItems.linearIssueIds?.length ?? 0) > 0;
 
         if (!hasAnySelected) {
-          throw badRequest("At least one event must be selected.");
+          const tErrors = await getTranslations("errors.content");
+          throw badRequest(tErrors("eventRequired"));
         }
       }
 
@@ -2099,7 +1649,9 @@ export const contentRouter = {
             format: input.contentType,
           },
         });
-        throw paymentRequired(describeContentBillingDenial(billing));
+        throw paymentRequired(
+          (await getTranslations("errors.billing"))("contentLimitReached")
+        );
       }
 
       const runId = generateRunId("manual_on_demand");

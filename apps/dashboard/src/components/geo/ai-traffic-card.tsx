@@ -4,6 +4,7 @@ import {
   GEO_EMPTY_TRAFFIC_RESPONSE,
   GEO_SPARKLINE_MIN_POINTS,
   GEO_SPARKLINE_TREND_CLASS,
+  GEO_TRAFFIC_OTHER_GROUP,
 } from "@notra/geo-core/constants/geo";
 import {
   buildTrafficTrendRows,
@@ -14,6 +15,7 @@ import {
   trafficSparklineDays,
 } from "@notra/geo-core/utils/ai-traffic";
 import { useIsMobile } from "@notra/ui/hooks/use-mobile";
+import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { GeoRateSparkline } from "@/components/geo/geo-rate-sparkline";
@@ -42,17 +44,25 @@ import {
 export function AiTrafficCard({
   traffic,
   pages,
+  range,
   settingsHref,
   isPending = false,
 }: AiTrafficCardProps) {
+  const t = useTranslations("geo.aiTrafficCard");
+  const tCommon = useTranslations("common");
+  const tShared = useTranslations("geo.shared");
+  const locale = useLocale();
   const { sources, totals, points, previousConversions } =
     traffic ?? GEO_EMPTY_TRAFFIC_RESPONSE;
   const previousTotals = toGeoTrafficPreviousTotals(
     sources,
     previousConversions
   );
-  const trendRows = buildTrafficTrendRows(points);
-  const groups = groupTrafficSources(sources);
+  const groups = groupTrafficSources(sources).map((group) =>
+    group.key === GEO_TRAFFIC_OTHER_GROUP.key
+      ? { ...group, label: tCommon("labels.other") }
+      : group
+  );
   const [collapsed, setCollapsed] = useState<ReadonlySet<GeoTrafficSourceBand>>(
     () => new Set()
   );
@@ -68,7 +78,11 @@ export function AiTrafficCard({
     });
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const isMobile = useIsMobile();
-  const sparklineDays = useMemo(() => trafficSparklineDays(points), [points]);
+  const sparklineDays = useMemo(
+    () => trafficSparklineDays(points, range?.from, range?.to),
+    [points, range?.from, range?.to]
+  );
+  const trendRows = buildTrafficTrendRows(points, locale, sparklineDays);
   const canSparkline = hasTrafficSourceSeries(points);
   const seriesByGroup = useMemo(() => {
     const map = new Map<string, { day: string; value: number }[]>();
@@ -107,7 +121,7 @@ export function AiTrafficCard({
     const next: TableColumn<GeoTrafficSourceGroup>[] = [
       {
         key: "source",
-        header: "Source",
+        header: tCommon("labels.source"),
         width: "1fr",
         minWidth: TRAFFIC_SOURCE_COLUMN_MIN_WIDTH.source,
         sortable: true,
@@ -116,7 +130,7 @@ export function AiTrafficCard({
       },
       {
         key: "category",
-        header: "Purpose",
+        header: tShared("purpose"),
         width: categorySize,
         minWidth: categorySize,
         sortable: true,
@@ -125,7 +139,7 @@ export function AiTrafficCard({
       },
       {
         key: "visits",
-        header: "Visits",
+        header: tShared("visits"),
         width: visitsSize,
         minWidth: visitsSize,
         sortable: true,
@@ -139,12 +153,12 @@ export function AiTrafficCard({
               {showSpark ? (
                 <GeoRateSparkline
                   className={GEO_SPARKLINE_TREND_CLASS[sparklineTrend(series)]}
-                  label={`${row.label} visit trend`}
+                  label={t("visitTrend", { source: row.label })}
                   points={series}
                 />
               ) : null}
               <span className="text-sm tabular-nums">
-                {row.visits.toLocaleString()}
+                {row.visits.toLocaleString(locale)}
               </span>
             </span>
           );
@@ -156,7 +170,7 @@ export function AiTrafficCard({
       next.push(
         {
           key: "paths",
-          header: "Pages",
+          header: tShared("pages"),
           collapsePriority: 1,
           width: TRAFFIC_SOURCE_COLUMN_MIN_WIDTH.paths,
           minWidth: TRAFFIC_SOURCE_COLUMN_MIN_WIDTH.paths,
@@ -164,20 +178,20 @@ export function AiTrafficCard({
           align: "right",
           cell: (row) => (
             <span className="text-sm tabular-nums">
-              {row.paths.toLocaleString()}
+              {row.paths.toLocaleString(locale)}
             </span>
           ),
         },
         {
           key: "lastSeenAt",
-          header: "Last seen",
+          header: tShared("lastSeen"),
           collapsePriority: 2,
           width: TRAFFIC_SOURCE_COLUMN_MIN_WIDTH.lastSeenAt,
           minWidth: TRAFFIC_SOURCE_COLUMN_MIN_WIDTH.lastSeenAt,
           sortable: true,
           cell: (row) => (
             <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
-              {formatAiTrafficTimestamp(row.lastSeenAt)}
+              {formatAiTrafficTimestamp(row.lastSeenAt, locale)}
             </span>
           ),
         }
@@ -185,13 +199,13 @@ export function AiTrafficCard({
     }
 
     return next;
-  }, [isMobile, seriesByGroup]);
+  }, [isMobile, locale, seriesByGroup, t]);
 
   if (sources.length === 0) {
     return (
-      <InstrumentSection eyebrow="Sources">
+      <InstrumentSection eyebrow={tCommon("labels.sources")}>
         <InstrumentEmpty
-          message="No AI traffic captured yet"
+          message={tShared("noAiTrafficCapturedYet")}
           seed="geo-traffic-sources"
         />
       </InstrumentSection>
@@ -208,7 +222,7 @@ export function AiTrafficCard({
         settingsHref={settingsHref}
         totals={totals}
       />
-      <InstrumentSection eyebrow="Sources">
+      <InstrumentSection eyebrow={tCommon("labels.sources")}>
         <TrafficSourcesStack
           collapsed={collapsed}
           columns={columns}

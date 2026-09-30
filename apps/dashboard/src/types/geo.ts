@@ -60,6 +60,7 @@ import type {
   ShareOfVoiceRow,
 } from "@notra/geo-core/types/geo";
 import type { GeoRequestPayload } from "@usenotra/geo";
+import type { useTranslations } from "next-intl";
 import type {
   ComponentProps,
   ComponentPropsWithoutRef,
@@ -102,6 +103,12 @@ export interface GeoProjectQueryProviderProps {
   children: ReactNode;
 }
 
+export interface GeoProjectBrandIdentity {
+  id: string;
+  name: string;
+  websiteUrl: string | null;
+}
+
 export interface GeoProjectCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -109,11 +116,24 @@ export interface GeoProjectCreateDialogProps {
   onCreated: (projectId: string) => void;
 }
 
+export interface GeoProjectBrandSelectionProps {
+  identities: GeoProjectBrandIdentity[];
+  selectedIdentity: GeoProjectBrandIdentity | undefined;
+  projectName: string;
+  disabled: boolean;
+  onSelect: (id: string | null) => void;
+}
+
 export interface GeoProjectDeleteSectionProps {
   organizationId: string;
   project: GeoProject;
   replacementProjectId: string | undefined;
   onDeleted: (projectId: string) => void;
+}
+
+export interface GeoProjectBrandSectionProps {
+  organizationId: string;
+  project: GeoProject;
 }
 
 export interface GeoProjectLogoProps {
@@ -143,6 +163,10 @@ export interface TrafficPageViewProps {
   isPagesPending: boolean;
   trafficPages: readonly GeoTrafficPage[];
   ingestSetup: GeoIngestSetupResponse | undefined;
+}
+
+export interface GeoTrafficSkeletonProps {
+  geoRange?: GeoRangeControl;
 }
 
 export interface GeoLayoutProps {
@@ -185,6 +209,11 @@ export interface GeoOverviewLoadedProps {
 
 export interface GeoScanSpinnerProps {
   visible: boolean;
+}
+
+export interface GeoStatDeltaLabels {
+  new: string;
+  points: (value: number) => string;
 }
 
 export interface GeoStatDeltaProps {
@@ -231,23 +260,6 @@ export interface GeoPromptTableFilters {
   source: GeoPromptSourceFilter;
 }
 
-export interface GeoPromptFilterOption<T extends string> {
-  value: T;
-  label: string;
-}
-
-export interface GeoPromptSavedView {
-  id: string;
-  name: string;
-  query: GeoPromptTableFilters;
-}
-
-export interface UseGeoSavedViewsResult {
-  views: GeoPromptSavedView[];
-  saveView: (name: string, query: GeoPromptTableFilters) => void;
-  removeView: (viewId: string) => void;
-}
-
 export interface PromptTagsActionDialogProps {
   target: PromptTagsDialogTarget | null;
   suggestions: string[];
@@ -285,27 +297,47 @@ export interface PromptPresenceBadgeProps {
   status: GeoPresenceStatus | null;
 }
 
-export interface PromptSavedViewsMenuProps {
-  views: GeoPromptSavedView[];
-  filters: GeoPromptTableFilters;
-  onApply: (view: GeoPromptSavedView) => void;
-  onSave: (name: string) => void;
-  onRemove: (viewId: string) => void;
-}
-
-export interface PromptSaveViewDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSave: (name: string) => void;
-}
-
 export interface PromptTagsDialogTarget {
   mode: "edit" | "bulk";
   rows: GeoPromptTableRow[];
 }
 
+export interface SlidingTabIndicatorProps {
+  /** Active tab value; a change starts the slide. */
+  value: string;
+}
+
+export interface TabIndicatorBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface PromptsPageTabIconProps {
+  children: ReactNode;
+  pinned?: boolean;
+}
+
+export interface PromptsPageTabCountProps {
+  count: number | undefined;
+}
+
+export interface ConversationRowActionsProps {
+  sequence: GeoPromptSequence;
+  isRunning: boolean;
+  isPending: boolean;
+  isRunPending: boolean;
+  onRun: () => void;
+  onToggle: (enabled: boolean) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
 export interface ConversationsCardProps {
   organizationId: string;
+  /** Renders Generate and New conversation here instead of above the table. */
+  actionsContainer?: HTMLElement | null;
 }
 
 export interface ConversationTurnDraft {
@@ -534,6 +566,19 @@ export interface SheetStatGridProps {
   stats: readonly SheetStat[];
 }
 
+export type JourneyGroupSheetStat =
+  | {
+      key: "journeys" | "deepCrawls" | "entryPage" | "ofAllJourneys";
+      value: string;
+      delta?: number | null;
+    }
+  | { key: "avgDepth"; depth: number };
+
+export interface JourneyPageKindStat {
+  kind: "docs" | "blog" | "other";
+  pages: number;
+}
+
 export interface JourneyGroupContentProps {
   selection: GeoJourneyGroupSelection;
   journeys: readonly GeoJourney[];
@@ -677,6 +722,7 @@ export interface GeoScanFrequencySelectProps {
 
 export interface AiTrafficCardProps {
   traffic: AiTrafficResponse | undefined;
+  range?: GeoRangeQuery;
   /** Top pages across every host, for the source drawer. */
   pages: readonly GeoTrafficPage[];
   settingsHref: string;
@@ -842,6 +888,10 @@ export interface FamilyImproveInsight {
   body: string;
 }
 
+export type FamilyImproveTranslator = ReturnType<
+  typeof useTranslations<"geo.familyImproveCard.insights">
+>;
+
 export interface FamilyImproveCardProps {
   insight: FamilyImproveInsight;
   gapsHref?: string;
@@ -900,7 +950,6 @@ export interface GeoQueryScope {
 }
 
 export interface GeoRangeControl extends GeoRangeState {
-  label: string;
   days: number;
   query: GeoRangeQuery;
   param: string | null;
@@ -1266,35 +1315,6 @@ export interface TrackBrandButtonProps {
   className?: string;
 }
 
-export interface ShareOfVoiceBrandsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  other: ShareOfVoiceRow;
-  others: readonly ShareOfVoiceRow[];
-  /** Daily mentions keyed by row id, for the change indicators. */
-  mentionSparklines: ReadonlyMap<string, GeoSparklinePoint[]>;
-  competitors?: GeoCompetitor[];
-  companyName?: string | null;
-  aliases?: readonly string[];
-  ownDomain?: string | null;
-  onBrandClick?: (row: ShareOfVoiceRow) => void;
-  onBrandPointerEnter?: (row: ShareOfVoiceRow) => void;
-  onTrackBrand?: (brand: string) => void;
-}
-
-export type ShareOfVoiceBrandFilter = "all" | "tracked" | "discovered";
-
-export interface ShareOfVoiceBrandRowProps {
-  row: ShareOfVoiceRow;
-  mentionSeries: readonly GeoSparklinePoint[];
-  own: boolean;
-  competitors?: GeoCompetitor[];
-  ownDomain?: string | null;
-  onOpen?: (row: ShareOfVoiceRow) => void;
-  onPrefetch?: (row: ShareOfVoiceRow) => void;
-  onTrack?: (brand: string) => void;
-}
-
 export interface ShareOfVoiceChartProps {
   points: GeoCompetitorSharePoint[];
   /** Daily mentions per brand; drives the change indicators. */
@@ -1340,6 +1360,8 @@ export interface CompetitorEditDialogProps {
   organizationId: string;
   competitor: GeoCompetitor | null;
   initialName?: string;
+  /** Shows a CSV import shortcut in the footer; closes the dialog first. */
+  onImportCsv?: () => void;
 }
 
 export interface CompetitorEditFormProps {
@@ -1348,6 +1370,7 @@ export interface CompetitorEditFormProps {
   initialName?: string;
   onDone: () => void;
   onCancel?: () => void;
+  onImportCsv?: () => void;
 }
 
 export interface CompetitorSummaryStatsProps {
@@ -1409,6 +1432,8 @@ export interface CompetitorsTableProps {
   aliases: string[];
   ownDomain: string | null;
   isScanning?: boolean;
+  /** Share of voice per lowercased brand name; empty before the first scan. */
+  shareByBrand: ReadonlyMap<string, ShareOfVoiceRow>;
 }
 
 export interface PromptsTableProps {
@@ -1416,6 +1441,8 @@ export interface PromptsTableProps {
   prompts: GeoTrackedPrompt[];
   results: GeoPromptResultSummary[];
   isScanning?: boolean;
+  onAddPrompt: () => void;
+  onImportCsv: () => void;
 }
 
 export type PromptAddMode = "write" | "website";
@@ -1423,6 +1450,8 @@ export type PromptAddMode = "write" | "website";
 export interface PromptAddDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Opens the CSV import from the footer, for adding prompts in bulk. */
+  onImportCsv?: () => void;
   organizationId: string;
 }
 
@@ -1542,6 +1571,7 @@ export interface PromptAnswerContentProps extends Omit<
 }
 
 export interface PromptReceiptHistoryProps {
+  title: string;
   entries: PromptHistoryEntry[];
   isLoading: boolean;
   /** Tracked competitors, used to resolve brand logos by domain. */
@@ -1782,12 +1812,13 @@ export interface GeoChangesSummaryRowProps {
   summary: GeoChangesSummary;
 }
 
+export type GeoChangeStateLabel =
+  | { key: "new" | "notMentioned" | "mentioned" | "cited" | "notCited" }
+  | { key: "position"; position: number };
+
 export interface GeoChangeDetail {
-  title: string;
-  engine: string;
-  before: string;
-  after: string;
-  note: string | null;
+  before: GeoChangeStateLabel;
+  after: GeoChangeStateLabel;
 }
 
 export interface GeoChangeCellProps {
@@ -1796,4 +1827,19 @@ export interface GeoChangeCellProps {
 
 export interface GeoChangeCompetitorsCellProps extends GeoChangeCellProps {
   competitors: readonly GeoCompetitor[];
+}
+
+export interface GeoImportResultPart {
+  key: "imported" | "updated" | "skipped" | "nothingNew";
+  count: number;
+}
+
+export interface GscSyncResultMessage {
+  key:
+    | "failed"
+    | "skipped"
+    | "noData"
+    | "noNewSuggestions"
+    | "suggestionsAdded";
+  count: number;
 }

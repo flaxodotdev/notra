@@ -13,6 +13,7 @@ import {
 import type { ComposeOption, ImagePatternObject } from "echarts/core";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useLocale } from "next-intl";
 import { motion, useReducedMotion } from "motion/react";
 import { tween } from "@notra/ui/lib/motion";
 import {
@@ -29,6 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { withLocaleTooltip, withLocaleValueAxis } from "@/utils/chart-locale";
 import { EChartsPlotFrame } from "@/components/charts/echarts-plot-frame";
 import { CHART_SCRUB_POSITION_LERP } from "@/constants/charts";
 import {
@@ -1457,10 +1459,9 @@ function buildAreaSeries(ctx: OptionBuildContext): LineSeriesOption[] {
     // Scrub clips in pixels instead of dropping points, so the series stays
     // full and the cut rides the pointer. Classic hover-reveal still slices.
     const revealActive = enableHoverReveal && !scrub && revealIndex !== null;
-    // Scrub still uses the faded reveal base, but the dashed "today is
-    // incomplete" overlay stays unless classic hover-reveal is actively slicing.
-    const buffer =
-      area.enableBufferLine && lastPresent >= 1 && !revealActive;
+    // Reveal owns the tail. Dropping its last point for a buffer would hide
+    // today's value because reveal returns before the dashed buffer is added.
+    const buffer = area.enableBufferLine && lastPresent >= 1 && !reveal;
 
     const restingDot = dotStyle(
       area.dotVariant,
@@ -2065,7 +2066,11 @@ export function EChartsAreaChart<TData extends Record<string, unknown>>({
   const [hoveredDataKey, setHoveredDataKey] = useState<string | null>(null);
 
   // ── Declarative config, collected from children by reference ─────────────────
-  const collected = useMemo(() => collectConfig(children), [children]);
+  const locale = useLocale();
+  const collected = useMemo(
+    () => withLocaleValueAxis(withLocaleTooltip(collectConfig(children), locale), locale),
+    [children, locale]
+  );
   const {
     areas,
     xAxis: xAxisSlot,

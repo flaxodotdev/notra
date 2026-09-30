@@ -5,7 +5,6 @@ import {
   SVG_MIME_TYPE,
 } from "@notra/schemas/constants/dashboard/upload";
 
-import { CONTENT_MEDIA } from "@/constants/content-media";
 import { dashboardOrpc } from "@/lib/orpc/query";
 import type { ContentMediaKind } from "@/types/content/media";
 import type {
@@ -127,8 +126,11 @@ export async function uploadFile({
   return { url: publicUrl, key };
 }
 
-export async function uploadContentMedia(file: File, kind: ContentMediaKind) {
-  const fallback = CONTENT_MEDIA[kind].failed;
+export async function uploadContentMedia(
+  file: File,
+  kind: ContentMediaKind,
+  fallback: string
+) {
   const body = new FormData();
   body.set("file", file);
   body.set("kind", kind);
@@ -137,15 +139,7 @@ export async function uploadContentMedia(file: File, kind: ContentMediaKind) {
     method: "POST",
   });
   if (!response.ok) {
-    const payload: unknown = await response.json().catch(() => null);
-    const message =
-      payload &&
-      typeof payload === "object" &&
-      "message" in payload &&
-      typeof payload.message === "string"
-        ? payload.message
-        : fallback;
-    throw new Error(message);
+    throw new Error(fallback);
   }
   const payload: unknown = await response.json().catch(() => null);
   if (

@@ -13,10 +13,6 @@ const RELATIVE_UNITS: { unit: Intl.RelativeTimeFormatUnit; ms: number }[] = [
   { unit: "minute", ms: 60_000 },
 ];
 
-const relativeFormatter = new Intl.RelativeTimeFormat("en", {
-  numeric: "auto",
-});
-
 export function skillDisplayName(name: string): string {
   return name
     .split("-")
@@ -27,15 +23,19 @@ export function skillDisplayName(name: string): string {
 
 export function formatSkillUpdatedAt(
   value: string | Date,
+  locale: string,
   now = Date.now()
-): string {
+): string | null {
   const diff = new Date(value).getTime() - now;
+  const relativeFormatter = new Intl.RelativeTimeFormat(locale, {
+    numeric: "auto",
+  });
   for (const { unit, ms } of RELATIVE_UNITS) {
     if (Math.abs(diff) >= ms) {
       return relativeFormatter.format(Math.round(diff / ms), unit);
     }
   }
-  return "Just now";
+  return null;
 }
 
 export function filterSkills<T extends SkillListItem>(
@@ -46,11 +46,17 @@ export function filterSkills<T extends SkillListItem>(
   if (!needle) {
     return skills;
   }
-  return skills.filter(
-    (skill) =>
-      skill.name.toLowerCase().includes(needle) ||
-      skill.description.toLowerCase().includes(needle)
-  );
+  return skills.filter((skill) => {
+    const name = skill.name.toLowerCase();
+    return (
+      name.includes(needle) ||
+      skill.description.toLowerCase().includes(needle) ||
+      // Labels only insert spaces where the slug has hyphens, so a needle
+      // without a space that matches the label already matches the slug.
+      (needle.includes(" ") &&
+        skillDisplayName(skill.name).toLowerCase().includes(needle))
+    );
+  });
 }
 
 function compareBy(key: SkillSortKey, a: SkillListItem, b: SkillListItem) {
@@ -77,7 +83,9 @@ export function sortSkills<T extends SkillListItem>(
   });
 }
 
-export function skillQuickstartError(url: string): string | null {
+export function skillQuickstartError(
+  url: string
+): "unsupportedHost" | "invalidUrl" | null {
   const trimmed = url.trim();
   if (!trimmed) {
     return null;
@@ -85,11 +93,11 @@ export function skillQuickstartError(url: string): string | null {
   try {
     const parsed = new URL(trimmed);
     if (parsed.hostname !== "skills.sh") {
-      return "Only skills.sh links are supported.";
+      return "unsupportedHost";
     }
     return null;
   } catch {
-    return "Enter a valid skills.sh URL.";
+    return "invalidUrl";
   }
 }
 
