@@ -1,6 +1,6 @@
 {
-  "id": "ba078adc-e67e-4699-ba40-65d40a1f6dc7",
-  "prevId": "43d76477-b280-4273-8bc1-3fcce58e3eb9",
+  "id": "61938d55-5388-45c6-8130-83760150993e",
+  "prevId": "ba078adc-e67e-4699-ba40-65d40a1f6dc7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2889,6 +2889,36 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "source_pdf_filename": {
+          "name": "source_pdf_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_pdf_storage_key": {
+          "name": "source_pdf_storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_pdf_url": {
+          "name": "source_pdf_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_pdf_text": {
+          "name": "source_pdf_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_pdf_uploaded_at": {
+          "name": "source_pdf_uploaded_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
