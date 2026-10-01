@@ -95,6 +95,7 @@ import { ApiKeyRevealField } from "@/components/api-keys/api-key-reveal-field";
 import { ApiKeyPermissionSelector } from "@/components/api-keys/permission-selector";
 import { TrackingTokenCard } from "@/components/api-keys/tracking-token-card";
 import { Button } from "@/components/button";
+import { DemoApiCallout } from "@/components/demo/demo-api-callout";
 import { PageContainer } from "@/components/layout/container";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Table, type TableColumn } from "@/components/motion/table";
@@ -1062,6 +1063,8 @@ export default function ApiKeysPage() {
             dispatchUi({ type: "createDialogChanged", open: true })
           }
         />
+
+        <DemoApiCallout />
 
         <ApiKeysTable
           actionsDisabled={editMutation.isPending || deleteMutation.isPending}

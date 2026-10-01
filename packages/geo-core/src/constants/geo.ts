@@ -1,3 +1,5 @@
+import { isDemoMode } from "@notra/utils/demo-mode";
+
 import type {
   AiTrafficResponse,
   EngineIconKey,
@@ -543,13 +545,6 @@ export const AI_TRAFFIC_DEFAULT_JOURNEYS_LIMIT = 25;
 
 export const OWN_BRAND_ROW_ID = "own-brand";
 
-export const COMPETITOR_TYPE_FILTER_VALUES = [
-  "all",
-  "direct",
-  "indirect",
-] as const;
-
-export const COMPETITORS_TABLE_HEIGHT = 420;
 export const COMPETITOR_PROMPTS_TABLE_HEIGHT = 288;
 export const COMPETITOR_PROMPTS_PAGE_TABLE_HEIGHT = 620;
 export const COMPETITORS_TABLE_ROW_HEIGHT = 52;
@@ -902,6 +897,7 @@ export const GEO_RANGE_PRESET_DAYS = {
   "90d": 89,
 } as const;
 export const GEO_DEFAULT_QUERY_DAYS = 30;
+export const GEO_MAX_RANGE_DAYS = 366;
 export const GEO_FILTER_TRIGGER_CLASS =
   "corner-squircle flex h-7 items-center gap-1.5 rounded-lg border bg-background px-2.5 text-xs outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring";
 /** Search vs memory gap that names a specific bottleneck. */
@@ -966,9 +962,9 @@ export const GEO_CHAT_SKIN_SURFACE: Record<GeoChatSkin, string> = {
   chatgpt: "bg-background",
   gemini: "bg-white dark:bg-[#1f1f1f]",
   perplexity: "bg-white dark:bg-[#111]",
-  opencode: "bg-[var(--opencode-tui-background,#fdfdfd)]",
-  "claude-code": "bg-[#1a1a1a]",
-  codex: "bg-[#1a1a1a]",
+  opencode: "bg-[var(--opencode-tui-background,#090909)]",
+  "claude-code": "bg-[#0f0f0f]",
+  codex: "bg-[#0f0f0f]",
 };
 
 export const GEO_TAB_BREADCRUMB_LABELS = {
@@ -976,6 +972,9 @@ export const GEO_TAB_BREADCRUMB_LABELS = {
   "brand-sentiment": "Brand sentiment",
   journeys: "Journeys",
 } satisfies Record<GeoTab, string>;
+
+/** Served by the dashboard app; stands in for fictional `.example` brands. */
+export const GEO_NOTRA_LOGO_PATH = "/icon0.svg";
 
 export const GEO_AVATAR_FALLBACK_BASE =
   "https://api.dicebear.com/9.x/glass/svg";
@@ -986,8 +985,13 @@ export const GEO_COMPETITOR_DETAIL_MIN_POINTS = 2;
 export const GEO_COMPETITOR_DETAIL_SERIES_KEY = "mentions";
 export const GEO_COMPETITOR_DETAIL_CHART_HEIGHT_CLASS = "h-56";
 
-/** Dev-only: enables seeding GEO sample data from the settings page. */
-export const GEO_SAMPLE_DATA_ENABLED = process.env.NODE_ENV === "development";
+/**
+ * Enables GEO sample data (settings seeding, shelf fixtures) in local
+ * development and in the public demo, where every workspace is sample data.
+ * The demo still refuses the seed/clear RPCs so visitors can't wipe it.
+ */
+export const GEO_SAMPLE_DATA_ENABLED =
+  process.env.NODE_ENV === "development" || isDemoMode();
 
 export const GEO_CHANGES_LIMIT = 40;
 export const GEO_CHANGES_LABEL = "What changed";

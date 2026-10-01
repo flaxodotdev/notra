@@ -3,7 +3,12 @@ import type { Metadata } from "next";
 import { BlogPostCard } from "@/components/blog-post-card";
 import { MarketingHeroWash } from "@/components/marketing-hero-wash";
 import { buildBlogCardItems, listNotraBlogPosts } from "@/utils/blog";
-import { DEFAULT_SOCIAL_IMAGE, TWITTER_HANDLE } from "@/utils/metadata";
+import { buildBreadcrumbJsonLd, serializeJsonLd } from "@/utils/jsonld";
+import {
+  DEFAULT_SOCIAL_IMAGE,
+  TWITTER_HANDLE,
+  pageAlternates,
+} from "@/utils/metadata";
 import { SITE_URL } from "@/utils/urls";
 
 const title = "Notra Blog";
@@ -12,9 +17,7 @@ const description = "Insights, guides, and stories from the Notra team.";
 export const metadata: Metadata = {
   title,
   description,
-  alternates: {
-    canonical: `${SITE_URL}/blog`,
-  },
+  alternates: pageAlternates(`${SITE_URL}/blog`),
   openGraph: {
     title,
     description,
@@ -33,12 +36,22 @@ export const metadata: Metadata = {
   },
 };
 
+const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+  { name: "Home", url: SITE_URL },
+  { name: "Blog", url: `${SITE_URL}/blog` },
+]);
+
 export default async function BlogPage() {
   const posts = await listNotraBlogPosts();
   const cardItems = buildBlogCardItems(posts);
 
   return (
     <div className="flex w-full flex-col items-center gap-12 md:gap-16">
+      <script
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD payload is server-built and script-close-escaped
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
+        type="application/ld+json"
+      />
       <MarketingHeroWash
         subtitle={description}
         title={
