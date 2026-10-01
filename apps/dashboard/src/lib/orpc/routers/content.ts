@@ -100,6 +100,7 @@ import { resolveLookbackRange } from "@/utils/lookback";
 import { ratelimit } from "@/utils/ratelimit";
 
 import {
+  assertNotDemo,
   badRequest,
   conflict,
   internalServerError,
@@ -911,6 +912,8 @@ export const contentRouter = {
         organizationId: input.organizationId,
       });
       await assertActiveSubscription(input.organizationId);
+      // The demo's repository is fictional; GitHub writes need a real one.
+      assertNotDemo();
 
       if (
         process.env.UPSTASH_REDIS_REST_URL &&

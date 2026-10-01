@@ -2580,6 +2580,9 @@
       }
     },
     "engineFamilySheet": {
+      "missedTitle": "{count, plural, one {# Prompt erwähnt dich nicht} other {# Prompts erwähnen dich nicht}}",
+      "foundTitle": "{count, plural, one {# Prompt zeigt dich} other {# Prompts zeigen dich}}",
+      "trend": "Sichtbarkeit im Verlauf",
       "descriptionModels": "Wie sichtbar deine Marke in jedem Modell ist",
       "descriptionEngine": "Wie sichtbar deine Marke in dieser KI-Engine ist",
       "lastChecked": "Zuletzt geprüft {time}",
@@ -2589,10 +2592,6 @@
       "seriesLabel": "Markensichtbarkeit · {mode}",
       "answerMode": "Antwortmodus",
       "brandsHint": "Wie oft jede Marke in den Antworten dieser KI-Engine auf deine Prompts auftaucht",
-      "result": {
-        "miss": "Verfehlt"
-      },
-      "promptsCount": "Prompts ({count, number})",
       "resultHeader": "Ergebnis",
       "emptyPrompts": "Noch keine Prompts gescannt"
     },
@@ -2616,27 +2615,6 @@
       "empty": "Starte einen Scan, um die Erwähnungsraten der KI-Engines zu sehen",
       "emptySeed": "Erwähnungsrate nach KI-Engine",
       "noMatches": "Keine KI-Engines entsprechen diesem Filter"
-    },
-    "familyImproveCard": {
-      "closeGaps": "Diese Lücken schließen",
-      "insights": {
-        "searchAhead": {
-          "title": "Die Suche findet dich. Das Gedächtnis nicht.",
-          "body": "Wenn {family} im Web sucht, erwähnt es dich in {search} der Antworten. Ohne Suche sind es {memory}. Seiten, die {count, plural, one {den verpassten Prompt} other {die # verpassten Prompts}} beantworten, helfen der Suche, dich weiter zu zitieren."
-        },
-        "memoryAhead": {
-          "title": "Bekannt, aber nicht gefunden.",
-          "body": "{family} nennt dich schon ohne Suche ({memory}), aber die Live-Suche erwähnt dich nur in {search} der Antworten. Seiten, die zu {count, plural, one {dem verpassten Prompt} other {den # verpassten Prompts}} passen, schließen diese Lücke."
-        },
-        "closing": {
-          "title": "{count, plural, one {# Prompt verpasst dich noch} other {# Prompts verpassen dich noch}}",
-          "body": "{family} erwähnt dich schon oft. Die restlichen Lücken zu schließen ist der schnellste Weg, die Rate zu erhöhen."
-        },
-        "bothWeak": {
-          "title": "{count, plural, one {# Prompt erwähnt dich nie} other {# Prompts erwähnen dich nie}}",
-          "body": "Weder Suche noch Gedächtnis empfehlen dich bei diesen Fragen. Schreib die Seiten, die sie beantworten."
-        }
-      }
     },
     "gapDetailSheet": {
       "coverage": "Erwähnt von {visible} von {total} KI-Engines",
@@ -2666,8 +2644,11 @@
         "mentioned": "Erwähnt dich",
         "searched": "Hat diese Suche ausgeführt"
       },
-      "searchQueriesCount": "{count, plural, one {# Suchanfrage} other {# Suchanfragen}}",
       "empty": {
+        "preparing": {
+          "title": "Inhaltslücken werden vorbereitet",
+          "description": "Such- und Scan-Ergebnisse werden aufbereitet. Schau gleich noch einmal vorbei."
+        },
         "scanning": {
           "title": "KI-Engines werden gescannt",
           "description": "Lücken erscheinen hier, sobald der Scan abgeschlossen ist."
@@ -2679,14 +2660,9 @@
           "title": "Keine Prompt-Lücken",
           "description": "KI-Engines erwähnen dich bereits bei den Fragen, die du trackst."
         },
-        "noAiSearchGaps": {
-          "title": "Keine KI-Suchlücken",
-          "description": "Bei keiner Suche, die KI-Engines in deinen Scans ausgeführt haben, fehlst du bisher."
-        },
         "noSearchGaps": {
           "title": "Keine Suchlücken",
-          "description": "Verbinde die Search Console unter Prompts, um Suchanfragen abzurufen, die du noch nicht abdeckst.",
-          "action": "Prompts öffnen"
+          "description": "Search Console und KI-Scans haben noch keine unbesetzten Suchanfragen gefunden."
         },
         "noMatches": {
           "title": "Keine passenden Lücken",
@@ -2694,10 +2670,10 @@
         }
       },
       "gapType": "Lückentyp",
+      "openSearchGap": "Details zu {query} öffnen",
       "tabs": {
         "prompt": "Prompt-Lücken",
-        "search": "Suchlücken",
-        "ai": "KI-Suchlücken"
+        "search": "Suchlücken"
       },
       "filterLabel": "Inhaltslücken filtern",
       "filterPlaceholder": "Lücken filtern…",
@@ -2709,19 +2685,14 @@
       "columns": {
         "opportunity": "Potenzial",
         "visibleOn": "Sichtbar auf",
-        "sourceQuestion": "Ausgangsfrage",
+        "searchQuery": "Suchanfrage",
         "action": "Aktion",
-        "aiSearch": "KI-Suche",
-        "searches": "Suchen",
-        "searchedBy": "Gesucht von"
-      },
-      "hints": {
-        "impressions": "Google-Search-Impressionen insgesamt über alle Suchanfragen dieser Lücke.",
-        "recommendation": "Empfohlener nächster Schritt basierend auf Suchnachfrage und Überschneidung mit deinen bestehenden Inhalten.",
-        "searches": "Scan-Antworten, in denen eine KI-Engine diese Websuche ausgeführt hat."
+        "searches": "KI-Suchen"
       },
       "aiSearched": "KI suchte: {queries}",
-      "aiSearchSubtitle": "{more, plural, =0 {Aus „{prompt}“} other {Aus „{prompt}“ und # weiteren}}"
+      "aiSearchSubtitle": "{more, plural, =0 {Aus „{prompt}“} other {Aus „{prompt}“ und # weiteren}}",
+      "moreActions": "Weitere Aktionen für {query}",
+      "openAiDraft": "KI-Suchentwurf öffnen"
     },
     "geoAnswerActions": {
       "copy": "Antwort kopieren",
@@ -3360,8 +3331,13 @@
       }
     },
     "searchGapDetail": {
-      "eyebrow": "Suchlücke · Ausgangsfrage",
+      "eyebrow": "Suchlücke",
       "fallbackTitle": "Suchlücke",
+      "aiEvidence": "Belege aus KI-Suchen",
+      "uncoveredSearches": "{count, plural, one {# Antwort ohne deine Marke oder Website} other {# Antworten ohne deine Marke oder Website}}",
+      "searchedBy": "Engines, die diese Suche ausgeführt haben",
+      "relatedPrompts": "Beantwortete Fragen",
+      "mentionedCompetitors": "Erwähnte Wettbewerber",
       "acrossQueries": "Über alle Google-Suchanfragen dieser Lücke.",
       "draftTitle": "Entwurfstitel",
       "noQueryData": "Für diese Lücke sind keine Daten auf Suchanfrage-Ebene verfügbar.",
@@ -4817,7 +4793,7 @@
       "engagementRate": "Engagement-Rate",
       "engagementHint": "{interactions} Interaktionen / {impressions} Impressionen",
       "followersHint": "über {count, plural, one {# verbundenes Konto} other {# verbundene Konten}}",
-      "impressionsHint": "Beiträge, {range}",
+      "impressionsHint": "über alle Beiträge, {range}",
       "interactionsHint": "{posts} Beiträge, {range}"
     },
     "ranges": {
@@ -6523,6 +6499,9 @@
     "nextSlide": "Nächste Folie",
     "scrollToEnd": "Zum Ende scrollen",
     "scrollToStart": "Zum Anfang scrollen",
+    "conversationTurns": "Gesprächsverlauf",
+    "previousTurn": "Vorherige Nachricht",
+    "nextTurn": "Nächste Nachricht",
     "commandPaletteDescription": "Suche nach einem Befehl…",
     "chooseOption": "Wähle eine Option",
     "catalog": "Katalog",
@@ -6547,6 +6526,131 @@
       "hue": "Farbton",
       "opacity": "Deckkraft",
       "eyeDropper": "Farbe vom Bildschirm aufnehmen"
+    }
+  },
+  "demo": {
+    "start": {
+      "title": "Demo wird geöffnet…",
+      "description": "Einen Moment.",
+      "errorTitle": "Der Demo-Workspace konnte nicht erstellt werden",
+      "errorDescription": "Bitte versuch es gleich noch einmal.",
+      "retry": "Erneut versuchen"
+    },
+    "banner": {
+      "title": "Entdecke die Notra-Demo.",
+      "titleNamed": "Willkommen in der Notra-Demo, {name}.",
+      "customize": "Anpassen",
+      "reset": "Zurücksetzen",
+      "signup": "Konto erstellen",
+      "resetTitle": "Demo-Workspace zurücksetzen?",
+      "resetDescription": "Alle deine Änderungen werden verworfen und die Beispieldaten wiederhergestellt. Demo-ID, API-Key und Anpassung bleiben gleich.",
+      "cancel": "Abbrechen",
+      "resetConfirm": "Workspace zurücksetzen",
+      "resetting": "Wird zurückgesetzt…",
+      "resetFailed": "Der Workspace konnte nicht zurückgesetzt werden. Bitte versuch es erneut."
+    },
+    "playground": {
+      "title": "API-Playground",
+      "description": "Schick echte Requests an die Demo-API und sieh zu, wie sie diesen Workspace verändern.",
+      "tabs": {
+        "console": "Konsole",
+        "requests": "Requests",
+        "missions": "Missionen"
+      },
+      "toastStatus": "{status}",
+      "toastChanged": "{status} · {label}",
+      "view": "Ansehen",
+      "openFeed": "Details",
+      "demoId": "Demo-ID {id}",
+      "idCopied": "Demo-ID kopiert"
+    },
+    "console": {
+      "keyLabel": "Dein Demo-API-Key",
+      "copy": "Kopieren",
+      "keyCopied": "API-Key kopiert",
+      "keyHint": "Funktioniert mit curl, der Notra-CLI und MCP gegen {url}. Er läuft mit deinem Workspace ab.",
+      "noKey": "Für diesen Workspace ist kein API-Key verfügbar.",
+      "preset": "Beispiel",
+      "method": "Methode",
+      "path": "Pfad",
+      "body": "Request-Body (JSON)",
+      "send": "Request senden",
+      "sending": "Wird gesendet…",
+      "copyCurl": "Als curl kopieren",
+      "curlCopied": "curl-Befehl kopiert",
+      "seeFeed": "Der Request erscheint auch unter Requests, und das Dashboard aktualisiert sich live.",
+      "presets": {
+        "listPosts": "Neueste Posts abrufen",
+        "createPost": "Post-Entwurf anlegen",
+        "createPrompt": "Neuen GEO-Prompt tracken",
+        "startScan": "GEO-Scan starten",
+        "visibility": "KI-Sichtbarkeit abrufen",
+        "traffic": "KI-Traffic abrufen",
+        "listSchedules": "Zeitpläne abrufen",
+        "createSkill": "Skill anlegen"
+      }
+    },
+    "feed": {
+      "loading": "Wird geladen…",
+      "emptyTitle": "Noch keine Requests",
+      "emptyDescription": "Schick einen Request aus der Konsole, nutz curl oder klick dich durchs Dashboard. Alles taucht hier auf.",
+      "sources": {
+        "api": "API",
+        "console": "Konsole",
+        "ui": "UI",
+        "webhook": "Webhook"
+      },
+      "sameViaApi": "Dasselbe per API",
+      "copyCurl": "curl kopieren",
+      "curlCopied": "curl-Befehl kopiert",
+      "request": "Request",
+      "response": "Response"
+    },
+    "missions": {
+      "progress": "{done} von {total} erledigt",
+      "complete": "Erledigt",
+      "open": "Noch offen",
+      "scan": {
+        "title": "GEO-Scan starten",
+        "description": "Klick in der GEO-Übersicht auf Scan starten und sieh zu, wie neue Ergebnisse reinkommen."
+      },
+      "apiPrompt": {
+        "title": "Prompt per API anlegen",
+        "description": "Schick „Neuen GEO-Prompt tracken“ aus der Konsole. Er erscheint sofort unter GEO › Prompts."
+      },
+      "agentPost": {
+        "title": "Post schreiben und per API abrufen",
+        "description": "Lass den Agent einen Post schreiben und führ dann „Neueste Posts abrufen“ aus."
+      },
+      "schedule": {
+        "title": "Content automatisieren",
+        "description": "Leg unter Automation einen Zeitplan an oder nutz bei einem Jetzt ausführen."
+      },
+      "externalClient": {
+        "title": "API von deinem Rechner aufrufen",
+        "description": "Kopier einen Request als curl und führ ihn im Terminal aus, oder verbinde CLI oder MCP mit deinem Demo-Key."
+      },
+      "finishedTitle": "Du hast alles gesehen",
+      "finishedDescription": "Richte Notra in wenigen Minuten für deine eigene Marke ein.",
+      "signup": "Kostenlos starten",
+      "openConsole": "Konsole öffnen"
+    },
+    "customize": {
+      "title": "Notra-Demo anpassen",
+      "description": "Sag uns, wer du bist, und die Demo wird rund um deine Firma neu aufgebaut: Marke, KI-Sichtbarkeit, Inhalte und Team.",
+      "firstName": "Vorname",
+      "lastName": "Nachname",
+      "companyName": "Firmenname",
+      "note": "Dauert ein paar Sekunden. Deine Angaben existieren nur in diesem Demo-Workspace.",
+      "cancel": "Abbrechen",
+      "submit": "Demo anpassen",
+      "saving": "Wird neu aufgebaut…",
+      "failed": "Die Demo konnte nicht angepasst werden. Bitte versuch es erneut."
+    },
+    "apiCallout": {
+      "title": "Teste die API mit deinem Demo-Key",
+      "description": "Schick Requests aus dem Playground und sieh live, wie sie diesen Workspace verändern. curl, CLI und MCP gehen auch.",
+      "open": "API-Playground öffnen"
     }
   }
 }
