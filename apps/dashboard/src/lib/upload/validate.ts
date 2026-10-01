@@ -3,7 +3,6 @@ import {
   ALLOWED_MIME_TYPES,
   ALLOWED_RASTER_MIME_TYPES,
   type AllowedChatMimeType,
-  type AllowedRasterMimeType,
   BRAND_GUIDELINE_PDF_MIME_TYPE,
   MAX_AVATAR_FILE_SIZE,
   MAX_BRAND_ASSET_FILE_SIZE,
@@ -64,7 +63,9 @@ export async function validateUpload({
     case "avatar":
     case "logo":
       if (
-        !ALLOWED_RASTER_MIME_TYPES.includes(fileType as AllowedRasterMimeType)
+        !ALLOWED_RASTER_MIME_TYPES.includes(
+          fileType as (typeof ALLOWED_RASTER_MIME_TYPES)[number]
+        )
       ) {
         throw new ORPCError("BAD_REQUEST", {
           message: `File type ${fileType} is not allowed for ${type}. Allowed raster types: ${ALLOWED_RASTER_MIME_TYPES.join(", ")}`,
