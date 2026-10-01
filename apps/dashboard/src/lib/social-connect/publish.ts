@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { SocialPostResult } from "post-for-me/resources/social-post-results";
 
+import { SOCIAL_POST_EXTERNAL_ID_PREFIX } from "@/constants/social-connect";
 import { recordPublishedSocialPost } from "@/lib/analytics/record-post";
 import {
   getSocialConnectClient,
@@ -16,6 +17,7 @@ import {
   SocialConnectConfigError,
   SocialConnectRequestError,
 } from "@/lib/social-connect/errors";
+import { assertAllowedSocialMediaUrls } from "@/lib/social-connect/media-urls";
 import type { PublishSocialPostParams } from "@/types/services/social-connect";
 
 const RESULT_POLL_ATTEMPTS = 5;
@@ -146,11 +148,71 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
   }
   const client = getSocialConnectClient(parsedPlatform.data);
 
+  if (params.scheduledAt) {
+    const scheduledTime = Date.parse(params.scheduledAt);
+    if (Number.isNaN(scheduledTime) || scheduledTime <= Date.now()) {
+      return yield* Effect.fail(
+        new SocialConnectRequestError({
+          message: "Scheduled time must be in the future",
+          cause: null,
+        })
+      );
+    }
+  }
+
+  if (params.externalId) {
+    if (!params.externalId.startsWith(SOCIAL_POST_EXTERNAL_ID_PREFIX)) {
+      return yield* Effect.fail(
+        new SocialConnectRequestError({
+          message: "Invalid external id",
+          cause: null,
+        })
+      );
+    }
+    // Content-form ids embed the owning account (`notra:{contentId}:{accountId}`;
+    // nanoids never contain colons). Reject ids minted for another account —
+    // they would schedule under the caller's provider account but never be
+    // manageable through the owner's UI. Adhoc ids carry no account segment.
+    const suffix = params.externalId.slice(
+      SOCIAL_POST_EXTERNAL_ID_PREFIX.length
+    );
+    const segments = suffix.split(":");
+    const adhocShape =
+      segments.length === 2 &&
+      segments[0] === "adhoc" &&
+      /^[A-Za-z0-9_-]+$/.test(segments[1] ?? "");
+    // The content segment is not charset-checked: account equality is the
+    // binding constraint, and legacy ids must keep working.
+    const contentShape =
+      segments.length === 2 &&
+      (segments[0]?.length ?? 0) > 0 &&
+      segments[1] === params.accountId;
+    if (!(adhocShape || contentShape)) {
+      return yield* Effect.fail(
+        new SocialConnectRequestError({
+          message: "Invalid external id",
+          cause: null,
+        })
+      );
+    }
+  }
+
+  try {
+    assertAllowedSocialMediaUrls(params.mediaUrls);
+  } catch (error) {
+    return yield* Effect.fail(error as SocialConnectRequestError);
+  }
+
   const post = yield* Effect.tryPromise({
     try: () =>
       client.socialPosts.create({
         caption: params.content,
         social_accounts: [account.providerAccountId],
+        ...(params.mediaUrls?.length
+          ? { media: params.mediaUrls.map((url) => ({ url })) }
+          : {}),
+        ...(params.scheduledAt ? { scheduled_at: params.scheduledAt } : {}),
+        ...(params.externalId ? { external_id: params.externalId } : {}),
       }),
     catch: (cause) =>
       new SocialConnectRequestError({
@@ -158,6 +220,18 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
         cause,
       }),
   });
+
+  if (params.scheduledAt) {
+    return {
+      postId: post.id,
+      platformPostId: null,
+      postUrl: null,
+      username: account.username,
+      platform: account.provider,
+      scheduledAt: params.scheduledAt,
+      status: "scheduled" as const,
+    };
+  }
 
   let postResult: SocialPostResult | null = null;
   for (let attempt = 0; attempt < RESULT_POLL_ATTEMPTS; attempt += 1) {
@@ -214,5 +288,7 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
     postUrl,
     username: account.username,
     platform: account.provider,
+    scheduledAt: null,
+    status: "processed" as const,
   };
 });

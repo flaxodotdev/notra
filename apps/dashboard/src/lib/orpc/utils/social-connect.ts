@@ -50,6 +50,13 @@ export async function runSocialConnect<A>(
   }
 
   console.error(`${options.logLabel}:`, error);
+  // Own validation failures carry no provider cause — surface the specific
+  // message instead of a generic rejection (e.g. past schedule time,
+  // invalid external id, disallowed media host). Provider errors below
+  // keep the generic mapping so internals never leak.
+  if (error.cause === null) {
+    throw badRequest(error.message);
+  }
   const statusCode = getSocialConnectStatusCode(error.cause);
 
   if (options.reconnectHint && (statusCode === 401 || statusCode === 403)) {

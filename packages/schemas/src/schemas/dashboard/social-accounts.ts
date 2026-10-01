@@ -20,6 +20,11 @@ export type SocialConnectOAuthState = z.infer<
 
 const PUBLISH_CONTENT_MAX_LENGTH = 25_000;
 
+/** Single video per post: X and LinkedIn accept at most one video. */
+const PUBLISH_MEDIA_MAX_COUNT = 1;
+
+const socialMediaUrlSchema = z.url().max(2048);
+
 export const socialPublishSurfaceSchema = z.enum(["editor", "chat_preview"]);
 
 export type SocialPublishSurface = z.infer<typeof socialPublishSurfaceSchema>;
@@ -31,6 +36,15 @@ export const publishSocialPostBodySchema = z.object({
     .trim()
     .min(1, "Post content is required")
     .max(PUBLISH_CONTENT_MAX_LENGTH, "Post content is too long"),
+  /** Public video URLs attached to the post (e.g. R2 `publicUrl`). */
+  mediaUrls: z
+    .array(socialMediaUrlSchema)
+    .max(PUBLISH_MEDIA_MAX_COUNT)
+    .optional(),
+  /** ISO timestamp for scheduled delivery. Omitted = publish immediately. */
+  scheduledAt: z.iso.datetime().optional(),
+  /** Stable idempotency key, e.g. `notra:{contentId}:{accountId}`. */
+  externalId: z.string().min(1).max(128).optional(),
   from: socialPublishSurfaceSchema.optional(),
 });
 
@@ -58,6 +72,34 @@ export const publishSocialPostInputSchema =
   socialAccountsOrganizationInputSchema.extend(
     publishSocialPostBodySchema.shape
   );
+
+export const scheduledSocialPostInputSchema =
+  socialAccountsOrganizationInputSchema.extend({
+    accountId: z.string().min(1),
+    /** PostForMe post id returned by `publish` when scheduling. */
+    postId: z.string().min(1),
+  });
+
+export const updateScheduledSocialPostInputSchema =
+  scheduledSocialPostInputSchema.extend({
+    content: z
+      .string()
+      .trim()
+      .min(1, "Post content is required")
+      .max(PUBLISH_CONTENT_MAX_LENGTH, "Post content is too long")
+      .optional(),
+    mediaUrls: z
+      .array(socialMediaUrlSchema)
+      .max(PUBLISH_MEDIA_MAX_COUNT)
+      .optional(),
+    scheduledAt: z.iso.datetime().optional(),
+  });
+
+export const scheduledSocialPostsQuerySchema =
+  socialAccountsOrganizationInputSchema.extend({
+    accountId: z.string().min(1),
+    externalId: z.string().min(1).max(128),
+  });
 
 export const socialConnectCallbackQuerySchema = z.object({
   provider: z.string().optional(),

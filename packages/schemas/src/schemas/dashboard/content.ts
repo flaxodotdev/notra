@@ -31,6 +31,25 @@ import {
 export const postStatusSchema = z.enum(["draft", "published"]);
 export type PostStatus = z.infer<typeof postStatusSchema>;
 
+export const socialVideoAttachmentSchema = z.object({
+  key: z.string().min(1),
+  url: z.url().max(2048),
+  mimeType: z.enum(["video/mp4", "video/webm"]),
+  size: z.number().int().positive(),
+});
+
+export type SocialVideoAttachment = z.infer<typeof socialVideoAttachmentSchema>;
+
+export const socialScheduleRefSchema = z.object({
+  postId: z.string().min(1),
+  accountId: z.string().min(1),
+  platform: z.string().min(1),
+  scheduledAt: z.string().min(1),
+  status: z.string().min(1).optional(),
+});
+
+export type SocialScheduleRef = z.infer<typeof socialScheduleRefSchema>;
+
 export const sourceMetadataSchema = z
   .looseObject({
     triggerId: z.string().optional(),
@@ -59,6 +78,10 @@ export const sourceMetadataSchema = z
     chatId: z.string().nullable().optional(),
     briefId: z.string().optional(),
     projectId: z.string().optional(),
+    /** Attached social video draft (X/LinkedIn), persisted across reopen. */
+    socialVideo: socialVideoAttachmentSchema.nullable().optional(),
+    /** Scheduled social delivery ref (PostForMe post id + status). */
+    socialSchedule: socialScheduleRefSchema.nullable().optional(),
     sandbox: z
       .object({
         boxId: z.string().optional(),
@@ -367,13 +390,17 @@ export const updateContentSchema = z
     slug: postSlugSchema.nullable().optional(),
     markdown: z.string().max(POST_MARKDOWN_MAX_LENGTH).optional(),
     status: postStatusSchema.optional(),
+    sourceMetadata: sourceMetadataSchema.optional(),
   })
   .refine(
     (data) =>
       data.title !== undefined ||
       data.slug !== undefined ||
       data.markdown !== undefined ||
-      data.status !== undefined,
+      data.status !== undefined ||
+      (data.sourceMetadata !== undefined &&
+        data.sourceMetadata !== null &&
+        Object.keys(data.sourceMetadata).length > 0),
     {
       message: "At least one field must be provided",
     }
