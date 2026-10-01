@@ -15,6 +15,7 @@ interface SocialVideoAttachmentProps {
   value: SocialVideoDraft | null;
   onChange: (video: SocialVideoDraft | null) => void;
   disabled?: boolean;
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
 async function sniffFile(file: File): Promise<ContentVideoMimeType> {
@@ -26,22 +27,43 @@ export function SocialVideoAttachment({
   value,
   onChange,
   disabled,
+  onUploadingChange,
 }: SocialVideoAttachmentProps) {
   const t = useTranslations("content.postSocial");
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const setUploadingState = (next: boolean) => {
+    setUploading(next);
+    onUploadingChange?.(next);
+  };
+
   const handleFile = async (file: File) => {
     setError(null);
     if (file.size > SOCIAL_VIDEO.maxBytes) {
       setError(t("videoTooLarge", { maxMb: SOCIAL_VIDEO.maxBytesMb }));
+      // Leave the rejected file selected and the same pick fires no change
+      // event — reset so retrying the same file works.
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
       return;
     }
-    setUploading(true);
+    setUploadingState(true);
     try {
       const mimeType = await sniffFile(file);
-      const { url, key } = await uploadFile({ file, type: "content" });
+      // The presigned upload trusts `file.type` for validation and the
+      // stored Content-Type — normalize to the sniffed bytes so a wrong
+      // browser MIME can neither bypass the gate nor mistype the object.
+      const normalized =
+        file.type === mimeType
+          ? file
+          : new File([file], file.name, { type: mimeType });
+      const { url, key } = await uploadFile({
+        file: normalized,
+        type: "content",
+      });
       onChange({ key, url, mimeType, size: file.size });
     } catch (cause) {
       setError(
@@ -50,7 +72,7 @@ export function SocialVideoAttachment({
           : t("videoUploadFailed")
       );
     } finally {
-      setUploading(false);
+      setUploadingState(false);
       if (inputRef.current) {
         inputRef.current.value = "";
       }

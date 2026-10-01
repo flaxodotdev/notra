@@ -47,6 +47,33 @@ test("rejects non-URL media and non-datetime schedule input", () => {
   ).toBe(false);
 });
 
+test("requires an external id when scheduling", () => {
+  expect(
+    publishSocialPostBodySchema.safeParse({
+      accountId: "acc_1",
+      content: "Scheduled without id",
+      scheduledAt: new Date(Date.now() + 3600_000).toISOString(),
+    }).success
+  ).toBe(false);
+});
+
+test("scheduled update requires the expected external id", () => {
+  expect(
+    updateScheduledSocialPostInputSchema.safeParse({
+      organizationId: "org_1",
+      accountId: "acc_1",
+      postId: "sp_1",
+    }).success
+  ).toBe(false);
+  expect(
+    updateScheduledSocialPostInputSchema.safeParse({
+      organizationId: "org_1",
+      accountId: "acc_1",
+      postId: "sp_1",
+      externalId: "notra:post_1:acc_1",
+    }).success
+  ).toBe(true);
+});
 test("scheduled update requires a post id and accepts partial edits", () => {
   expect(
     scheduledSocialPostInputSchema.safeParse({
@@ -58,6 +85,7 @@ test("scheduled update requires a post id and accepts partial edits", () => {
     organizationId: "org_1",
     accountId: "acc_1",
     postId: "sp_1",
+    externalId: "notra:post_1:acc_1",
     scheduledAt: new Date(Date.now() + 7200_000).toISOString(),
   });
   expect(parsed.success).toBe(true);

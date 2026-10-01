@@ -145,6 +145,7 @@ export function useUpdateScheduledSocialPost(organizationId: string) {
     mutationFn: async (input: {
       accountId: string;
       postId: string;
+      externalId: string;
       content?: string;
       mediaUrls?: string[];
       scheduledAt?: string;
@@ -153,6 +154,7 @@ export function useUpdateScheduledSocialPost(organizationId: string) {
         organizationId,
         accountId: input.accountId,
         postId: input.postId,
+        externalId: input.externalId,
         content: input.content,
         mediaUrls: input.mediaUrls,
         scheduledAt: input.scheduledAt,
@@ -174,11 +176,16 @@ export function useCancelScheduledSocialPost(organizationId: string) {
   const t = useTranslations("integrations.socialConnect");
   const tCommon = useTranslations("common");
   return useMutation({
-    mutationFn: async (input: { accountId: string; postId: string }) =>
+    mutationFn: async (input: {
+      accountId: string;
+      postId: string;
+      externalId: string;
+    }) =>
       dashboardOrpc.socialAccounts.scheduledCancel.call({
         organizationId,
         accountId: input.accountId,
         postId: input.postId,
+        externalId: input.externalId,
       }),
     onSuccess: () => {
       toast.success(t("scheduleCancelled"));

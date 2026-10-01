@@ -216,6 +216,7 @@ export const socialAccountsRouter = {
           organizationId: input.organizationId,
           accountId: input.accountId,
           postId: input.postId,
+          externalId: input.externalId,
           content: input.content,
           mediaUrls: input.mediaUrls,
           scheduledAt: input.scheduledAt,
@@ -237,6 +238,7 @@ export const socialAccountsRouter = {
           organizationId: input.organizationId,
           accountId: input.accountId,
           postId: input.postId,
+          externalId: input.externalId,
         }),
         { logLabel: "Failed to cancel scheduled post", reconnectHint: true }
       );

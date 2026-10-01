@@ -48,6 +48,7 @@ export interface ScheduledSocialPostParams {
   organizationId: string;
   accountId: string;
   postId: string;
+  externalId: string;
 }
 
 export interface UpdateScheduledSocialPostParams extends ScheduledSocialPostParams {

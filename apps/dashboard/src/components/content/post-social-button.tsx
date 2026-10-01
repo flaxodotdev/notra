@@ -97,6 +97,9 @@ export function PostSocialButton({
   const [replacementVideo, setReplacementVideo] =
     useState<SocialVideoDraft | null>(null);
   const [mediaCleared, setMediaCleared] = useState(false);
+  // A video upload finishing after Schedule/Update/Publish would silently
+  // drop the video from the provider post — block mutations while in flight.
+  const [videoUploading, setVideoUploading] = useState(false);
   const reactAdhocId = useId();
   const queryClient = useQueryClient();
   const draft = onContentChange ? content : localDraft;
@@ -176,6 +179,9 @@ export function PostSocialButton({
   const extraScheduled = scheduledPosts.slice(1);
   const scheduledLoading =
     scheduledQuery.isLoading || scheduledQuery.isFetching;
+  // A failed list looks identical to "no schedules" — publishing or
+  // scheduling then would double-deliver next to the unseen post.
+  const scheduleListFailed = scheduledQuery.isError;
 
   // A replacement picked for one scheduled post must not leak into another
   // account's post when the query key changes.
@@ -237,9 +243,12 @@ export function PostSocialButton({
       setMediaCleared(false);
       setScheduleInput("");
       refreshScheduleMin();
+      publishMutation.reset();
+      scheduleMutation.reset();
       return;
     }
     publishMutation.reset();
+    scheduleMutation.reset();
     setReferencedVoiceIds([]);
     setPublishedContent(null);
     setLocalDraft(content);
@@ -328,7 +337,10 @@ export function PostSocialButton({
   };
 
   const handleUpdateScheduled = () => {
-    if (!(selectedAccount && scheduled) || updateScheduled.isPending) {
+    if (
+      !(selectedAccount && scheduled && externalId) ||
+      updateScheduled.isPending
+    ) {
       return;
     }
     const scheduledAt = scheduleInput
@@ -344,6 +356,7 @@ export function PostSocialButton({
       {
         accountId: selectedAccount.id,
         postId: scheduled.postId,
+        externalId,
         content: draft,
         mediaUrls,
         scheduledAt,
@@ -392,14 +405,21 @@ export function PostSocialButton({
   };
 
   const handleCancelScheduled = (postId?: string) => {
-    if (!(selectedAccount && scheduled) || cancelScheduled.isPending) {
+    if (
+      !(selectedAccount && scheduled && externalId) ||
+      cancelScheduled.isPending
+    ) {
       return;
     }
     // Only clear the draft ref + adhoc id when the last remaining post is
     // cancelled; otherwise the surviving post would become unmanageable.
     const isLastRemaining = scheduledPosts.length <= 1;
     cancelScheduled.mutate(
-      { accountId: selectedAccount.id, postId: postId ?? scheduled.postId },
+      {
+        accountId: selectedAccount.id,
+        postId: postId ?? scheduled.postId,
+        externalId,
+      },
       {
         onSuccess: () => {
           if (isLastRemaining) {
@@ -598,6 +618,7 @@ export function PostSocialButton({
                   updateScheduled.isPending || cancelScheduled.isPending
                 }
                 onChange={handleScheduledVideoChange}
+                onUploadingChange={setVideoUploading}
                 value={replacementVideo}
               />
               {scheduled.mediaUrls[0] && !replacementVideo && !mediaCleared ? (
@@ -646,6 +667,7 @@ export function PostSocialButton({
                   disabled={
                     updateScheduled.isPending ||
                     cancelScheduled.isPending ||
+                    videoUploading ||
                     !draft.trim() ||
                     isOverCharLimit
                   }
@@ -702,9 +724,25 @@ export function PostSocialButton({
             </div>
           ) : (
             <div className="space-y-3">
+              {scheduleListFailed ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-destructive text-sm">
+                    {t("scheduleListFailed")}
+                  </p>
+                  <Button
+                    disabled={scheduledLoading}
+                    onClick={() => scheduledQuery.refetch()}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    {tCommon("retry")}
+                  </Button>
+                </div>
+              ) : null}
               <SocialVideoAttachment
                 disabled={isLocked}
                 onChange={handleVideoChange}
+                onUploadingChange={setVideoUploading}
                 value={video}
               />
               <div className="flex flex-wrap items-center gap-2">
@@ -724,6 +762,8 @@ export function PostSocialButton({
                     scheduleMutation.isPending ||
                     publishMutation.isPending ||
                     scheduledLoading ||
+                    scheduleListFailed ||
+                    videoUploading ||
                     !draft.trim() ||
                     isOverCharLimit ||
                     !toScheduledAt(scheduleInput)

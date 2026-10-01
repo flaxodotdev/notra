@@ -6100,6 +6100,7 @@
       "removeVideo": "Remove video",
       "attachmentSaveFailed": "Couldn't save the video to the draft",
       "scheduleSaveFailed": "Couldn't save the schedule to the draft",
+      "scheduleListFailed": "Couldn't load the scheduled posts",
       "scheduleAt": "Schedule for",
       "scheduleAction": "Schedule",
       "scheduling": "Scheduling…",

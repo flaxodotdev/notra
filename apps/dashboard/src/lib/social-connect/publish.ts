@@ -7,7 +7,6 @@ import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { SocialPostResult } from "post-for-me/resources/social-post-results";
 
-import { SOCIAL_POST_EXTERNAL_ID_PREFIX } from "@/constants/social-connect";
 import { recordPublishedSocialPost } from "@/lib/analytics/record-post";
 import {
   getSocialConnectClient,
@@ -18,6 +17,7 @@ import {
   SocialConnectRequestError,
 } from "@/lib/social-connect/errors";
 import { assertAllowedSocialMediaUrls } from "@/lib/social-connect/media-urls";
+import { assertOwnExternalId } from "@/lib/social-connect/scheduled";
 import type { PublishSocialPostParams } from "@/types/services/social-connect";
 
 const RESULT_POLL_ATTEMPTS = 5;
@@ -93,6 +93,8 @@ const publishDemoPost = Effect.fn("publishDemoPost")(function* (
     postUrl: null,
     username: account.username,
     platform: account.provider,
+    scheduledAt: null,
+    status: "processed" as const,
   };
 });
 
@@ -146,7 +148,13 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
       })
     );
   }
-  const client = getSocialConnectClient(parsedPlatform.data);
+  const client = yield* Effect.try({
+    try: () => getSocialConnectClient(parsedPlatform.data),
+    catch: () =>
+      new SocialConnectConfigError({
+        message: "Social account linking is not configured",
+      }),
+  });
 
   if (params.scheduledAt) {
     const scheduledTime = Date.parse(params.scheduledAt);
@@ -161,40 +169,7 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
   }
 
   if (params.externalId) {
-    if (!params.externalId.startsWith(SOCIAL_POST_EXTERNAL_ID_PREFIX)) {
-      return yield* Effect.fail(
-        new SocialConnectRequestError({
-          message: "Invalid external id",
-          cause: null,
-        })
-      );
-    }
-    // Content-form ids embed the owning account (`notra:{contentId}:{accountId}`;
-    // nanoids never contain colons). Reject ids minted for another account —
-    // they would schedule under the caller's provider account but never be
-    // manageable through the owner's UI. Adhoc ids carry no account segment.
-    const suffix = params.externalId.slice(
-      SOCIAL_POST_EXTERNAL_ID_PREFIX.length
-    );
-    const segments = suffix.split(":");
-    const adhocShape =
-      segments.length === 2 &&
-      segments[0] === "adhoc" &&
-      /^[A-Za-z0-9_-]+$/.test(segments[1] ?? "");
-    // The content segment is not charset-checked: account equality is the
-    // binding constraint, and legacy ids must keep working.
-    const contentShape =
-      segments.length === 2 &&
-      (segments[0]?.length ?? 0) > 0 &&
-      segments[1] === params.accountId;
-    if (!(adhocShape || contentShape)) {
-      return yield* Effect.fail(
-        new SocialConnectRequestError({
-          message: "Invalid external id",
-          cause: null,
-        })
-      );
-    }
+    yield* assertOwnExternalId(params.externalId, params.accountId);
   }
 
   try {

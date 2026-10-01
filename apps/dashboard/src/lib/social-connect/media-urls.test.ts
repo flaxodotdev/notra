@@ -23,12 +23,18 @@ test("rejects relative media paths (PostForMe cannot fetch them)", () => {
   ).toThrow("Media URL must be an absolute URL");
 });
 
-test("allows configured R2 and app hosts, rejects the rest", () => {
+test("allows the configured R2 host, rejects app and other hosts", () => {
   process.env.CLOUDFLARE_PUBLIC_URL = R2_HOST;
   process.env.APP_URL = APP_HOST;
   expect(() =>
     assertAllowedSocialMediaUrls([`${R2_HOST}/organization/org_1/a.mp4`])
   ).not.toThrow();
+  // App-origin media requires dashboard auth, which PostForMe lacks.
+  expect(() =>
+    assertAllowedSocialMediaUrls([
+      `${APP_HOST}/api/uploads/content-images/a.mp4`,
+    ])
+  ).toThrow("Media URL host is not allowed");
   expect(() =>
     assertAllowedSocialMediaUrls(["https://evil.example.com/a.mp4"])
   ).toThrow("Media URL host is not allowed");

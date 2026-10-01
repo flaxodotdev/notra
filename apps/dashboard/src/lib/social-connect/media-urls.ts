@@ -4,21 +4,17 @@ import { SocialConnectRequestError } from "./errors";
 
 function allowedMediaHosts(): Set<string> {
   const hosts = new Set<string>();
-  const values = [
-    getOptionalR2PublicUrl(),
-    process.env.APP_URL,
-    process.env.NEXT_PUBLIC_SITE_URL,
-    process.env.NEXT_PUBLIC_APP_URL,
-  ];
-  for (const value of values) {
-    if (!value) {
-      continue;
-    }
-    try {
-      hosts.add(new URL(value).hostname.toLowerCase());
-    } catch {
-      // ignore malformed env — the host simply stays disallowed
-    }
+  // ponytail: R2 public origin only. App-origin media (`/api/uploads/...`)
+  // requires dashboard auth, which PostForMe does not have — allowing the
+  // app host would pass validation and fail at provider delivery.
+  const value = getOptionalR2PublicUrl();
+  if (!value) {
+    return hosts;
+  }
+  try {
+    hosts.add(new URL(value).hostname.toLowerCase());
+  } catch {
+    // ignore malformed env — the host simply stays disallowed
   }
   return hosts;
 }

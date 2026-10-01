@@ -6100,6 +6100,7 @@
       "removeVideo": "Video entfernen",
       "attachmentSaveFailed": "Das Video konnte nicht im Entwurf gespeichert werden",
       "scheduleSaveFailed": "Der Zeitplan konnte nicht im Entwurf gespeichert werden",
+      "scheduleListFailed": "Die geplanten Beiträge konnten nicht geladen werden",
       "scheduleAt": "Planen für",
       "scheduleAction": "Planen",
       "scheduling": "Wird geplant…",

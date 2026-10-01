@@ -27,6 +27,7 @@ import {
   repositoryRelativePathSchema,
   SUPPORTED_AUTOMATION_OUTPUT_TYPES,
 } from "./integrations";
+import { socialConnectPlatformSchema } from "./social-accounts";
 
 export const postStatusSchema = z.enum(["draft", "published"]);
 export type PostStatus = z.infer<typeof postStatusSchema>;
@@ -43,8 +44,8 @@ export type SocialVideoAttachment = z.infer<typeof socialVideoAttachmentSchema>;
 export const socialScheduleRefSchema = z.object({
   postId: z.string().min(1),
   accountId: z.string().min(1),
-  platform: z.string().min(1),
-  scheduledAt: z.string().min(1),
+  platform: socialConnectPlatformSchema,
+  scheduledAt: z.iso.datetime(),
   status: z.string().min(1).optional(),
 });
 

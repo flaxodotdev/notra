@@ -79,11 +79,18 @@ function loadConnection(params: { organizationId: string; accountId: string }) {
       );
     }
 
+    const client = yield* Effect.try({
+      try: () => getSocialConnectClient(parsedPlatform.data),
+      catch: () =>
+        new SocialConnectConfigError({
+          message: "Social account linking is not configured",
+        }),
+    });
     const connection: AccountConnection = {
       accountId: params.accountId,
       provider: parsedPlatform.data,
       providerAccountId: account.providerAccountId,
-      client: getSocialConnectClient(parsedPlatform.data),
+      client,
     };
     return connection;
   });
@@ -94,6 +101,45 @@ function isOurs(externalId: string | null): boolean {
     typeof externalId === "string" &&
     externalId.startsWith(SOCIAL_POST_EXTERNAL_ID_PREFIX)
   );
+}
+
+// Binds an external id to the caller's connection. Content-form ids embed
+// the owning account (`notra:{contentId}:{accountId}`; nanoids never contain
+// colons). Adhoc ids carry no account segment but are unguessable
+// per-account randoms. Either way a post bound to another connection can
+// never be listed, updated, or cancelled through this one — even when the
+// same provider account is linked in two organizations.
+export function assertOwnExternalId(externalId: string, accountId: string) {
+  return Effect.gen(function* () {
+    if (!isOurs(externalId)) {
+      return yield* Effect.fail(
+        new SocialConnectRequestError({
+          message: "Invalid external id",
+          cause: null,
+        })
+      );
+    }
+    // The content segment is not charset-checked: account equality is the
+    // binding constraint, and legacy ids must keep working.
+    const suffix = externalId.slice(SOCIAL_POST_EXTERNAL_ID_PREFIX.length);
+    const segments = suffix.split(":");
+    const adhocShape =
+      segments.length === 2 &&
+      segments[0] === "adhoc" &&
+      /^[A-Za-z0-9_-]+$/.test(segments[1] ?? "");
+    const contentShape =
+      segments.length === 2 &&
+      (segments[0]?.length ?? 0) > 0 &&
+      segments[1] === accountId;
+    if (!(adhocShape || contentShape)) {
+      return yield* Effect.fail(
+        new SocialConnectRequestError({
+          message: "Invalid external id",
+          cause: null,
+        })
+      );
+    }
+  });
 }
 
 // Terminal = delivered or dead. `processed` is what publish.ts returns for a
@@ -120,9 +166,14 @@ function belongsToAccount(
   );
 }
 
-function assertOwnedByAccount(post: SocialPostLike, providerAccountId: string) {
+function assertOwnedByAccount(
+  post: SocialPostLike,
+  providerAccountId: string,
+  expectedExternalId: string
+) {
   return Effect.gen(function* () {
     if (
+      post.external_id !== expectedExternalId ||
       !isOurs(post.external_id ?? null) ||
       !belongsToAccount(post, providerAccountId)
     ) {
@@ -188,6 +239,8 @@ export const listScheduledSocialPosts = Effect.fn("listScheduledSocialPosts")(
   }) {
     const connection = yield* loadConnection(params);
 
+    yield* assertOwnExternalId(params.externalId, params.accountId);
+
     const response = yield* Effect.tryPromise({
       try: () =>
         connection.client.socialPosts.list({
@@ -228,6 +281,8 @@ export const updateScheduledSocialPost = Effect.fn("updateScheduledSocialPost")(
   function* (params: UpdateScheduledSocialPostParams) {
     const connection = yield* loadConnection(params);
 
+    yield* assertOwnExternalId(params.externalId, params.accountId);
+
     if (params.scheduledAt) {
       yield* assertScheduledAtFuture(params.scheduledAt);
     }
@@ -247,7 +302,11 @@ export const updateScheduledSocialPost = Effect.fn("updateScheduledSocialPost")(
         }),
     });
 
-    yield* assertOwnedByAccount(current, connection.providerAccountId);
+    yield* assertOwnedByAccount(
+      current,
+      connection.providerAccountId,
+      params.externalId
+    );
 
     const currentMedia = Array.isArray(current.media) ? current.media : [];
     const sanitizedCurrentMedia = currentMedia
@@ -257,6 +316,16 @@ export const updateScheduledSocialPost = Effect.fn("updateScheduledSocialPost")(
           : null
       )
       .filter((item): item is { url: string } => item !== null);
+    // Retained provider media skips the caller's input path, so re-apply
+    // the host allowlist: an existing non-allowlisted URL must not bypass
+    // the server-side fetch restriction on update.
+    try {
+      assertAllowedSocialMediaUrls(
+        sanitizedCurrentMedia.map((item) => item.url)
+      );
+    } catch (error) {
+      return yield* Effect.fail(error as SocialConnectRequestError);
+    }
     const updated = yield* Effect.tryPromise({
       try: () =>
         connection.client.socialPosts.update(params.postId, {
@@ -283,6 +352,8 @@ export const cancelScheduledSocialPost = Effect.fn("cancelScheduledSocialPost")(
   function* (params: ScheduledSocialPostParams) {
     const connection = yield* loadConnection(params);
 
+    yield* assertOwnExternalId(params.externalId, params.accountId);
+
     const current = yield* Effect.tryPromise({
       try: () => connection.client.socialPosts.retrieve(params.postId),
       catch: (cause) =>
@@ -292,7 +363,11 @@ export const cancelScheduledSocialPost = Effect.fn("cancelScheduledSocialPost")(
         }),
     });
 
-    yield* assertOwnedByAccount(current, connection.providerAccountId);
+    yield* assertOwnedByAccount(
+      current,
+      connection.providerAccountId,
+      params.externalId
+    );
 
     yield* Effect.tryPromise({
       try: () => connection.client.socialPosts.delete(params.postId),
