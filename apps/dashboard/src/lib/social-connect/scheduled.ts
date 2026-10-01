@@ -9,6 +9,7 @@ import { SOCIAL_POST_EXTERNAL_ID_PREFIX } from "@/constants/social-connect";
 import {
   getSocialConnectClient,
   isSocialConnectConfigured,
+  isSocialConnectPlatformConfigured,
 } from "@/lib/social-connect/client";
 import {
   SocialConnectConfigError,
@@ -79,18 +80,20 @@ function loadConnection(params: { organizationId: string; accountId: string }) {
       );
     }
 
-    const client = yield* Effect.try({
-      try: () => getSocialConnectClient(parsedPlatform.data),
-      catch: () =>
+    // The global check above passes when either platform key exists — verify
+    // this account's platform key before constructing its client.
+    if (!isSocialConnectPlatformConfigured(parsedPlatform.data)) {
+      return yield* Effect.fail(
         new SocialConnectConfigError({
           message: "Social account linking is not configured",
-        }),
-    });
+        })
+      );
+    }
     const connection: AccountConnection = {
       accountId: params.accountId,
       provider: parsedPlatform.data,
       providerAccountId: account.providerAccountId,
-      client,
+      client: getSocialConnectClient(parsedPlatform.data),
     };
     return connection;
   });

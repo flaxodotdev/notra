@@ -11,6 +11,7 @@ import { recordPublishedSocialPost } from "@/lib/analytics/record-post";
 import {
   getSocialConnectClient,
   isSocialConnectConfigured,
+  isSocialConnectPlatformConfigured,
 } from "@/lib/social-connect/client";
 import {
   SocialConnectConfigError,
@@ -148,13 +149,16 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
       })
     );
   }
-  const client = yield* Effect.try({
-    try: () => getSocialConnectClient(parsedPlatform.data),
-    catch: () =>
+  // The global check above passes when either platform key exists — verify
+  // this account's platform key before constructing its client.
+  if (!isSocialConnectPlatformConfigured(parsedPlatform.data)) {
+    return yield* Effect.fail(
       new SocialConnectConfigError({
         message: "Social account linking is not configured",
-      }),
-  });
+      })
+    );
+  }
+  const client = getSocialConnectClient(parsedPlatform.data);
 
   if (params.scheduledAt) {
     const scheduledTime = Date.parse(params.scheduledAt);
@@ -230,7 +234,10 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
     return yield* Effect.fail(
       new SocialConnectRequestError({
         message: getResultErrorMessage(postResult),
-        cause: null,
+        // Retain the provider result: `cause === null` is reserved for own
+        // validation failures, and the mapper needs the cause to apply
+        // duplicate-content/status handling instead of raw text.
+        cause: postResult,
       })
     );
   }

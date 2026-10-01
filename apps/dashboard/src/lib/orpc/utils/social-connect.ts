@@ -63,8 +63,9 @@ export async function runSocialConnect<A>(
   }
   // Own validation failures carry no provider cause — surface the specific
   // message instead of a generic rejection (e.g. past schedule time,
-  // invalid external id, disallowed media host). Provider errors below
-  // keep the generic mapping so internals never leak.
+  // invalid external id, disallowed media host). Unsuccessful provider
+  // results retain the result as cause, so they fall through to the
+  // duplicate/status mapping below and internals never leak.
   if (error.cause === null) {
     throw badRequest(error.message);
   }
