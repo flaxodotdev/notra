@@ -291,7 +291,7 @@ export const updateScheduledSocialPost = Effect.fn("updateScheduledSocialPost")(
     }
 
     try {
-      assertAllowedSocialMediaUrls(params.mediaUrls);
+      assertAllowedSocialMediaUrls(params.mediaUrls, params.organizationId);
     } catch (error) {
       return yield* Effect.fail(error as SocialConnectRequestError);
     }
@@ -324,7 +324,8 @@ export const updateScheduledSocialPost = Effect.fn("updateScheduledSocialPost")(
     // the server-side fetch restriction on update.
     try {
       assertAllowedSocialMediaUrls(
-        sanitizedCurrentMedia.map((item) => item.url)
+        sanitizedCurrentMedia.map((item) => item.url),
+        params.organizationId
       );
     } catch (error) {
       return yield* Effect.fail(error as SocialConnectRequestError);

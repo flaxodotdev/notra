@@ -49,6 +49,16 @@ function getResultErrorMessage(result: SocialPostResult): string {
 const publishDemoPost = Effect.fn("publishDemoPost")(function* (
   params: PublishSocialPostParams
 ) {
+  // Demo posts publish immediately — accepting a schedule would persist a
+  // schedule ref for a provider schedule that was never created.
+  if (params.scheduledAt) {
+    return yield* Effect.fail(
+      new SocialConnectRequestError({
+        message: "Scheduling is not available in demo mode",
+        cause: null,
+      })
+    );
+  }
   const account = yield* Effect.tryPromise({
     try: () =>
       db.query.connectedSocialAccounts.findFirst({
@@ -177,7 +187,7 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
   }
 
   try {
-    assertAllowedSocialMediaUrls(params.mediaUrls);
+    assertAllowedSocialMediaUrls(params.mediaUrls, params.organizationId);
   } catch (error) {
     return yield* Effect.fail(error as SocialConnectRequestError);
   }

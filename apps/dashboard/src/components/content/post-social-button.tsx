@@ -396,12 +396,16 @@ export function PostSocialButton({
     if (contentId || !adhocStorageKey) {
       return;
     }
+    // Rotate to the in-memory fallback id and persist it: dropping the stored
+    // id would orphan the next schedule after remount (useId differs per
+    // mount), while the cancelled post no longer needs the old one.
+    const rotated = reactAdhocId.replace(/[^a-zA-Z0-9_-]/g, "") || "adhoc";
     try {
-      sessionStorage.removeItem(adhocStorageKey);
+      sessionStorage.setItem(adhocStorageKey, rotated);
     } catch {
       // storage unavailable — per-mount id still isolates drafts
     }
-    setStoredAdhocId(null);
+    setStoredAdhocId(rotated);
   };
 
   const handleCancelScheduled = (postId?: string) => {

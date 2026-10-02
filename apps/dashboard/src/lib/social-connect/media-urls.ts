@@ -20,8 +20,13 @@ function allowedMediaHosts(): Set<string> {
 }
 
 // ponytail: UI only sends uploaded URLs, but the API takes any URL and hands
-// it to PostForMe's fetcher. Confine that to our own storage + app hosts.
-export function assertAllowedSocialMediaUrls(urls: string[] | undefined) {
+// it to PostForMe's fetcher. Confine that to our own storage origin — and,
+// when the caller is known, to its own `organization/{orgId}/` prefix, so one
+// org cannot publish another org's objects to a provider.
+export function assertAllowedSocialMediaUrls(
+  urls: string[] | undefined,
+  organizationId?: string
+) {
   if (!urls?.length) {
     return;
   }
@@ -35,16 +40,26 @@ export function assertAllowedSocialMediaUrls(urls: string[] | undefined) {
         cause: null,
       });
     }
-    let hostname: string;
+    let url: URL;
     try {
-      hostname = new URL(raw).hostname.toLowerCase();
+      url = new URL(raw);
     } catch {
       throw new SocialConnectRequestError({
         message: "Invalid media URL",
         cause: null,
       });
     }
+    const hostname = url.hostname.toLowerCase();
     if (!hosts.has(hostname)) {
+      throw new SocialConnectRequestError({
+        message: "Media URL host is not allowed",
+        cause: null,
+      });
+    }
+    if (
+      organizationId &&
+      !url.pathname.startsWith(`/organization/${organizationId}/`)
+    ) {
       throw new SocialConnectRequestError({
         message: "Media URL host is not allowed",
         cause: null,
