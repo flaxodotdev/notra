@@ -8,12 +8,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@notra/ui/components/ui/dropdown-menu";
+import { Spinner } from "@notra/ui/components/ui/spinner";
 import {
   SplitButton,
   SplitButtonTrigger,
 } from "@notra/ui/components/ui/split-button";
-import { Loader2Icon } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { INTEGRATION_PROVIDERS } from "@/constants/integration-analytics";
@@ -31,7 +31,7 @@ export function ConnectAccountsButtons({
   return (
     <SplitButton>
       <Button
-        disabled={twitter.isPending}
+        loading={twitter.isPending}
         onClick={() => {
           trackEvent(POSTHOG_EVENTS.INTEGRATION_CONNECT_STARTED, {
             provider: INTEGRATION_PROVIDERS.X,
@@ -39,11 +39,7 @@ export function ConnectAccountsButtons({
           void twitter.handleConnect();
         }}
       >
-        {twitter.isPending ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <HugeiconsIcon className="size-4" icon={NewTwitterIcon} />
-        )}
+        <HugeiconsIcon className="size-4" icon={NewTwitterIcon} />
         {t("connectX")}
       </Button>
       <DropdownMenu>
@@ -59,7 +55,7 @@ export function ConnectAccountsButtons({
             }}
           >
             {linkedin.isPending ? (
-              <Loader2Icon className="size-4 animate-spin" />
+              <Spinner />
             ) : (
               <HugeiconsIcon className="size-4" icon={Linkedin02Icon} />
             )}

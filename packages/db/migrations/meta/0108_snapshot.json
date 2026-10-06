@@ -1,5 +1,5 @@
 {
-  "id": "61938d55-5388-45c6-8130-83760150993e",
+  "id": "6747c3b9-f2a0-41b9-9858-7a2105ffc1c6",
   "prevId": "ba2321e4-6324-4e25-b21e-29cbc66d198c",
   "version": "7",
   "dialect": "postgresql",
@@ -2889,36 +2889,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "source_pdf_storage_key": {
-          "name": "source_pdf_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_uploaded_at": {
-          "name": "source_pdf_uploaded_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_filename": {
-          "name": "source_pdf_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_text": {
-          "name": "source_pdf_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_url": {
-          "name": "source_pdf_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -10947,7 +10917,7 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
         },
         "daily_summary": {
           "name": "daily_summary",
@@ -12783,6 +12753,24 @@
         },
         "workos_user_id": {
           "name": "workos_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_opt_in_at": {
+          "name": "marketing_opt_in_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_opt_in_evidence": {
+          "name": "marketing_opt_in_evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_opt_in_policy_version": {
+          "name": "marketing_opt_in_policy_version",
           "type": "text",
           "primaryKey": false,
           "notNull": false

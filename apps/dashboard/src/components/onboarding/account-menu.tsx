@@ -16,15 +16,14 @@ import {
   AvatarImage,
 } from "@notra/ui/components/ui/avatar";
 import { Skeleton } from "@notra/ui/components/ui/skeleton";
-import { Loader2Icon } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { DeleteAccountDialog } from "@/components/settings/delete-account-dialog";
 import { authClient } from "@/lib/auth/client";
+import { useRouter } from "@/lib/navigation";
 import { getUserAvatarUrl } from "@/utils/avatar";
 
 export function OnboardingAccountMenu() {
@@ -125,16 +124,12 @@ export function OnboardingAccountMenu() {
             <div className="flex flex-col gap-2">
               <Button
                 className="w-full justify-start"
-                disabled={isSigningOut}
+                loading={isSigningOut}
                 onClick={handleSignOut}
                 variant="outline"
               >
-                {isSigningOut ? (
-                  <Loader2Icon className="size-4 animate-spin" />
-                ) : (
-                  <HugeiconsIcon icon={Logout01Icon} size={16} />
-                )}
-                {isSigningOut ? t("signingOut") : tCommon("labels.logOut")}
+                <HugeiconsIcon icon={Logout01Icon} size={16} />
+                {tCommon("labels.logOut")}
               </Button>
               <Button
                 className="w-full justify-start"

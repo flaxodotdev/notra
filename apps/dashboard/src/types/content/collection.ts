@@ -1,5 +1,5 @@
 import type { PostCollectionSummary } from "@notra/schemas/dashboard/content";
-import type { useTranslations } from "next-intl";
+import type { useTranslations } from "use-intl";
 
 import type { CONTENT_COLLECTION_VIEWS } from "@/constants/content-collections";
 import type { TablePaginationState } from "@/types/table";
@@ -7,13 +7,6 @@ import type { TablePaginationState } from "@/types/table";
 export type CollectionsTranslator = ReturnType<
   typeof useTranslations<"content.collections">
 >;
-
-export interface CollectionPageProps {
-  params: Promise<{
-    slug: string;
-    id: string;
-  }>;
-}
 
 export interface RenameCollectionDialogProps {
   collectionId: string;
@@ -51,9 +44,18 @@ export type ContentCollectionView = (typeof CONTENT_COLLECTION_VIEWS)[number];
 export interface CollectionsViewProps {
   collections: PostCollectionSummary[];
   pagination: TablePaginationState;
+  organizationId: string;
   organizationSlug: string;
   view: ContentCollectionView;
   loading?: boolean;
+}
+
+export interface CollectionMenuItemsProps {
+  collection: PostCollectionSummary;
+  organizationSlug: string;
+  disabled: boolean;
+  onDelete: (collection: PostCollectionSummary) => void;
+  variant?: "context" | "dropdown";
 }
 
 export type CollectionsSkeletonProps = Partial<

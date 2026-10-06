@@ -26,6 +26,7 @@ import {
 } from "@notra/ui/components/ui/avatar";
 import { Input } from "@notra/ui/components/ui/input";
 import { Label } from "@notra/ui/components/ui/label";
+import { Spinner } from "@notra/ui/components/ui/spinner";
 import { XVerifiedBadge } from "@notra/ui/components/ui/svgs/twitter";
 import { Textarea } from "@notra/ui/components/ui/textarea";
 import {
@@ -33,10 +34,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
-import { Loader2Icon } from "lucide-react";
-import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { useBillingCustomer } from "@/lib/hooks/use-billing-customer";
@@ -343,17 +343,11 @@ function TweetUrlStep({
           {tCommon("back")}
         </Button>
         <Button
-          disabled={isPending || !url.trim() || remaining === 0}
+          disabled={!url.trim() || remaining === 0}
+          loading={isPending}
           onClick={handleSubmit}
         >
-          {isPending ? (
-            <>
-              <Loader2Icon className="size-4 animate-spin" />
-              {tCommon2("labels.adding")}
-            </>
-          ) : (
-            tBrandShared("addReference")
-          )}
+          {tBrandShared("addReference")}
         </Button>
       </ResponsiveDialogFooter>
     </>
@@ -485,7 +479,7 @@ function ImportXStep({
 
         {isLoading && (
           <div className="flex justify-center py-8">
-            <Loader2Icon className="text-muted-foreground size-6 animate-spin" />
+            <Spinner className="text-muted-foreground size-6" />
           </div>
         )}
 
@@ -542,18 +536,13 @@ function ImportXStep({
                 <Button
                   className="cursor-pointer"
                   disabled={importTweets.isPending || remaining === 0}
+                  loading={isImporting}
                   onClick={() => handleImport(account)}
                   size="sm"
                   variant={didImport ? "outline" : "default"}
                 >
-                  {isImporting && (
-                    <>
-                      <Loader2Icon className="size-3.5 animate-spin" />
-                      {t("importing")}
-                    </>
-                  )}
-                  {!isImporting && didImport && t("importedLabel")}
-                  {!isImporting && !didImport && tCommon2("actions.import")}
+                  {didImport && t("importedLabel")}
+                  {!didImport && tCommon2("actions.import")}
                 </Button>
                 <button
                   className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors"
@@ -576,7 +565,7 @@ function ImportXStep({
           >
             <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-full">
               {isConnecting ? (
-                <Loader2Icon className="size-4 animate-spin" />
+                <Spinner />
               ) : (
                 <HugeiconsIcon className="size-4" icon={Add01Icon} />
               )}

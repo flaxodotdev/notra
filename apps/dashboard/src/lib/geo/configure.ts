@@ -1,3 +1,5 @@
+import { checkContentBilling } from "@notra/ai/billing/content-billing";
+import { FEATURES } from "@notra/ai/billing/features";
 import {
   GEO_CURSOR_FLAG_KEY,
   GEO_OPENCODE_FLAG_KEY,
@@ -17,9 +19,9 @@ import {
 import { geoSearchConsoleLive } from "@notra/geo-core/geo/search-console-live";
 import { Effect, Layer } from "effect";
 
-import { resolveZdrEntitlement } from "@/lib/billing/subscription";
 import { addActiveGeneration, generateRunId } from "@/lib/generations/tracking";
 import { resolveGeoFlagState } from "@/lib/geo/flag";
+import { resolveZdrEntitlement } from "@/utils/resolve-zdr-entitlement";
 
 const workflowLayer = Layer.succeed(GeoWorkflowService, {
   // Lazy imports keep the workflow modules from closing a module cycle through
@@ -76,6 +78,18 @@ const entitlementLayer = Layer.succeed(GeoEntitlementService, {
   resolveZdrEntitlement: Effect.fn("GeoDashboardEntitlement.resolveZdr")(
     (organizationId) =>
       Effect.promise(() => resolveZdrEntitlement(organizationId))
+  ),
+  checkScanBilling: Effect.fn("GeoDashboardEntitlement.checkScanBilling")(
+    (organizationId) =>
+      Effect.tryPromise({
+        try: () =>
+          checkContentBilling({
+            organizationId,
+            outputType: null,
+            quotaFeatureId: FEATURES.AI_ANSWERS,
+          }),
+        catch: (cause) => cause,
+      })
   ),
 });
 

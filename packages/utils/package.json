@@ -7,7 +7,9 @@
     "./api-scopes": "./src/api-scopes.ts",
     "./oauth-consent": "./src/oauth-consent.ts",
     "./constants/oauth-consent": "./src/constants/oauth-consent.ts",
+    "./constants/agent-feedback-prompt": "./src/constants/agent-feedback-prompt.ts",
     "./url": "./src/url.ts",
+    "./website-url": "./src/website-url.ts",
     "./logo-link": "./src/logo-link.ts",
     "./google-favicon": "./src/google-favicon.ts",
     "./callback-url": "./src/callback-url.ts",
@@ -28,6 +30,6 @@
   "devDependencies": {
     "@notra/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
-    "typescript": "5.9.2"
+    "typescript": "7.0.2"
   }
 }

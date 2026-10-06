@@ -3,12 +3,11 @@ import type {
   GeoScanResultSummary,
   GeoScanRunSummary,
 } from "@notra/geo-core/types/geo-scan-history";
-import type { useTranslations } from "next-intl";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { useTranslations } from "use-intl";
 
 import type { useFormatRelative } from "@/lib/hooks/use-format-relative";
 import type { useGeoScanRun } from "@/lib/hooks/use-geo-scan-history";
-import type { GeoEngineAnswerMode } from "@/types/geo-shared";
 
 export interface GeoScanActivityStatusProps {
   run: GeoScanRunSummary | undefined;
@@ -32,7 +31,6 @@ export interface GeoScanControlsProviderProps {
 export interface GeoScanModelOption {
   id: string;
   label: string;
-  answerMode: GeoEngineAnswerMode | null;
   tracked: boolean;
   zdrBlocked: boolean;
 }
@@ -49,6 +47,9 @@ export interface GeoScanModelMenuProps {
   compact?: boolean;
   label?: string;
   primary?: boolean;
+  /** Controlled open state, e.g. for a hotkey. Uncontrolled when omitted. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onContinue: (engines: string[]) => void;
 }
 
@@ -121,13 +122,6 @@ export interface GeoScanModelCellProps {
 export interface GeoScanPromptCellProps {
   prompt: string;
   turn: number | null;
-}
-
-export interface GeoScanTablePaginationProps {
-  offset: number;
-  total: number;
-  itemLabel: string;
-  onOffsetChange: (offset: number) => void;
 }
 
 export interface GeoScanRunEmptyStateInput {

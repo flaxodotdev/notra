@@ -5,6 +5,7 @@ import {
   deleteQstashSchedule,
   normalizeCronConfig,
 } from "@notra/ai/qstash/triggers";
+import { QstashScheduleSetupError } from "@notra/ai/schemas/qstash";
 import {
   SCHEDULE_FREQUENCIES,
   SCHEDULE_LOOKBACK_WINDOWS,
@@ -14,6 +15,7 @@ import type {
   ContentScheduleSummary,
   CreateContentScheduleResult,
 } from "@notra/ai/types/schedules";
+import { logError } from "@notra/ai/utils/server-log";
 import { hashTrigger } from "@notra/ai/utils/trigger-hash";
 import { db } from "@notra/db/drizzle";
 import {
@@ -198,7 +200,13 @@ export async function createContentSchedule(
   } catch (error) {
     if (qstashScheduleId) {
       await deleteQstashSchedule(qstashScheduleId).catch((cleanupError) => {
-        console.error("Error deleting schedule:", cleanupError);
+        logError(
+          "[content-schedules] Failed to delete QStash schedule",
+          cleanupError,
+          {
+            qstashScheduleId,
+          }
+        );
       });
     }
 
@@ -459,13 +467,7 @@ function isLookbackWindow(
 }
 
 function scheduleSetupMessage(error: unknown): string | null {
-  const message = error instanceof Error ? error.message : "";
-  if (
-    message.includes("QSTASH_TOKEN") ||
-    message.includes("App URL not configured") ||
-    message.includes("invalid destination") ||
-    message.includes("unable to resolve host")
-  ) {
+  if (error instanceof QstashScheduleSetupError) {
     return "Schedules cannot be started yet because the scheduler is not configured for this environment.";
   }
   return null;

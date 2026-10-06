@@ -9,8 +9,8 @@ import {
   engineFamilyLabel,
   engineFamilyOf,
 } from "@notra/geo-core/utils/geo-engine-family";
-import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { useGeoActiveProject } from "@/lib/hooks/use-geo-active-project";
@@ -20,7 +20,6 @@ import type {
   EngineFamilyPromptHit,
   EngineFamilySheetProps,
 } from "@/types/geo";
-import { engineFamilyModeTotals } from "@/utils/geo-charts";
 import {
   engineFamilyBrandRows,
   findOwnBrandDomain,

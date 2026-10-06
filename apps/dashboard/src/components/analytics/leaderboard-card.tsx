@@ -3,31 +3,33 @@
 import { Cancel01Icon, SearchIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  InstrumentEmpty,
+  InstrumentSection,
+} from "@notra/ui/components/instrument/instrument-module";
+import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@notra/ui/components/ui/avatar";
 import { Button } from "@notra/ui/components/ui/button";
+import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
 import { Input } from "@notra/ui/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import { parseAsString, parseAsStringLiteral, useQueryState } from "nuqs";
 import { useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { PlatformTabs } from "@/components/analytics/platform-tabs";
 import { ProviderIcon } from "@/components/analytics/provider-icon";
 import { AnalyticsRangePicker } from "@/components/analytics/range-picker";
 import { XVerificationBadge } from "@/components/icons/x-verification-badge";
-import {
-  InstrumentEmpty,
-  InstrumentSection,
-} from "@/components/instrument/instrument-module";
-import { Table, type TableColumn } from "@/components/motion/table";
 import {
   ANALYTICS_PROVIDER_FILTER_VALUES,
   ANALYTICS_PROVIDER_FILTERS,
@@ -41,6 +43,7 @@ import {
   useLeaderboardRange,
   useUntrackAccount,
 } from "@/lib/hooks/use-social-analytics";
+import { useRouter } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import type { LeaderboardCardProps, LeaderboardEntry } from "@/types/analytics";
 import {
@@ -309,8 +312,7 @@ export function LeaderboardCard({
               </Button>
             )}
           </div>
-          <Table
-            className="rounded-2xl"
+          <DataTable
             columns={columns}
             data={rows}
             defaultSort={{ key: "rank", direction: "asc" }}

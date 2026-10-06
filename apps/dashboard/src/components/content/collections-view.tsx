@@ -2,22 +2,38 @@
 
 import type { PostCollectionSummary } from "@notra/schemas/dashboard/content";
 import { LogoStack } from "@notra/ui/components/geo/logo-stack";
+import { ConfirmDialog } from "@notra/ui/components/shared/confirm-dialog";
 import { TablePagination } from "@notra/ui/components/shared/table-pagination";
 import { Badge } from "@notra/ui/components/ui/badge";
-import { formatDistanceToNowStrict } from "date-fns";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-
-import { StatusSpinner } from "@/components/geo/status-spinner";
-import { Table, type TableColumn } from "@/components/motion/table";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@notra/ui/components/ui/context-menu";
+import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
+import { Spinner } from "@notra/ui/components/ui/spinner";
+import { formatDistanceToNowStrict } from "date-fns";
+import { useState } from "react";
+import { useNow, useTranslations } from "use-intl";
+
+import {
+  CollectionActionsMenu,
+  CollectionMenuItems,
+} from "@/components/content/collection-menu-items";
+import Link from "@/components/framework/link";
+import {
+  COLLECTION_JUST_NOW_MS,
   COLLECTION_TABLE_ROW_HEIGHT,
   COLLECTION_TYPE_STACK_LIMIT,
 } from "@/constants/content-collections";
 import { useOutputTypeLabel } from "@/lib/hooks/use-output-type-label";
+import { usePostActions } from "@/lib/hooks/use-post-actions";
 import { useDateFnsLocale } from "@/lib/i18n/date-fns";
 import { useLogoStackLabels } from "@/lib/i18n/use-logo-stack-labels";
+import { useRouter } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import type {
   CollectionStatus,
@@ -51,7 +67,7 @@ function CollectionStatusBadge({ status }: { status: CollectionStatus }) {
       className="inline-flex items-center gap-1.5 rounded-sm text-[0.6875rem] whitespace-nowrap"
       variant={statusVariant(status)}
     >
-      {status === "generating" ? <StatusSpinner /> : null}
+      {status === "generating" ? <Spinner /> : null}
       {t("status", { status })}
     </Badge>
   );
@@ -117,6 +133,7 @@ function CollectionNameCell({
 export function CollectionsView({
   collections,
   pagination,
+  organizationId,
   organizationSlug,
   view,
   loading = false,
@@ -124,12 +141,67 @@ export function CollectionsView({
   const router = useRouter();
   const t = useTranslations("content.collections");
   const tCommon = useTranslations("common");
+  const [deleteTarget, setDeleteTarget] =
+    useState<PostCollectionSummary | null>(null);
+  const { deleteCollection, isDeleting } = usePostActions(organizationId);
+  const menuProps = {
+    organizationSlug,
+    disabled: isDeleting,
+    onDelete: setDeleteTarget,
+  };
+  const deleteDialog = (
+    <ConfirmDialog
+      confirmLabel={tCommon("actions.delete")}
+      description={
+        deleteTarget?.postCount === 1
+          ? tCommon("messages.thisWillPermanentlyDeleteTitle", {
+              title: collectionTitle(deleteTarget),
+            })
+          : t("actions.deleteDescription", {
+              title: deleteTarget ? collectionTitle(deleteTarget) : "",
+              count: deleteTarget?.postCount ?? 0,
+            })
+      }
+      onConfirm={async () => {
+        if (!deleteTarget) {
+          return;
+        }
+        const deleted = await deleteCollection(deleteTarget.id);
+        if (deleted) {
+          setDeleteTarget(null);
+          if (collections.length === 1 && pagination.page > 1) {
+            void pagination.setPage(pagination.page - 1);
+          }
+        }
+      }}
+      onOpenChange={(open) => {
+        if (!open) {
+          setDeleteTarget(null);
+        }
+      }}
+      open={deleteTarget !== null}
+      pending={isDeleting}
+      title={
+        deleteTarget?.postCount === 1
+          ? tCommon("labels.deletePost")
+          : t("actions.deleteTitle")
+      }
+      variant="destructive"
+    />
+  );
   const dateFnsLocale = useDateFnsLocale();
-  const formatRelativeDate = (dateString: string) =>
-    formatDistanceToNowStrict(new Date(dateString), {
+  const now = useNow({ updateInterval: 60_000 });
+  const formatRelativeDate = (dateString: string) => {
+    const date = new Date(dateString);
+    // date-fns has no "just now"; it would print "0 seconds ago".
+    if (Math.abs(now.getTime() - date.getTime()) < COLLECTION_JUST_NOW_MS) {
+      return tCommon("time.justNow");
+    }
+    return formatDistanceToNowStrict(date, {
       addSuffix: true,
       locale: dateFnsLocale,
     });
+  };
   const collectionColumns: TableColumn<PostCollectionSummary>[] = [
     {
       key: "types",
@@ -182,6 +254,16 @@ export function CollectionsView({
       ),
     },
     ...collectionColumns,
+    {
+      key: "actions",
+      header: <span className="sr-only">{tCommon("labels.actions")}</span>,
+      width: "4rem",
+      minWidth: "4rem",
+      align: "right",
+      cell: (collection) => (
+        <CollectionActionsMenu collection={collection} {...menuProps} />
+      ),
+    },
   ];
 
   if (view === "grid") {
@@ -197,33 +279,55 @@ export function CollectionsView({
       >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {collections.map((collection) => (
-            <Link
-              className="border-border/60 bg-background hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 flex-col gap-4 rounded-xl border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              href={collectionHref(organizationSlug, collection)}
-              key={collection.id}
-              prefetch={false}
-              title={collectionTitle(collection)}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CollectionTypesCell contentTypes={collection.contentTypes} />
-                <CollectionStatusBadge status={collectionStatus(collection)} />
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <p className="line-clamp-2 text-sm leading-snug font-medium wrap-anywhere">
-                  {collectionTitle(collection)}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {collectionMeta(collection, t)}
-                </p>
-              </div>
-              <time
-                className="text-muted-foreground text-xs"
-                dateTime={collection.createdAt}
-                suppressHydrationWarning
+            <ContextMenu key={collection.id}>
+              <ContextMenuTrigger
+                render={
+                  <div className="border-border/60 bg-background hover:bg-muted/40 relative min-w-0 rounded-xl border transition-colors" />
+                }
               >
-                {formatRelativeDate(collection.createdAt)}
-              </time>
-            </Link>
+                <Link
+                  className="focus-visible:ring-ring flex h-full min-w-0 flex-col gap-4 rounded-xl p-4 focus-visible:ring-2 focus-visible:outline-none"
+                  href={collectionHref(organizationSlug, collection)}
+                  prefetch={false}
+                  title={collectionTitle(collection)}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CollectionTypesCell
+                      contentTypes={collection.contentTypes}
+                    />
+                    <div className="pr-9">
+                      <CollectionStatusBadge
+                        status={collectionStatus(collection)}
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <p className="line-clamp-2 text-sm leading-snug font-medium wrap-anywhere">
+                      {collectionTitle(collection)}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {collectionMeta(collection, t)}
+                    </p>
+                  </div>
+                  <time
+                    className="text-muted-foreground text-xs"
+                    dateTime={collection.createdAt}
+                    suppressHydrationWarning
+                  >
+                    {formatRelativeDate(collection.createdAt)}
+                  </time>
+                </Link>
+                <div className="absolute top-2.5 right-2.5">
+                  <CollectionActionsMenu
+                    collection={collection}
+                    {...menuProps}
+                  />
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-48">
+                <CollectionMenuItems collection={collection} {...menuProps} />
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
         </div>
         {collections.length === 0 ? (
@@ -231,31 +335,48 @@ export function CollectionsView({
             {t("emptyPage")}
           </p>
         ) : null}
-        <TablePagination {...pagination} itemLabel={t("items")} />
+        <TablePagination
+          {...pagination}
+          itemLabel={t("items", { count: pagination.totalItems })}
+        />
+        {deleteDialog}
       </div>
     );
   }
 
   return (
-    <Table
-      className="rounded-xl"
-      columns={columns}
-      data={collections}
-      emptyState={t("emptyPage")}
-      footer={<TablePagination {...pagination} itemLabel={t("items")} />}
-      getRowId={(collection) => collection.id}
-      height={paginatedTableHeightFor(
-        pagination.pageRowCount,
-        COLLECTION_TABLE_ROW_HEIGHT
-      )}
-      loading={loading}
-      onRowClick={(collection) =>
-        router.push(collectionHref(organizationSlug, collection))
-      }
-      onRowPointerEnter={(collection) =>
-        router.prefetch(collectionHref(organizationSlug, collection))
-      }
-      rowHeight={COLLECTION_TABLE_ROW_HEIGHT}
-    />
+    <>
+      <DataTable
+        columns={columns}
+        data={collections}
+        emptyState={t("emptyPage")}
+        pagination={{
+          mode: "server",
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          totalItems: pagination.totalItems,
+          onPageChange: pagination.setPage,
+          onPageSizeChange: pagination.onPageSizeChange,
+          itemLabel: t("items", { count: pagination.totalItems }),
+        }}
+        getRowId={(collection) => collection.id}
+        height={paginatedTableHeightFor(
+          pagination.pageRowCount,
+          COLLECTION_TABLE_ROW_HEIGHT
+        )}
+        loading={loading}
+        onRowClick={(collection) =>
+          router.push(collectionHref(organizationSlug, collection))
+        }
+        onRowPointerEnter={(collection) =>
+          router.prefetch(collectionHref(organizationSlug, collection))
+        }
+        rowHeight={COLLECTION_TABLE_ROW_HEIGHT}
+        renderRowContextMenu={(collection) => (
+          <CollectionMenuItems collection={collection} {...menuProps} />
+        )}
+      />
+      {deleteDialog}
+    </>
   );
 }

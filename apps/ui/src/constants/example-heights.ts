@@ -47,6 +47,11 @@ export const EXAMPLE_HEIGHTS: Record<string, number> = {
   "codex/examples/codex-reasoning": 288,
   "codex/examples/codex-terminal": 288,
   "codex/examples/codex-working": 288,
+  "data-table/examples/data-table-demo": 676,
+  "data-table/examples/data-table-empty": 344,
+  "data-table/examples/data-table-infinite": 489,
+  "data-table/examples/data-table-toolbar": 330,
+  "data-table/examples/table-primitives": 289,
   "gemini/examples/gemini-actions": 287,
   "gemini/examples/gemini-composer": 178,
   "gemini/examples/gemini-demo": 648,
@@ -89,4 +94,6 @@ export const EXAMPLE_HEIGHTS: Record<string, number> = {
   "perplexity/examples/perplexity-thinking": 116,
   "perplexity/examples/perplexity-user-actions": 140,
   "shimmer/examples/shimmer": 148,
+  "sonner/examples/sonner-action": 304,
+  "sonner/examples/sonner-types": 368,
 };

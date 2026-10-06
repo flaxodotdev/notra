@@ -13,9 +13,9 @@ import {
   BRAND_GUIDELINE_PDF_MIME_TYPE,
   MAX_BRAND_GUIDELINE_PDF_FILE_SIZE,
 } from "@notra/schemas/constants/dashboard/upload";
-import { useFormatter } from "next-intl";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useFormatter } from "use-intl";
 
 import { Button, buttonVariants } from "@/components/button";
 import {

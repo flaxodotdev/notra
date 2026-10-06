@@ -1,18 +1,14 @@
 "use client";
 
-import {
-  Loading03Icon,
-  Tick01Icon,
-  UserGroupIcon,
-} from "@hugeicons/core-free-icons";
+import { Tick01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@notra/ui/components/ui/button";
 import { Label } from "@notra/ui/components/ui/label";
 import { Skeleton } from "@notra/ui/components/ui/skeleton";
 import { cn } from "@notra/ui/lib/utils";
-import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 // biome-ignore lint/performance/noNamespaceImport: Zod recommended way of importing
 import * as z from "zod";
 
@@ -132,20 +128,11 @@ function InlineCreateForm({ organizationId }: InlineCreateFormProps) {
         </div>
         <Button
           className="w-full justify-center"
-          disabled={!url.trim() || isSubmitting}
+          disabled={!url.trim()}
+          loading={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? (
-            <>
-              <HugeiconsIcon
-                className="size-3.5 animate-spin"
-                icon={Loading03Icon}
-              />
-              {t("creating")}
-            </>
-          ) : (
-            t("createButton")
-          )}
+          {t("createButton")}
         </Button>
       </form>
     </div>

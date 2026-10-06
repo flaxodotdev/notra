@@ -17,29 +17,32 @@ import {
 } from "@notra/geo-core/utils/geo-engine-family";
 import { resolveGeoZdrMode } from "@notra/geo-core/utils/geo-engines";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
+import { FadeSwap } from "@notra/ui/components/fade-swap";
+import {
+  InstrumentEmpty,
+  InstrumentModule,
+} from "@notra/ui/components/instrument/instrument-module";
+import { DetailCardContent } from "@notra/ui/components/ui/detail-card";
 import {
   HoverCard,
   HoverCardTrigger,
 } from "@notra/ui/components/ui/hover-card";
+import { Spinner } from "@notra/ui/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
-import { useLocale, useTranslations } from "next-intl";
+import { FADE_SWAP_TRANSITION } from "@notra/ui/constants/fade-swap";
+import { LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useLocale, useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { EngineFamilySheet } from "@/components/geo/engine-family-sheet";
 import { EngineIcon } from "@/components/geo/engine-icon";
 import { GeoStatDelta } from "@/components/geo/geo-stat-delta";
-import { StatusSpinner } from "@/components/geo/status-spinner";
-import { TrafficBreakdownCard } from "@/components/geo/traffic-breakdown-card";
-import {
-  InstrumentEmpty,
-  InstrumentModule,
-} from "@/components/instrument/instrument-module";
 import { trackEvent } from "@/lib/analytics/posthog-client";
 import {
   useGeoModelCatalog,
@@ -58,6 +61,7 @@ import {
   visibilityOverviewTotals,
   withTrackedMentionEngines,
 } from "@/utils/geo-charts";
+import { loadMotionFeatures } from "@/utils/load-motion-features";
 
 const ROW_STYLE = { height: `${GEO_MENTION_ROW_HEIGHT_REM}rem` } as const;
 const LIST_STYLE = {
@@ -107,15 +111,18 @@ function ProviderRow({
         <span className="truncate text-sm font-medium">{name}</span>
       </span>
       <span className="flex shrink-0 items-center justify-end gap-2">
-        <span
+        <FadeSwap
           className={cn(
             "text-sm tabular-nums",
             totals.visible === 0 && "text-muted-foreground"
           )}
+          swapKey={String(totals.visible)}
+          value={totals.visible}
         >
           {totals.visible.toLocaleString(locale)}
-        </span>
+        </FadeSwap>
         <GeoStatDelta
+          animated
           delta={visibilityDelta}
           label={t("visibilityLabel", { name })}
         />
@@ -132,7 +139,7 @@ function ProviderRow({
       <HoverCardTrigger render={<button {...buttonProps} />}>
         {content}
       </HoverCardTrigger>
-      <TrafficBreakdownCard
+      <DetailCardContent
         aside={
           trackEngine ? (
             <Button
@@ -144,7 +151,7 @@ function ProviderRow({
               variant="outline"
             >
               {tracking ? (
-                <StatusSpinner />
+                <Spinner className="size-3.5" />
               ) : (
                 <HugeiconsIcon
                   data-icon="inline-start"
@@ -162,7 +169,7 @@ function ProviderRow({
         <p className="text-muted-foreground px-3 py-1.5 text-xs text-pretty">
           {t("untrackedHint")}
         </p>
-      </TrafficBreakdownCard>
+      </DetailCardContent>
     </HoverCard>
   );
 }
@@ -258,6 +265,7 @@ export function MentionRateCard({
     });
   };
   const { ref, atEnd } = useScrollOverflow<HTMLDivElement>(ranked.length);
+  const reduceMotion = useReducedMotion();
 
   return (
     <div className="relative h-full">
@@ -281,14 +289,29 @@ export function MentionRateCard({
           <div className="flex flex-1 flex-col gap-4">
             <div className="flex items-end gap-2">
               <p className="text-3xl leading-none font-semibold tracking-tight tabular-nums">
-                {totals.visible.toLocaleString(locale)}
+                <FadeSwap
+                  swapKey={String(totals.visible)}
+                  value={totals.visible}
+                >
+                  {totals.visible.toLocaleString(locale)}
+                </FadeSwap>
               </p>
-              <GeoStatDelta
-                className="mb-0.5"
-                delta={overviewDelta}
-                hint={tGeoShared("vsFirstHalfOfThis")}
-                label={tCommon("labels.visibility")}
-              />
+              {/* Slides with the number's width instead of jumping under the
+                  outgoing value. */}
+              <LazyMotion features={loadMotionFeatures} strict>
+                <m.span
+                  className="mb-0.5 inline-flex"
+                  layout={reduceMotion ? false : "position"}
+                  transition={FADE_SWAP_TRANSITION}
+                >
+                  <GeoStatDelta
+                    animated
+                    delta={overviewDelta}
+                    hint={tGeoShared("vsFirstHalfOfThis")}
+                    label={tCommon("labels.visibility")}
+                  />
+                </m.span>
+              </LazyMotion>
             </div>
 
             <div className="flex flex-1 flex-col gap-1">

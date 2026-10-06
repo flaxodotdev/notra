@@ -1,6 +1,7 @@
 "use client";
 
 import { GSC_SYNC_LOOKBACK_DAYS } from "@notra/geo-core/constants/google-search-console";
+import { DataTable } from "@notra/ui/components/ui/data-table";
 import {
   Sheet,
   SheetContent,
@@ -10,10 +11,9 @@ import {
   SheetScrollArea,
   SheetTitle,
 } from "@notra/ui/components/ui/sheet";
-import { useLocale, useTranslations } from "next-intl";
 import { useMemo } from "react";
+import { useLocale, useTranslations } from "use-intl";
 
-import { Table } from "@/components/motion/table";
 import { useRetainedValue } from "@/lib/hooks/use-retained-value";
 import type {
   PromptSuggestionSheetProps,
@@ -31,8 +31,8 @@ function SuggestionQueryTable({ queries }: SuggestionQueryTableProps) {
   return (
     <section className="min-w-0 space-y-2">
       <h3 className="text-sm font-medium">{tGeoShared("searchQueries")}</h3>
-      <Table
-        className="rounded-2xl"
+      <DataTable
+        autoHeight
         columns={[
           {
             key: "query",
@@ -75,7 +75,7 @@ function SuggestionQueryTable({ queries }: SuggestionQueryTableProps) {
         defaultSort={{ key: "impressions", direction: "desc" }}
         emptyState={t("noQueryData")}
         getRowId={(query) => query.query}
-        height={tableHeightFor(queries.length)}
+        height={tableHeightFor(0)}
         rowSizing="content"
       />
     </section>

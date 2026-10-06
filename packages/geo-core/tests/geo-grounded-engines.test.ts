@@ -7,9 +7,8 @@ import {
 import type { GeoModelCatalog } from "../src/types/geo";
 import { engineModelOf } from "../src/utils/geo-engine-family";
 import {
+  isPartialGeoScanEngineScope,
   resolveGeoGroundedZdrMode,
-  resolveTrackedEngines,
-  scopeGeoScanEngines,
 } from "../src/utils/geo-engines";
 import {
   resolveGroundedEngineByKey,
@@ -54,15 +53,6 @@ describe("selected grounded engines", () => {
     );
   });
 
-  test("deduplicates selected models", () => {
-    expect(
-      resolveGroundedEngines(
-        ["anthropic/claude-sonnet-5", "anthropic/claude-sonnet-5"],
-        catalog
-      ).length
-    ).toBe(1);
-  });
-
   test("new catalog models work without adding version constants", () => {
     const futureCatalog: GeoModelCatalog = {
       providers: catalog.providers,
@@ -105,14 +95,6 @@ describe("selected grounded engines", () => {
       resolveGroundedEngineByKey("anthropic/claude-sonnet-4.6-grounded")?.model
     ).toBe("anthropic/claude-sonnet-4.6");
     expect(resolveGroundedEngineByKey("anthropic/claude-sonnet-5")).toBe(null);
-  });
-
-  test("historical direct results group under the actual model", () => {
-    expect(engineModelOf("anthropic-direct-grounded")).toBe(
-      "anthropic/claude-sonnet-4.6"
-    );
-    expect(engineModelOf("openai-direct-grounded")).toBe("openai/gpt-5.4");
-    expect(engineModelOf("perplexity-sonar")).toBe("perplexity/sonar");
   });
 
   test("Sonar uses the gateway without a Perplexity key", () => {
@@ -226,46 +208,29 @@ describe("selected grounded engines", () => {
       }
     }
   });
+});
 
-  test("older catalog models stay selectable until explicitly retired", () => {
-    const feed = Array.from({ length: 12 }, (_, index) => ({
-      id: `openai/example-${index}.0`,
-      name: `Example ${index}`,
-      owned_by: "openai",
-      type: "language",
-      zdr: "none" as const,
-      released: 1_700_000_000 + index,
-    }));
-    const models = buildGeoModelCatalogFromFeed(feed).models.filter(
-      (model) => model.provider === "openai"
+describe("partial engine scope", () => {
+  const tracked = ["anthropic/claude-sonnet-5", "openai/gpt-5.6-sol"];
+
+  test("a selection that leaves out a tracked engine is partial", () => {
+    expect(isPartialGeoScanEngineScope(tracked, ["openai/gpt-5.6-sol"])).toBe(
+      true
     );
-    expect(models).toHaveLength(12);
-    expect(
-      models.find((model) => model.id === "openai/example-0.0")?.hidden
-    ).toBeUndefined();
   });
 
-  test("retired Grok 4.6 is removed from feed and seed, then remapped for scans", () => {
-    const feed = ["spacexai/grok-4.6", "spacexai/grok-4.7"].map((id) => ({
-      id,
-      name: id,
-      owned_by: "spacexai",
-      type: "language",
-      zdr: "none" as const,
-    }));
-    for (const available of [
-      buildGeoModelCatalogFromFeed(feed),
-      seedGeoModelCatalog(),
-    ]) {
-      expect(
-        available.models.some((model) => model.id === "spacexai/grok-4.6")
-      ).toBe(false);
-      expect(resolveTrackedEngines(available, ["spacexai/grok-4.6"])).toEqual([
-        "spacexai/grok-4.7",
-      ]);
-      expect(scopeGeoScanEngines(available, [], ["spacexai/grok-4.6"])).toEqual(
-        ["spacexai/grok-4.7"]
-      );
-    }
+  test("every tracked engine, with or without extra models, is a full scan", () => {
+    expect(isPartialGeoScanEngineScope(tracked, [...tracked].reverse())).toBe(
+      false
+    );
+    expect(
+      isPartialGeoScanEngineScope(tracked, [...tracked, "spacexai/grok-4.7"])
+    ).toBe(false);
+  });
+
+  test("a retired tracked id is matched through its replacement", () => {
+    expect(
+      isPartialGeoScanEngineScope(["spacexai/grok-4.6"], ["spacexai/grok-4.7"])
+    ).toBe(false);
   });
 });

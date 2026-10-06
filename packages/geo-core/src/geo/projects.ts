@@ -1,10 +1,14 @@
 import { db } from "@notra/db/drizzle";
 import { brandSettings, geoSettings, projects } from "@notra/db/schema";
 import type { GeoCheckScope } from "@notra/db/types/geo-checks";
+import { bumpGeoCheckGeneration } from "@notra/db/utils/geo-check-cache";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
-import { GEO_PROJECTS_OLDEST_ORDER } from "../constants/geo-projects";
+import {
+  GEO_PROJECTS_OLDEST_ORDER,
+  GEO_PROJECT_RESPONSE_COLUMNS,
+} from "../constants/geo-projects";
 import type {
   GeoProjectScope,
   GeoProjectsResponse,
@@ -36,6 +40,7 @@ export const listGeoProjects = Effect.fn("geo.projectsList")(function* (
     db.query.projects.findMany({
       where: eq(projects.organizationId, organizationId),
       orderBy: GEO_PROJECTS_OLDEST_ORDER,
+      columns: GEO_PROJECT_RESPONSE_COLUMNS,
     })
   );
 
@@ -43,6 +48,22 @@ export const listGeoProjects = Effect.fn("geo.projectsList")(function* (
     projects: rows.map(toGeoProject),
   };
   return response;
+});
+
+export const getGeoProject = Effect.fn("geo.projectGet")(function* (
+  organizationId: string,
+  projectId: string
+) {
+  const row = yield* geoDb("project lookup failed", () =>
+    db.query.projects.findFirst({
+      where: and(
+        eq(projects.organizationId, organizationId),
+        eq(projects.id, projectId)
+      ),
+      columns: GEO_PROJECT_RESPONSE_COLUMNS,
+    })
+  );
+  return row ? toGeoProject(row) : null;
 });
 
 export const requireBrandIdentity = Effect.fn("geo.requireBrandIdentity")(
@@ -271,6 +292,9 @@ export const deleteGeoProject = Effect.fn("geo.projectDelete")(function* (
   }
 
   if (outcome === "deleted") {
+    // The project's checks went with it (cascade); org-wide aggregates must
+    // stop counting them now, not when their cache entries expire.
+    yield* Effect.promise(() => bumpGeoCheckGeneration([organizationId]));
     if (URL.canParse(existing.websiteUrl)) {
       const onboardingUrl = normalizeWebsiteUrl(existing.websiteUrl);
       const urls = [existing.websiteUrl];

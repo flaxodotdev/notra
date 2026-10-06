@@ -7,6 +7,7 @@ import {
 import { FEATURES } from "@notra/ai/billing/features";
 import { deleteQstashSchedule } from "@notra/ai/qstash/triggers";
 import { redis } from "@notra/ai/utils/redis";
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import {
   brandGuidelineAssets,
@@ -22,7 +23,6 @@ import {
 } from "@notra/db/schema";
 import { deleteBrandReferenceMemory } from "@notra/db/utils/supermemory";
 import { invalidateGeoIngestHostsCacheForBrand } from "@notra/geo-core/geo/ingest";
-import { publicWebsiteUrlSchema } from "@notra/geo-core/schemas/url";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
 import { organizationIdInputSchema } from "@notra/schemas/dashboard/auth/organization";
 import {
@@ -49,10 +49,10 @@ import {
   updateGuidelineScreenshotSchema,
   updateGuidelineTokenSchema,
 } from "@notra/schemas/dashboard/brand-guidelines";
+import { isSameUrl } from "@notra/utils/url";
 import { ORPCError } from "@orpc/server";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { getTranslations } from "next-intl/server";
 
 import { REFERENCE_LIMIT_REACHED_CODE } from "@/constants/brand";
 import {
@@ -74,6 +74,7 @@ import {
 } from "@/lib/brand-guidelines";
 import { countBrandVoices } from "@/lib/brand-voice-count";
 import { isUniqueConstraintError } from "@/lib/db/errors";
+import { getTranslations } from "@/lib/i18n/server";
 import { baseProcedure } from "@/lib/orpc/base";
 import {
   startBrandAnalysisRun,
@@ -104,6 +105,7 @@ import {
   fetchTwitterUserWithPinnedTweet,
   twitterAppFetch,
 } from "@/utils/twitter-fetcher";
+import { validateWebsiteUrl } from "@/utils/website-url";
 
 import {
   badRequest,
@@ -113,6 +115,7 @@ import {
   notFound,
   tooManyRequests,
 } from "../utils/errors";
+import { brandSitemapsRouter } from "./brand-sitemaps";
 
 const FREE_IMPORTED_TWEET_REFERENCE_LIMIT = 10;
 
@@ -193,17 +196,6 @@ function isMemorySyncFieldUpdate(data: {
     Object.hasOwn(data, "applicableTo") ||
     Object.hasOwn(data, "sourceUrl")
   );
-}
-
-async function normalizeBrandVoiceWebsiteUrl(rawUrl: string) {
-  const parseResult = publicWebsiteUrlSchema.safeParse(rawUrl);
-
-  if (!parseResult.success) {
-    const tErrors = await getTranslations("errors.integrations");
-    throw badRequest(tErrors("publicUrlInvalid"));
-  }
-
-  return new URL(parseResult.data).href;
 }
 
 function serializeBrandVoice(voice: {
@@ -316,10 +308,6 @@ export const brandRouter = {
           typeof input.name === "string" && input.name.trim()
             ? input.name.trim()
             : (await getTranslations("brand.defaults"))("untitledIdentity");
-        const websiteUrl = await normalizeBrandVoiceWebsiteUrl(
-          input.websiteUrl
-        );
-
         const existingVoice = await db.query.brandSettings.findFirst({
           where: and(
             eq(brandSettings.organizationId, input.organizationId),
@@ -331,6 +319,8 @@ export const brandRouter = {
           const tErrors = await getTranslations("errors.brand");
           throw conflict(tErrors("voiceNameTaken"));
         }
+
+        const websiteUrl = await validateWebsiteUrl(input.websiteUrl);
 
         const hasAnyVoice = await db.query.brandSettings.findFirst({
           where: eq(brandSettings.organizationId, input.organizationId),
@@ -387,19 +377,24 @@ export const brandRouter = {
         });
         await assertActiveSubscription(input.organizationId);
 
-        await verifyVoiceOwnership(input.organizationId, input.voiceId);
+        const voice = await verifyVoiceOwnership(
+          input.organizationId,
+          input.voiceId
+        );
+
+        const normalizedWebsiteUrl =
+          input.websiteUrl === undefined ||
+          isSameUrl(input.websiteUrl, voice.websiteUrl)
+            ? undefined
+            : await validateWebsiteUrl(input.websiteUrl);
 
         try {
           const {
             organizationId: _organizationId,
             voiceId: _voiceId,
+            websiteUrl: _websiteUrl,
             ...updates
           } = input;
-
-          const normalizedWebsiteUrl =
-            updates.websiteUrl === undefined
-              ? undefined
-              : await normalizeBrandVoiceWebsiteUrl(updates.websiteUrl);
 
           await db
             .update(brandSettings)
@@ -464,10 +459,9 @@ export const brandRouter = {
           if (trigger.qstashScheduleId) {
             await deleteQstashSchedule(trigger.qstashScheduleId).catch(
               (error) => {
-                console.error(
-                  `Failed to delete qstash schedule ${trigger.qstashScheduleId}:`,
-                  error
-                );
+                logError("Failed to delete qstash schedule", error, {
+                  scheduleId: trigger.qstashScheduleId,
+                });
               }
             );
           }
@@ -641,9 +635,10 @@ export const brandRouter = {
         });
         await assertActiveSubscription(input.organizationId);
 
+        const url = await validateWebsiteUrl(input.url);
         await startBrandAnalysisRun({
           organizationId: input.organizationId,
-          url: input.url,
+          url,
           voiceId: input.voiceId || undefined,
         });
 
@@ -1042,6 +1037,7 @@ export const brandRouter = {
         return { success: true };
       }),
   },
+  sitemaps: brandSitemapsRouter,
   references: {
     list: baseProcedure
       .input(voiceInputSchema)
@@ -1223,8 +1219,8 @@ export const brandRouter = {
                 documentId: createdDocumentId,
               });
             } catch (cleanupError) {
-              console.error(
-                "Error cleaning up failed Supermemory reference:",
+              logError(
+                "Error cleaning up failed Supermemory reference",
                 cleanupError
               );
             }
@@ -1329,10 +1325,7 @@ export const brandRouter = {
                 existing as ReferenceMemoryRecord
               );
             } catch (cleanupError) {
-              console.error(
-                "Error deleting stale reference memory:",
-                cleanupError
-              );
+              logError("Error deleting stale reference memory", cleanupError);
 
               await db
                 .update(brandReferences)
@@ -1355,10 +1348,7 @@ export const brandRouter = {
 
           return { reference: serializeBrandReference(refreshedReference) };
         } catch (error) {
-          console.error(
-            "Error syncing updated reference to Supermemory:",
-            error
-          );
+          logError("Error syncing updated reference to Supermemory", error);
 
           if (createdDocumentId) {
             try {
@@ -1366,8 +1356,8 @@ export const brandRouter = {
                 documentId: createdDocumentId,
               });
             } catch (cleanupError) {
-              console.error(
-                "Error cleaning up failed updated Supermemory reference:",
+              logError(
+                "Error cleaning up failed updated Supermemory reference",
                 cleanupError
               );
             }
@@ -1411,7 +1401,7 @@ export const brandRouter = {
         try {
           await removeBrandReferenceMemory(existing as ReferenceMemoryRecord);
         } catch (error) {
-          console.error("Error deleting reference memory:", error);
+          logError("Error deleting reference memory", error);
         }
 
         await db
@@ -1747,10 +1737,7 @@ export const brandRouter = {
               syncedBillableCount += 1;
             }
           } catch (error) {
-            console.error(
-              "Error syncing imported tweet to Supermemory:",
-              error
-            );
+            logError("Error syncing imported tweet to Supermemory", error);
 
             if (createdDocumentId) {
               try {
@@ -1758,8 +1745,8 @@ export const brandRouter = {
                   documentId: createdDocumentId,
                 });
               } catch (cleanupError) {
-                console.error(
-                  "Error cleaning up imported Supermemory reference:",
+                logError(
+                  "Error cleaning up imported Supermemory reference",
                   cleanupError
                 );
               }

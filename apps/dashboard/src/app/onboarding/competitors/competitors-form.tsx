@@ -8,10 +8,9 @@ import { POSTHOG_EVENTS } from "@notra/posthog/events";
 import { AuthFormHeader } from "@notra/ui/components/shared/auth/auth-form-header";
 import { CtaButton } from "@notra/ui/components/shared/cta-button";
 import { Label } from "@notra/ui/components/ui/label";
-import { Loader2Icon } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { ORPCError } from "@orpc/client";
 import { useEffect, useId, useRef, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { CompetitorBrandLogo } from "@/components/onboarding/competitor-brand-logo";
@@ -36,6 +35,7 @@ import {
 } from "@/lib/hooks/use-geo";
 import { useGeoCompetitorsDb } from "@/lib/hooks/use-geo-db";
 import { useHasGeoFeature } from "@/lib/hooks/use-plan";
+import { useRouter } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import type { SuggestionOutcome } from "@/types/analytics/events";
 import type {
@@ -47,13 +47,24 @@ import {
   findCompetitor,
 } from "@/utils/onboarding-competitors";
 
+/**
+ * A scan billing refuses up front is no reason to block onboarding; the
+ * mutation's toast already explains it.
+ */
+function leaveOnPaymentRequired(leave: () => void) {
+  return (error: unknown) => {
+    if (error instanceof ORPCError && error.code === "PAYMENT_REQUIRED") {
+      leave();
+    }
+  };
+}
+
 function CompetitorsPicker({
   organizationId,
   domain,
   nextHref,
 }: CompetitorsPickerProps) {
   const t = useTranslations("onboarding.competitors");
-  const tOnboardingShared = useTranslations("onboarding.shared");
   const tCommon = useTranslations("common");
   const id = useId();
   const router = useRouter();
@@ -120,16 +131,17 @@ function CompetitorsPicker({
       added_all: suggested.length > 0 && remainingSuggestions.length === 0,
       started_scan: !geoLocked,
     });
-    if (geoLocked) {
+    const leave = () => {
       setIsLeaving(true);
       router.push(nextHref);
+    };
+    if (geoLocked) {
+      leave();
       return;
     }
     startScan.mutate("onboarding", {
-      onSuccess: () => {
-        setIsLeaving(true);
-        router.push(nextHref);
-      },
+      onSuccess: leave,
+      onError: leaveOnPaymentRequired(leave),
     });
   };
 
@@ -288,15 +300,8 @@ function CompetitorsPicker({
         </div>
       ) : null}
 
-      <CtaButton className="w-full" disabled={busy} type="submit">
-        {busy ? (
-          <>
-            <Loader2Icon className="size-4 animate-spin" />
-            {geoLocked ? tOnboardingShared("saving") : t("runningFirstScan")}
-          </>
-        ) : (
-          submitLabel
-        )}
+      <CtaButton className="w-full" loading={busy} type="submit">
+        {submitLabel}
       </CtaButton>
     </form>
   );

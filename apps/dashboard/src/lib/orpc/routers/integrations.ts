@@ -66,11 +66,17 @@ import {
   updateSlackIntegration,
 } from "@notra/ai/integrations/slack-workspace";
 import { deleteQstashSchedule } from "@notra/ai/qstash/triggers";
+import {
+  GitHubInstallationMissingError,
+  GitHubMultiRepositoryUnsupportedError,
+  GitHubRepositoryAlreadyConnectedError,
+} from "@notra/ai/schemas/github-operations";
 import type { GitHubConnectionMethod } from "@notra/ai/types/github-connection";
 import {
   createOctokit,
   GITHUB_INTERACTIVE_READ_TIMEOUT_MS,
 } from "@notra/ai/utils/octokit";
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import { contentTriggers, repositoryOutputs } from "@notra/db/schema";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
@@ -117,7 +123,6 @@ import { isDemoMode } from "@notra/utils/demo-mode";
 import { PublicUrlValidationError } from "@notra/utils/url";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
-import { getTranslations } from "next-intl/server";
 // biome-ignore lint/performance/noNamespaceImport: Zod recommended way of importing
 import * as z from "zod";
 
@@ -135,6 +140,7 @@ import { trackServerEvent } from "@/lib/analytics/posthog-server";
 import { assertOrganizationAccess } from "@/lib/auth/organization";
 import { assertActiveSubscription } from "@/lib/billing/subscription";
 import { isUniqueConstraintError } from "@/lib/db/errors";
+import { getTranslations } from "@/lib/i18n/server";
 import { toMcpIntegrationAuthKind } from "@/lib/integrations/auth-kind";
 import { clearGitHubPublishFailures } from "@/lib/integrations/github/github-publish-failure-state";
 import {
@@ -360,20 +366,14 @@ async function getAffectedSchedulesForIntegration(
 }
 
 async function toKnownIntegrationError(error: unknown): Promise<Error> {
-  if (
-    error instanceof Error &&
-    error.message === "Repository already connected"
-  ) {
+  if (error instanceof GitHubRepositoryAlreadyConnectedError) {
     const tCommon = await getTranslations("common");
     return conflict(tCommon("labels.repositoryAlreadyConnected"), {
       code: REPOSITORY_ALREADY_CONNECTED_CODE,
     });
   }
 
-  if (
-    error instanceof Error &&
-    error.message.includes("exactly one repository")
-  ) {
+  if (error instanceof GitHubMultiRepositoryUnsupportedError) {
     const tErrors = await getTranslations("errors.integrations");
     return badRequest(tErrors("selectOneRepository"));
   }
@@ -616,10 +616,9 @@ export const integrationsRouter = {
         if (schedule.qstashScheduleId) {
           await deleteQstashSchedule(schedule.qstashScheduleId).catch(
             (error) => {
-              console.error(
-                `Failed to delete qstash schedule ${schedule.qstashScheduleId}:`,
-                error
-              );
+              logError("Failed to delete qstash schedule", error, {
+                scheduleId: schedule.qstashScheduleId,
+              });
             }
           );
         }
@@ -826,8 +825,7 @@ export const integrationsRouter = {
             if (
               hasGitHubStatus(error, 401) ||
               hasGitHubStatus(error, 404) ||
-              (error instanceof Error &&
-                error.message === "GitHub App installation not found")
+              error instanceof GitHubInstallationMissingError
             ) {
               const tErrors = await getTranslations("errors.integrations");
               throw forbidden(tErrors("githubAuthFailed"));
@@ -904,8 +902,7 @@ export const integrationsRouter = {
             if (
               hasGitHubStatus(error, 401) ||
               hasGitHubStatus(error, 404) ||
-              (error instanceof Error &&
-                error.message === "GitHub App installation not found")
+              error instanceof GitHubInstallationMissingError
             ) {
               const tErrors = await getTranslations("errors.integrations");
               throw forbidden(tErrors("githubAuthFailed"));
@@ -1088,8 +1085,7 @@ export const integrationsRouter = {
             if (
               hasGitHubStatus(error, 401) ||
               hasGitHubStatus(error, 404) ||
-              (error instanceof Error &&
-                error.message === "GitHub App installation not found")
+              error instanceof GitHubInstallationMissingError
             ) {
               const tErrors = await getTranslations("errors.integrations");
               throw forbidden(tErrors("githubAuthFailed"));
@@ -1214,27 +1210,21 @@ export const integrationsRouter = {
             input.repositoryId
           );
 
+          let config: Awaited<ReturnType<typeof getWebhookConfigForRepository>>;
           try {
-            const config = await getWebhookConfigForRepository(
+            config = await getWebhookConfigForRepository(
               input.repositoryId,
               auth.user.id
             );
-
-            if (!config) {
-              throw notFound("Webhook not configured");
-            }
-
-            return config;
           } catch (error) {
-            if (
-              error instanceof Error &&
-              error.message === "Webhook not configured"
-            ) {
-              throw notFound("Webhook not configured");
-            }
-
             throw await toKnownIntegrationError(error);
           }
+
+          if (!config) {
+            throw notFound("Webhook not configured");
+          }
+
+          return config;
         }),
       generateSecret: baseProcedure
         .input(repositoryInputSchema)
@@ -1412,7 +1402,17 @@ export const integrationsRouter = {
           });
         }
 
-        return updated;
+        // Not the row itself: it carries the encrypted access token and
+        // webhook secret, which no client needs.
+        return (
+          updated && {
+            id: updated.id,
+            displayName: updated.displayName,
+            enabled: updated.enabled,
+            linearTeamId: updated.linearTeamId,
+            linearTeamName: updated.linearTeamName,
+          }
+        );
       }),
     delete: baseProcedure
       .input(integrationInputSchema)

@@ -66,7 +66,7 @@ export interface PromptAnswerLanguageBarProps {
   onSelect: (language: string) => void;
 }
 
-export interface PromptAnswerTagsFooterProps {
+export interface PromptAnswerDetailsProps {
   tagsInputId: string;
   row: GeoPromptTableRow;
   tags: string[];
@@ -76,6 +76,7 @@ export interface PromptAnswerTagsFooterProps {
 }
 
 export interface PromptAnswerEmptyProps {
+  organizationId: string;
   isScanning: boolean;
   detailState: GeoPromptDetailState;
   view: GeoPromptReceiptView;

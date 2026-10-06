@@ -271,28 +271,39 @@ app.use("/v2/*", subscriptionMiddleware());
 // GEO is a paid add-on, so every GEO endpoint — reads included — additionally
 // requires the `ai_answers` plan entitlement. `subscriptionMiddleware` above
 // still applies unchanged.
-app.use("/v1/projects/*", geoEntitlementMiddleware());
-app.use("/v1/geo/ingest/*", geoEntitlementMiddleware());
+const requireGeoEntitlement = geoEntitlementMiddleware();
+app.use("/v1/projects/*", requireGeoEntitlement);
+app.use("/v1/geo/ingest/*", requireGeoEntitlement);
 app.use("/v1/projects/*", geoContextMiddleware());
 app.use("/v1/projects/:projectId/*", geoProjectContextMiddleware());
 app.use("/v1/geo/ingest/*", geoContextMiddleware());
 
+// Liveness probe; apiObservabilityMiddleware already records the request
+// evlog-map-disable-next-line -- liveness probe
 app.get("/", (c) => {
   return c.text("ok");
 });
 
+// Liveness probe; apiObservabilityMiddleware already records the request
+// evlog-map-disable-next-line -- liveness probe
 app.get("/ping", (c) => {
   return c.text("pong");
 });
 
+// Static OAuth metadata; apiObservabilityMiddleware already records the request
+// evlog-map-disable-next-line -- static OAuth metadata
 app.get("/.well-known/oauth-protected-resource", (c) => {
   return c.json(buildProtectedResourceMetadata(new URL(c.req.url).origin));
 });
 
+// Static OAuth metadata; apiObservabilityMiddleware already records the request
+// evlog-map-disable-next-line -- static OAuth metadata
 app.get("/.well-known/oauth-authorization-server", (c) => {
   return c.json(buildAuthorizationServerMetadata());
 });
 
+// Static API catalog; apiObservabilityMiddleware already records the request
+// evlog-map-disable-next-line -- static API catalog
 app.get("/.well-known/api-catalog", (c) => {
   c.header(
     "Content-Type",
@@ -357,18 +368,28 @@ app.openAPIRegistry.registerComponent("securitySchemes", "BearerAuth", {
     "Send your API key in the Authorization header as Bearer API_KEY.",
 });
 
-app.doc31("/openapi.json", (_c) => ({
-  openapi: "3.1.1",
-  info: {
-    title: "Notra API",
-    version: "1.0.0",
-    description:
-      "OpenAPI schema for Notra content endpoints. Use GET /v1/status for public reachability. Error responses include recovery guidance.",
-  },
-  servers: IS_DEMO ? [DEMO_SERVER, PRODUCTION_SERVER] : [PRODUCTION_SERVER],
-  security: [{ BearerAuth: [] }],
-  tags: [...API_OPENAPI_TAGS],
-}));
+// Routes and schema configuration are fixed after startup.
+let openApiJson: string | undefined;
+// Static OpenAPI document; apiObservabilityMiddleware already records the request
+// evlog-map-disable-next-line -- static OpenAPI document
+app.get("/openapi.json", (c) => {
+  openApiJson ??= JSON.stringify(
+    app.getOpenAPI31Document({
+      openapi: "3.1.1",
+      info: {
+        title: "Notra API",
+        version: "1.0.0",
+        description:
+          "OpenAPI schema for Notra content endpoints. Use GET /v1/status for public reachability. Error responses include recovery guidance.",
+      },
+      servers: IS_DEMO ? [DEMO_SERVER, PRODUCTION_SERVER] : [PRODUCTION_SERVER],
+      security: [{ BearerAuth: [] }],
+      tags: [...API_OPENAPI_TAGS],
+    })
+  );
+  c.header("Content-Type", "application/json");
+  return c.body(openApiJson);
+});
 
 app.onError((error, c) => {
   if (error instanceof HTTPException) {

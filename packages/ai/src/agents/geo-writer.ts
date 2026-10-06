@@ -52,6 +52,7 @@ import type { RouteUsageSummary } from "@notra/ai/types/router";
 import { formatBrandGuidelineSourceInstructions } from "@notra/ai/utils/brand-guideline-source";
 import { updatePostRecord } from "@notra/ai/utils/post-service";
 import { summarizeRouteUsage } from "@notra/ai/utils/route-usage";
+import { logWarn } from "@notra/ai/utils/server-log";
 import { buildTelemetryOptions } from "@notra/ai/utils/tcc";
 import { toAgentTokenUsage } from "@notra/ai/utils/token-usage";
 import { db } from "@notra/db/drizzle";
@@ -645,13 +646,13 @@ export async function runGeoWriter(
           });
           humanized = update.status === "updated";
         } else {
-          console.warn(
+          logWarn(
             "[GEO writer] humanizer output failed invariants, keeping raw draft",
             { postId: primaryPost.postId }
           );
         }
       } catch (error) {
-        console.warn("[GEO writer] humanizer pass failed, keeping raw draft", {
+        logWarn("[GEO writer] humanizer pass failed, keeping raw draft", {
           postId: primaryPost.postId,
           error: describeError(error),
         });

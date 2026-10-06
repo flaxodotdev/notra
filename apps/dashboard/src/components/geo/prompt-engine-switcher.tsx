@@ -20,13 +20,12 @@ import {
   m,
   useReducedMotion,
 } from "motion/react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { EngineIcon } from "@/components/geo/engine-icon";
-import { useEngineModeLabel } from "@/lib/hooks/use-engine-mode-label";
 import type { PromptEngineSwitcherProps } from "@/types/geo";
-import { formatEngineFamily, sharedEngineAnswerMode } from "@/utils/geo-charts";
+import { formatEngineFamily } from "@/utils/geo-charts";
 import { adjacentPromptEngine } from "@/utils/geo-prompt-engines";
 
 const COUNTER_TRANSITION = {
@@ -43,10 +42,7 @@ export function PromptEngineSwitcher({
 }: PromptEngineSwitcherProps) {
   const t = useTranslations("geo.promptEngineSwitcher");
   const engines = results.map((result) => result.engine);
-  const answerMode = sharedEngineAnswerMode(engines);
-  const formatEngineWithMode = useEngineModeLabel();
-  const engineLabel = (engine: string) =>
-    answerMode ? formatEngineFamily(engine) : formatEngineWithMode(engine);
+  const engineLabel = formatEngineFamily;
   const activeIndex = engines.indexOf(active.engine);
   const reduceMotion = useReducedMotion();
   const counterTransition = reduceMotion ? INSTANT : COUNTER_TRANSITION;
@@ -56,17 +52,29 @@ export function PromptEngineSwitcher({
       <div className="flex min-w-0 flex-1 items-center">
         <span className="bg-background inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-lg border px-2.5 text-[0.8rem] font-medium">
           <EngineIcon className="size-3.5 shrink-0" engine={active.engine} />
-          <span className="truncate">
-            {formatEngineWithMode(active.engine)}
-          </span>
+          <span className="truncate">{formatEngineFamily(active.engine)}</span>
         </span>
       </div>
     );
   }
 
+  const stepButtonClassName = "h-full shrink-0 rounded-none active:scale-100";
+
   return (
     <LazyMotion features={domAnimation}>
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="bg-background dark:bg-input/30 flex h-8 w-72 max-w-full min-w-0 items-center overflow-hidden rounded-lg border">
+        <Button
+          aria-label={t("previous")}
+          className={`${stepButtonClassName} border-r-border border-r`}
+          onClick={() =>
+            onChange(adjacentPromptEngine(engines, active.engine, -1), -1)
+          }
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} />
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -76,17 +84,17 @@ export function PromptEngineSwitcher({
                 })}
                 // The menu anchors to this trigger; scaling it on press drags
                 // the popup with it.
-                className="max-w-full min-w-0 active:scale-100"
+                className="h-full min-w-0 flex-1 rounded-none active:scale-100"
                 size="sm"
-                variant="outline"
+                variant="ghost"
               />
             }
           >
             <EngineIcon className="size-3.5 shrink-0" engine={active.engine} />
-            <span className="truncate">{engineLabel(active.engine)}</span>
-            <span
-              className={`text-muted-foreground/70 items-center text-xs tabular-nums ${results.length > 1 ? "inline-flex" : "hidden"}`}
-            >
+            <span className="flex-1 truncate text-left">
+              {engineLabel(active.engine)}
+            </span>
+            <span className="text-muted-foreground/70 inline-flex items-center text-xs tabular-nums">
               <AnimatePresence initial={false} mode="popLayout">
                 <m.span
                   animate={{ opacity: 1, y: 0 }}
@@ -132,32 +140,18 @@ export function PromptEngineSwitcher({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        {results.length > 1 ? (
-          <div className="flex shrink-0 items-center gap-0.5">
-            <Button
-              aria-label={t("previous")}
-              onClick={() =>
-                onChange(adjacentPromptEngine(engines, active.engine, -1), -1)
-              }
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} />
-            </Button>
-            <Button
-              aria-label={t("next")}
-              onClick={() =>
-                onChange(adjacentPromptEngine(engines, active.engine, 1), 1)
-              }
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
-            </Button>
-          </div>
-        ) : null}
+        <Button
+          aria-label={t("next")}
+          className={`${stepButtonClassName} border-l-border border-l`}
+          onClick={() =>
+            onChange(adjacentPromptEngine(engines, active.engine, 1), 1)
+          }
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
+        </Button>
       </div>
     </LazyMotion>
   );
