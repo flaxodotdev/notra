@@ -47,7 +47,10 @@ import {
   normalizeBrandGuidelineSourceUrl,
   serializeGuidelinesResponse,
 } from "@/utils/brand-guidelines";
-import { extractPdfText } from "@/utils/extract-pdf-text";
+import {
+  extractPdfText,
+  MAX_BRAND_GUIDELINE_PDF_PAGES,
+} from "@/utils/extract-pdf-text";
 
 function getScreenshotResponseHeight(response: ContextDevScreenshotResponse) {
   return typeof response.screenshot === "object"
@@ -556,8 +559,20 @@ async function readGuidelinePdfText(
 ): Promise<string> {
   if (isContextDevConfigured()) {
     try {
-      return await parsePdfDocument({ url: publicUrl });
+      const parsed = await parsePdfDocument({ url: publicUrl });
+      if (
+        parsed.pageCount !== null &&
+        parsed.pageCount > MAX_BRAND_GUIDELINE_PDF_PAGES
+      ) {
+        throw new BrandGuidelineSourcePdfValidationError(
+          `This PDF has ${parsed.pageCount} pages. Export a shorter guideline under ${MAX_BRAND_GUIDELINE_PDF_PAGES} pages and try again.`
+        );
+      }
+      return parsed.text;
     } catch (error) {
+      if (error instanceof BrandGuidelineSourcePdfValidationError) {
+        throw error;
+      }
       console.error("Context PDF parse failed, using local extraction", {
         error,
       });

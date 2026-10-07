@@ -570,13 +570,20 @@ export function normalizeParsePdfResponse(
   return text.trim();
 }
 
+export interface ContextDevParsePdfResult {
+  text: string;
+  pageCount: number | null;
+}
+
 // PDF text extraction via context.dev Parse (pdfs-and-ocr): the file must
 // already be publicly reachable, so callers pass the uploaded file URL.
 // Throws on transport errors and empty results; callers fall back to local
-// parsing when the service is unavailable.
+// parsing when the service is unavailable. pageCount is null when the
+// response carries whole-document text only, so callers enforce their own
+// page limits when a count is available.
 export async function parsePdfDocument(
   input: ContextDevParsePdfInput
-): Promise<string> {
+): Promise<ContextDevParsePdfResult> {
   const response = await requestContextDev<ContextDevParsePdfResponse>(
     "/parse",
     {
@@ -592,7 +599,10 @@ export async function parsePdfDocument(
   if (!text) {
     throw new Error("PDF parse returned no text");
   }
-  return text;
+  return {
+    text,
+    pageCount: Array.isArray(response.pages) ? response.pages.length : null,
+  };
 }
 
 export async function retrieveStyleguide(

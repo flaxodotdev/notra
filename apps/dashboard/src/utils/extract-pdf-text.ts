@@ -5,11 +5,11 @@ export const MAX_BRAND_GUIDELINE_PDF_PAGES = 100;
 
 export const PDF_TEXT_EXTRACTION_TIMEOUT_MS = 30_000;
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error("PDF parsing timed out")),
+      () => reject(new Error(`${label} timed out`)),
       timeoutMs
     );
   });
@@ -31,7 +31,11 @@ export async function extractPdfText(data: Uint8Array) {
   const loading = getDocumentProxy(data);
   let document: Awaited<typeof loading> | undefined;
   try {
-    document = await withTimeout(loading, PDF_TEXT_EXTRACTION_TIMEOUT_MS);
+    document = await withTimeout(
+      loading,
+      PDF_TEXT_EXTRACTION_TIMEOUT_MS,
+      "PDF parsing"
+    );
   } catch (error) {
     if (error instanceof Error && error.message.endsWith("timed out")) {
       loading
@@ -59,7 +63,8 @@ export async function extractPdfText(data: Uint8Array) {
     }
     const extracted = await withTimeout(
       extractText(document, { mergePages: true }),
-      PDF_TEXT_EXTRACTION_TIMEOUT_MS
+      PDF_TEXT_EXTRACTION_TIMEOUT_MS,
+      "PDF text extraction"
     );
     return Array.isArray(extracted.text)
       ? extracted.text.join("\n")
