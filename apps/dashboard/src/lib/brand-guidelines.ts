@@ -664,43 +664,60 @@ export async function attachBrandGuidelineSourcePdf(input: {
   // one advisory lock so a concurrent replace cannot slip between the
   // re-read and the cleanup and orphan the loser's file. R2 deletes stay
   // outside the lock.
-  const outcome = await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`brand-guideline-pdf:${input.brandSettingsId}`}))`
-    );
-    const existing = await tx.query.brandGuidelines.findFirst({
-      where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
-      columns: { id: true, sourcePdfStorageKey: true },
+  let outcome:
+    | { ok: false; error: unknown }
+    | { ok: true; replacedKey: string | null; won: boolean };
+  try {
+    outcome = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`brand-guideline-pdf:${input.brandSettingsId}`}))`
+      );
+      const existing = await tx.query.brandGuidelines.findFirst({
+        where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
+        columns: { id: true, sourcePdfStorageKey: true },
+      });
+      try {
+        await tx
+          .insert(brandGuidelines)
+          .values({
+            id: existing?.id ?? crypto.randomUUID(),
+            brandSettingsId: input.brandSettingsId,
+            createdAt: now,
+            // PDF-only rows have never generated: keep `queued` so the UI
+            // shows the "No guidelines yet / Generate" empty state.
+            status: "queued",
+            ...values,
+          })
+          .onConflictDoUpdate({
+            target: brandGuidelines.brandSettingsId,
+            set: values,
+          });
+      } catch (error) {
+        return { ok: false as const, error };
+      }
+      const current = await tx.query.brandGuidelines.findFirst({
+        where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
+        columns: { sourcePdfStorageKey: true },
+      });
+      return {
+        ok: true as const,
+        replacedKey: existing?.sourcePdfStorageKey ?? null,
+        won: current?.sourcePdfStorageKey === input.key,
+      };
     });
-    try {
-      await tx
-        .insert(brandGuidelines)
-        .values({
-          id: existing?.id ?? crypto.randomUUID(),
-          brandSettingsId: input.brandSettingsId,
-          createdAt: now,
-          // PDF-only rows have never generated: keep `queued` so the UI shows
-          // the "No guidelines yet / Generate" empty state instead of `ready`.
-          status: "queued",
-          ...values,
-        })
-        .onConflictDoUpdate({
-          target: brandGuidelines.brandSettingsId,
-          set: values,
+  } catch (error) {
+    // The row state is unknown here (the upsert may have committed before
+    // the failure), so only delete when nothing references the key.
+    await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
+      (cleanupError) => {
+        console.error("Failed to delete guideline PDF after DB failure", {
+          key: input.key,
+          error: cleanupError,
         });
-    } catch (error) {
-      return { ok: false as const, error };
-    }
-    const current = await tx.query.brandGuidelines.findFirst({
-      where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
-      columns: { sourcePdfStorageKey: true },
-    });
-    return {
-      ok: true as const,
-      replacedKey: existing?.sourcePdfStorageKey ?? null,
-      won: current?.sourcePdfStorageKey === input.key,
-    };
-  });
+      }
+    );
+    throw error;
+  }
 
   if (!outcome.ok) {
     await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
