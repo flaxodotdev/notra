@@ -119,18 +119,23 @@ export function createGetBrandIdentityTool(
         return { brandIdentity: null, found: false };
       }
 
-      const guideline = await db.query.brandGuidelines.findFirst({
-        where: eq(brandGuidelines.brandSettingsId, identity.id),
-        columns: { sourcePdfText: true },
-      });
-      const guidelineDocument = formatBrandGuidelineSourceInstructions(
-        guideline?.sourcePdfText
-      );
+      let guidelineDocument: string | null = null;
+      try {
+        const guideline = await db.query.brandGuidelines.findFirst({
+          where: eq(brandGuidelines.brandSettingsId, identity.id),
+          columns: { sourcePdfText: true },
+        });
+        guidelineDocument =
+          formatBrandGuidelineSourceInstructions(guideline?.sourcePdfText) ||
+          null;
+      } catch {
+        guidelineDocument = null;
+      }
 
       return {
         brandIdentity: {
           ...serializeBrandIdentity(identity),
-          guidelineDocument: guidelineDocument || null,
+          guidelineDocument,
         },
         found: true,
       };

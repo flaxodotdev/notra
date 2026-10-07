@@ -15,7 +15,7 @@ import {
 } from "@notra/schemas/constants/dashboard/upload";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useFormatter } from "use-intl";
+import { useFormatter, useTranslations } from "use-intl";
 
 import { Button, buttonVariants } from "@/components/button";
 import {
@@ -28,8 +28,6 @@ import { cn } from "@/lib/utils";
 import type { GuidelinesPanelProps } from "@/types/brand-identity";
 import type { BrandGuideline } from "@/types/hooks/brand-guidelines";
 
-const PDF_SIZE_LABEL = `PDF, max ${MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024}MB`;
-
 export function GuidelinesSourcePdfSection({
   guideline,
   organizationId,
@@ -37,6 +35,8 @@ export function GuidelinesSourcePdfSection({
 }: GuidelinesPanelProps & { guideline: BrandGuideline | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const format = useFormatter();
+  const tPdf = useTranslations("brand.guidelines.pdf");
+  const maxMb = MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024;
   const [isUploading, setIsUploading] = useState(false);
   const attach = useAttachGuidelineSourcePdf(organizationId, voiceId);
   const remove = useRemoveGuidelineSourcePdf(organizationId, voiceId);
@@ -53,17 +53,15 @@ export function GuidelinesSourcePdfSection({
       return;
     }
     if (!isPdfFile(file)) {
-      toast.error("Upload a PDF file");
+      toast.error(tPdf("notPdf"));
       return;
     }
     if (file.size > MAX_BRAND_GUIDELINE_PDF_FILE_SIZE) {
-      toast.error(
-        `Brand guideline PDF must be less than ${MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024}MB`
-      );
+      toast.error(tPdf("tooLarge", { maxMb }));
       return;
     }
     if (file.name.trim().length === 0 || file.name.length > 200) {
-      toast.error("PDF filename must be between 1 and 200 characters");
+      toast.error(tPdf("badFilename"));
       return;
     }
 
@@ -80,7 +78,7 @@ export function GuidelinesSourcePdfSection({
         key: uploaded.key,
       });
       uploadedKey = null;
-      toast.success("Brand guideline PDF saved");
+      toast.success(tPdf("saved"));
     } catch (error) {
       // Best-effort discard of the orphaned upload on attach failure.
       const orphanKey =
@@ -94,9 +92,7 @@ export function GuidelinesSourcePdfSection({
       if (orphanKey) {
         discard.mutateAsync({ key: orphanKey }).catch(() => undefined);
       }
-      toast.error(
-        error instanceof Error ? error.message : "Failed to save the PDF"
-      );
+      toast.error(error instanceof Error ? error.message : tPdf("saveFailed"));
     } finally {
       setIsUploading(false);
       if (inputRef.current) {
@@ -112,7 +108,7 @@ export function GuidelinesSourcePdfSection({
           className="text-muted-foreground size-4"
           icon={File01Icon}
         />
-        <h2 className="text-sm font-semibold">Guideline PDF</h2>
+        <h2 className="text-sm font-semibold">{tPdf("title")}</h2>
         <span className="text-muted-foreground text-xs tabular-nums">
           {filename ? 1 : 0}
         </span>
@@ -120,7 +116,7 @@ export function GuidelinesSourcePdfSection({
 
       <input
         accept={BRAND_GUIDELINE_PDF_MIME_TYPE}
-        aria-label="Upload brand guideline PDF"
+        aria-label={tPdf("uploadLabel")}
         className="sr-only"
         onChange={(event) => {
           onFile(event.target.files?.[0]).catch(() => undefined);
@@ -149,13 +145,13 @@ export function GuidelinesSourcePdfSection({
                     ? format.relativeTime(
                         new Date(guideline.sourcePdfUploadedAt)
                       )
-                    : "PDF"}
+                    : tPdf("untitled")}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 {guideline?.sourcePdfUrl ? (
                   <a
-                    aria-label={`Open ${filename}`}
+                    aria-label={tPdf("open", { filename: filename ?? "" })}
                     className={cn(
                       buttonVariants({ size: "icon-sm", variant: "ghost" })
                     )}
@@ -170,7 +166,7 @@ export function GuidelinesSourcePdfSection({
                   </a>
                 ) : null}
                 <Button
-                  aria-label="Replace guideline PDF"
+                  aria-label={tPdf("replace")}
                   disabled={isBusy}
                   onClick={() => inputRef.current?.click()}
                   size="icon-sm"
@@ -179,7 +175,7 @@ export function GuidelinesSourcePdfSection({
                   <HugeiconsIcon className="size-3.5" icon={Edit02Icon} />
                 </Button>
                 <Button
-                  aria-label={`Remove ${filename}`}
+                  aria-label={tPdf("remove", { filename: filename ?? "" })}
                   disabled={isBusy}
                   onClick={() => {
                     remove.mutate(undefined, {
@@ -187,11 +183,11 @@ export function GuidelinesSourcePdfSection({
                         toast.error(
                           error instanceof Error
                             ? error.message
-                            : "Failed to remove the PDF"
+                            : tPdf("removeFailed")
                         );
                       },
                       onSuccess: () => {
-                        toast.success("Brand guideline PDF removed");
+                        toast.success(tPdf("removed"));
                       },
                     });
                   }}
@@ -226,10 +222,10 @@ export function GuidelinesSourcePdfSection({
             </div>
             <div className="w-full border-t border-dashed p-3">
               <p className="text-muted-foreground truncate text-sm font-medium">
-                Guideline PDF
+                {tPdf("title")}
               </p>
               <p className="text-muted-foreground/70 truncate text-xs">
-                {PDF_SIZE_LABEL}
+                {tPdf("sizeHint", { maxMb })}
               </p>
             </div>
           </button>

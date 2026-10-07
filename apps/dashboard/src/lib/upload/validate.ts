@@ -28,19 +28,6 @@ const maxSizeByType = {
   chat: MAX_CHAT_FILE_SIZE,
 };
 
-function assertAllowedGeneralUploadType(fileType: string, label: string) {
-  if (fileType === SVG_MIME_TYPE) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "SVG uploads must use the dedicated SVG upload endpoint",
-    });
-  }
-  if (!ALLOWED_MIME_TYPES.some((mimeType) => mimeType === fileType)) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: `File type ${fileType} is not allowed for ${label}. Allowed types: ${ALLOWED_MIME_TYPES.join(", ")}`,
-    });
-  }
-}
-
 export async function validateUpload({
   type,
   fileType,
@@ -59,6 +46,11 @@ export async function validateUpload({
       }),
     });
   }
+  const tErrors = await getTranslations("errors.upload");
+  const notAllowed = () =>
+    new ORPCError("BAD_REQUEST", {
+      message: tErrors("fileTypeNotAllowed"),
+    });
   switch (type) {
     case "avatar":
     case "logo":
@@ -67,32 +59,29 @@ export async function validateUpload({
           fileType as (typeof ALLOWED_RASTER_MIME_TYPES)[number]
         )
       ) {
-        throw new ORPCError("BAD_REQUEST", {
-          message: `File type ${fileType} is not allowed for ${type}. Allowed raster types: ${ALLOWED_RASTER_MIME_TYPES.join(", ")}`,
-        });
+        throw notAllowed();
       }
       break;
     case "brand_asset":
-      assertAllowedGeneralUploadType(fileType, "brand assets");
+    case "content":
+      if (
+        fileType === SVG_MIME_TYPE ||
+        !ALLOWED_MIME_TYPES.some((mimeType) => mimeType === fileType)
+      ) {
+        throw notAllowed();
+      }
       break;
     case "brand_guideline_pdf":
       if (fileType !== BRAND_GUIDELINE_PDF_MIME_TYPE) {
-        throw new ORPCError("BAD_REQUEST", {
-          message: "Brand guideline uploads must be PDF files.",
-        });
+        throw notAllowed();
       }
-      break;
-    case "content":
-      assertAllowedGeneralUploadType(fileType, "content");
       break;
     case "chat":
       if (!ALLOWED_CHAT_MIME_TYPES.includes(fileType as AllowedChatMimeType)) {
-        throw new ORPCError("BAD_REQUEST", {
-          message: `File type ${fileType} is not allowed in chat. Allowed types: ${ALLOWED_CHAT_MIME_TYPES.join(", ")}`,
-        });
+        throw notAllowed();
       }
       break;
     default:
-      throw new ORPCError("BAD_REQUEST", { message: "Invalid upload type." });
+      throw notAllowed();
   }
 }

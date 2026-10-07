@@ -17,6 +17,12 @@ describe("normalizeParsePdfResponse", () => {
     expect(normalizeParsePdfResponse({ text: "plain" })).toBe("plain");
   });
 
+  test("keeps page text when markdown is empty", () => {
+    expect(
+      normalizeParsePdfResponse({ pages: [{ markdown: "", text: "kept" }] })
+    ).toBe("kept");
+  });
+
   test("returns empty string for empty results", () => {
     expect(normalizeParsePdfResponse(null)).toBe("");
     expect(normalizeParsePdfResponse({})).toBe("");

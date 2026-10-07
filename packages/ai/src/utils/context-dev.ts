@@ -563,7 +563,7 @@ export function normalizeParsePdfResponse(
   }
   const pages = Array.isArray(response.pages) ? response.pages : [];
   const pageText = pages
-    .map((page) => page?.markdown ?? page?.text ?? "")
+    .map((page) => page?.markdown || page?.text || "")
     .filter((text) => text.length > 0)
     .join("\n");
   const text = pageText || response.markdown || response.text || "";

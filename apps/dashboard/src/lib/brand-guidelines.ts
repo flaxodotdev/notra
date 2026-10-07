@@ -21,7 +21,7 @@ import {
   brandGuidelineTokens,
 } from "@notra/db/schema";
 import { MAX_BRAND_GUIDELINE_PDF_FILE_SIZE } from "@notra/schemas/constants/dashboard/upload";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import {
   BRAND_GUIDELINE_DESKTOP_SCREENSHOT_CONFIG,
@@ -650,10 +650,6 @@ export async function attachBrandGuidelineSourcePdf(input: {
     );
   }
 
-  const existing = await db.query.brandGuidelines.findFirst({
-    where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
-    columns: { id: true, sourcePdfStorageKey: true },
-  });
   const now = new Date();
   const values = {
     sourcePdfFilename: input.filename.trim(),
@@ -664,24 +660,49 @@ export async function attachBrandGuidelineSourcePdf(input: {
     updatedAt: now,
   };
 
-  try {
-    // Atomic upsert so concurrent replaces cannot orphan each other's files.
-    await db
-      .insert(brandGuidelines)
-      .values({
-        id: existing?.id ?? crypto.randomUUID(),
-        brandSettingsId: input.brandSettingsId,
-        createdAt: now,
-        // PDF-only rows have never generated: keep `queued` so the UI shows
-        // the "No guidelines yet / Generate" empty state instead of `ready`.
-        status: "queued",
-        ...values,
-      })
-      .onConflictDoUpdate({
-        target: brandGuidelines.brandSettingsId,
-        set: values,
-      });
-  } catch (error) {
+  // Serialize replaces per voice: read, upsert, and winner check run under
+  // one advisory lock so a concurrent replace cannot slip between the
+  // re-read and the cleanup and orphan the loser's file. R2 deletes stay
+  // outside the lock.
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`brand-guideline-pdf:${input.brandSettingsId}`}))`
+    );
+    const existing = await tx.query.brandGuidelines.findFirst({
+      where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
+      columns: { id: true, sourcePdfStorageKey: true },
+    });
+    try {
+      await tx
+        .insert(brandGuidelines)
+        .values({
+          id: existing?.id ?? crypto.randomUUID(),
+          brandSettingsId: input.brandSettingsId,
+          createdAt: now,
+          // PDF-only rows have never generated: keep `queued` so the UI shows
+          // the "No guidelines yet / Generate" empty state instead of `ready`.
+          status: "queued",
+          ...values,
+        })
+        .onConflictDoUpdate({
+          target: brandGuidelines.brandSettingsId,
+          set: values,
+        });
+    } catch (error) {
+      return { ok: false as const, error };
+    }
+    const current = await tx.query.brandGuidelines.findFirst({
+      where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
+      columns: { sourcePdfStorageKey: true },
+    });
+    return {
+      ok: true as const,
+      replacedKey: existing?.sourcePdfStorageKey ?? null,
+      won: current?.sourcePdfStorageKey === input.key,
+    };
+  });
+
+  if (!outcome.ok) {
     await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
       (cleanupError) => {
         console.error("Failed to delete guideline PDF after DB failure", {
@@ -690,15 +711,10 @@ export async function attachBrandGuidelineSourcePdf(input: {
         });
       }
     );
-    throw error;
+    throw outcome.error;
   }
 
-  // If we lost a concurrent race, clean up our own file.
-  const current = await db.query.brandGuidelines.findFirst({
-    where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
-    columns: { sourcePdfStorageKey: true },
-  });
-  if (current?.sourcePdfStorageKey !== input.key) {
+  if (!outcome.won) {
     await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
       (cleanupError) => {
         console.error("Failed to delete superseded guideline PDF", {
@@ -710,18 +726,15 @@ export async function attachBrandGuidelineSourcePdf(input: {
     return getBrandGuidelines(input.brandSettingsId);
   }
 
-  if (
-    existing?.sourcePdfStorageKey &&
-    existing.sourcePdfStorageKey !== input.key
-  ) {
-    await deleteStoredGuidelinePdfIfUnreferenced(
-      existing.sourcePdfStorageKey
-    ).catch((cleanupError) => {
-      console.error("Failed to delete replaced guideline PDF", {
-        key: existing.sourcePdfStorageKey,
-        error: cleanupError,
-      });
-    });
+  if (outcome.replacedKey && outcome.replacedKey !== input.key) {
+    await deleteStoredGuidelinePdfIfUnreferenced(outcome.replacedKey).catch(
+      (cleanupError) => {
+        console.error("Failed to delete replaced guideline PDF", {
+          key: outcome.replacedKey,
+          error: cleanupError,
+        });
+      }
+    );
   }
 
   return getBrandGuidelines(input.brandSettingsId);
