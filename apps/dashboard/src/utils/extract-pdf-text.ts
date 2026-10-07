@@ -5,11 +5,11 @@ export const MAX_BRAND_GUIDELINE_PDF_PAGES = 100;
 
 export const PDF_TEXT_EXTRACTION_TIMEOUT_MS = 30_000;
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`${label} timed out`)),
+      () => reject(new Error("PDF parsing timed out")),
       timeoutMs
     );
   });
@@ -20,13 +20,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   });
 }
 
-// Note: withTimeout is Promise.race and does not abort the underlying pdfjs
-// work; on timeout the parse/extract continues in the background. The timeout
-// bounds how long we wait, not peak CPU. Callers must enforce
-// MAX_BRAND_GUIDELINE_PDF_FILE_SIZE before calling (attach does), and this
-// runs synchronously in the oRPC request: a 20MB/100-page PDF can burn up to
-// ~60s of server CPU. Follow-up: move extraction to a background job/workflow
-// step with a route max-duration; see attachBrandGuidelineSourcePdf.
+// Local fallback for PDF text extraction when the Context parse service is
+// unavailable. Callers must enforce MAX_BRAND_GUIDELINE_PDF_FILE_SIZE first.
 export async function extractPdfText(data: Uint8Array) {
   if (data.byteLength > MAX_BRAND_GUIDELINE_PDF_FILE_SIZE) {
     throw new Error(
@@ -36,15 +31,9 @@ export async function extractPdfText(data: Uint8Array) {
   const loading = getDocumentProxy(data);
   let document: Awaited<typeof loading> | undefined;
   try {
-    document = await withTimeout(
-      loading,
-      PDF_TEXT_EXTRACTION_TIMEOUT_MS,
-      "PDF parsing"
-    );
+    document = await withTimeout(loading, PDF_TEXT_EXTRACTION_TIMEOUT_MS);
   } catch (error) {
-    const timedOut =
-      error instanceof Error && error.message.endsWith("timed out");
-    if (timedOut) {
+    if (error instanceof Error && error.message.endsWith("timed out")) {
       loading
         .then((lateDocument) => {
           const destroy = (lateDocument as { destroy?: () => unknown }).destroy;
@@ -70,15 +59,12 @@ export async function extractPdfText(data: Uint8Array) {
     }
     const extracted = await withTimeout(
       extractText(document, { mergePages: true }),
-      PDF_TEXT_EXTRACTION_TIMEOUT_MS,
-      "PDF text extraction"
+      PDF_TEXT_EXTRACTION_TIMEOUT_MS
     );
     return Array.isArray(extracted.text)
       ? extracted.text.join("\n")
       : extracted.text;
   } finally {
-    // Extraction may still be in flight after a timeout; a rejecting destroy()
-    // must not mask the original timeout error.
     try {
       await (document as { destroy?: () => unknown }).destroy?.();
     } catch (error) {

@@ -82,10 +82,7 @@ export function GuidelinesSourcePdfSection({
       uploadedKey = null;
       toast.success("Brand guideline PDF saved");
     } catch (error) {
-      // PUT-then-attach leaves an unreferenced R2 object when attach fails.
-      // Best-effort discard so failures don't accumulate orphans. Tab-close
-      // between PUT and attach is still possible: consider an R2 lifecycle
-      // prefix rule on organization/*/brand-guidelines/ as a backstop.
+      // Best-effort discard of the orphaned upload on attach failure.
       const orphanKey =
         uploadedKey ??
         (typeof error === "object" &&

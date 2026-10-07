@@ -6,6 +6,8 @@ import {
 } from "@notra/ai/utils/brand-guideline-source";
 import {
   captureScreenshot,
+  isContextDevConfigured,
+  parsePdfDocument,
   retrieveBrand,
   retrieveStyleguide,
 } from "@notra/ai/utils/context-dev";
@@ -548,6 +550,22 @@ async function deleteStoredGuidelinePdfIfUnreferenced(key: string | null) {
   await deleteStoredGuidelinePdf(key);
 }
 
+async function readGuidelinePdfText(
+  bytes: Uint8Array,
+  publicUrl: string
+): Promise<string> {
+  if (isContextDevConfigured()) {
+    try {
+      return await parsePdfDocument({ url: publicUrl });
+    } catch (error) {
+      console.error("Context PDF parse failed, using local extraction", {
+        error,
+      });
+    }
+  }
+  return extractPdfText(bytes);
+}
+
 export async function attachBrandGuidelineSourcePdf(input: {
   brandSettingsId: string;
   filename: string;
@@ -585,9 +603,12 @@ export async function attachBrandGuidelineSourcePdf(input: {
       `Brand guideline PDF must be less than ${MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024}MB`
     );
   }
+  const sourcePdfUrl = `${publicUrl.replace(BRAND_GUIDELINE_TRAILING_SLASH_REGEX, "")}/${input.key}`;
   let text = "";
   try {
-    text = limitBrandGuidelineSourceText(await extractPdfText(bytes));
+    text = limitBrandGuidelineSourceText(
+      await readGuidelinePdfText(bytes, sourcePdfUrl)
+    );
   } catch (error) {
     await deleteStoredGuidelinePdf(input.key).catch((cleanupError) => {
       console.error("Failed to delete guideline PDF after extraction failure", {
@@ -619,7 +640,6 @@ export async function attachBrandGuidelineSourcePdf(input: {
     columns: { id: true, sourcePdfStorageKey: true },
   });
   const now = new Date();
-  const sourcePdfUrl = `${publicUrl.replace(BRAND_GUIDELINE_TRAILING_SLASH_REGEX, "")}/${input.key}`;
   const values = {
     sourcePdfFilename: input.filename.trim(),
     sourcePdfStorageKey: input.key,
@@ -630,10 +650,7 @@ export async function attachBrandGuidelineSourcePdf(input: {
   };
 
   try {
-    // Single atomic upsert on the unique brandSettingsId index. The previous
-    // read-then-insert/update allowed two concurrent replaces to both read the
-    // same old key: the loser would leave its new R2 object orphaned. With
-    // onConflictDoUpdate there is exactly one winner in the DB.
+    // Atomic upsert so concurrent replaces cannot orphan each other's files.
     await db
       .insert(brandGuidelines)
       .values({
@@ -661,10 +678,7 @@ export async function attachBrandGuidelineSourcePdf(input: {
     throw error;
   }
 
-  // Re-read the winner: if we lost a concurrent race, clean up our own file.
-  // The winner's own cleanup below handles the previous `old` key, and only
-  // deletes it when it is no longer referenced, so concurrent winners cannot
-  // orphan each other.
+  // If we lost a concurrent race, clean up our own file.
   const current = await db.query.brandGuidelines.findFirst({
     where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
     columns: { sourcePdfStorageKey: true },
@@ -685,8 +699,6 @@ export async function attachBrandGuidelineSourcePdf(input: {
     existing?.sourcePdfStorageKey &&
     existing.sourcePdfStorageKey !== input.key
   ) {
-    // Another voice may share the same key via cross-voice reuse: only delete
-    // when no row still references it.
     await deleteStoredGuidelinePdfIfUnreferenced(
       existing.sourcePdfStorageKey
     ).catch((cleanupError) => {
@@ -727,9 +739,7 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
   if (cleared.length === 0) {
     return getBrandGuidelines(brandSettingsId);
   }
-  // DB is already cleared: a flaky R2 delete must not surface as a failed
-  // removal. Log and return success like the attach-path cleanups. Skip the
-  // delete when another voice still references the same key.
+  // DB is already cleared: never fail the removal on a flaky R2 delete.
   await deleteStoredGuidelinePdfIfUnreferenced(
     existing.sourcePdfStorageKey
   ).catch((error) => {
@@ -745,10 +755,7 @@ export async function discardBrandGuidelineSourcePdf(input: {
   key: string;
   organizationId: string;
 }) {
-  // Deletes an uploaded PDF that was never attached (e.g. attach failed or
-  // the tab closed before attach ran). Still validate the prefix so callers
-  // cannot delete arbitrary keys, and skip the delete when any voice
-  // references the key (cross-voice reuse or already-attached file).
+  // Deletes an uploaded PDF that was never attached.
   assertGuidelinePdfKey(input.organizationId, input.key);
   await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch((error) => {
     console.error("Failed to discard unattached guideline PDF", {

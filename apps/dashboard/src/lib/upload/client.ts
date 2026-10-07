@@ -16,12 +16,8 @@ import type {
 } from "@/types/upload/client";
 
 function resolveUploadMimeType(file: File, type: UploadType): string {
-  // Some browsers (notably Chrome on certain OS/file-system combinations)
-  // report an empty MIME type for PDFs. The presign schema requires
-  // `application/pdf` for brand guideline PDFs, so normalize here to match
-  // the client-side `isPdfFile` extension check. Without this, empty-type
-  // PDFs always fail presign validation and the PUT `Content-Type` would
-  // mismatch the SigV4 `ContentType`.
+  // Some browsers report an empty MIME type for PDFs; normalize so presign
+  // validation and the PUT Content-Type match the extension check.
   if (
     type === "brand_guideline_pdf" &&
     file.type === "" &&
@@ -45,9 +41,6 @@ async function getPresignedUrl(
     });
   }
   return dashboardOrpc.upload.createPresignedUpload.call({
-    // The presign input is a discriminated union; after narrowing out
-    // `brand_guideline_pdf` (which requires a literal MIME type), the
-    // remaining variants accept a generic MIME string.
     type: type as Exclude<UploadType, "brand_guideline_pdf">,
     fileType,
     fileSize: file.size,
