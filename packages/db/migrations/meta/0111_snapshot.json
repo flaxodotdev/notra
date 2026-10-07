@@ -1,6 +1,6 @@
 {
-  "id": "61938d55-5388-45c6-8130-83760150993e",
-  "prevId": "6747c3b9-f2a0-41b9-9858-7a2105ffc1c6",
+  "id": "96aef2c1-cd28-4c65-aa3c-b86c199858f2",
+  "prevId": "d906f3d2-2e30-4de9-812f-bfbdf9692d74",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2889,36 +2889,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "source_pdf_storage_key": {
-          "name": "source_pdf_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_uploaded_at": {
-          "name": "source_pdf_uploaded_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_filename": {
-          "name": "source_pdf_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_text": {
-          "name": "source_pdf_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_url": {
-          "name": "source_pdf_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -10947,7 +10917,7 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
         },
         "daily_summary": {
           "name": "daily_summary",
@@ -11458,6 +11428,12 @@
           "notNull": true,
           "default": "'draft'"
         },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp",
@@ -11603,6 +11579,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "posts_org_published_at_idx": {
+          "name": "posts_org_published_at_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "published_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"posts\".\"published_at\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -11884,6 +11882,272 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.scheduled_publications": {
+      "name": "scheduled_publications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "post_id": {
+          "name": "post_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scheduled_at": {
+          "name": "scheduled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination": {
+          "name": "destination",
+          "type": "scheduled_publication_destination",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_config": {
+          "name": "destination_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "scheduled_publication_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'scheduled'"
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "external_attempt_at": {
+          "name": "external_attempt_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_requested_at": {
+          "name": "cancel_requested_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempt_outcome": {
+          "name": "attempt_outcome",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "scheduled_publications_due_idx": {
+          "name": "scheduled_publications_due_idx",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"scheduled_publications\".\"status\" IN ('scheduled', 'publishing')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "scheduled_publications_org_scheduled_at_idx": {
+          "name": "scheduled_publications_org_scheduled_at_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scheduled_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "scheduled_publications_post_idx": {
+          "name": "scheduled_publications_post_idx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "scheduled_publications_active_post_destination_uidx": {
+          "name": "scheduled_publications_active_post_destination_uidx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "destination",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"scheduled_publications\".\"status\" IN ('scheduled', 'publishing')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "scheduled_publications_organization_id_organizations_id_fk": {
+          "name": "scheduled_publications_organization_id_organizations_id_fk",
+          "tableFrom": "scheduled_publications",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "scheduled_publications_post_id_posts_id_fk": {
+          "name": "scheduled_publications_post_id_posts_id_fk",
+          "tableFrom": "scheduled_publications",
+          "tableTo": "posts",
+          "columnsFrom": [
+            "post_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "scheduled_publications_created_by_user_id_users_id_fk": {
+          "name": "scheduled_publications_created_by_user_id_users_id_fk",
+          "tableFrom": "scheduled_publications",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -12786,6 +13050,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "marketing_opt_in_at": {
+          "name": "marketing_opt_in_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_opt_in_evidence": {
+          "name": "marketing_opt_in_evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_opt_in_policy_version": {
+          "name": "marketing_opt_in_policy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -13579,6 +13861,26 @@
         "linkedin_post",
         "blog_post",
         "custom"
+      ]
+    },
+    "public.scheduled_publication_destination": {
+      "name": "scheduled_publication_destination",
+      "schema": "public",
+      "values": [
+        "notra",
+        "github",
+        "social"
+      ]
+    },
+    "public.scheduled_publication_status": {
+      "name": "scheduled_publication_status",
+      "schema": "public",
+      "values": [
+        "scheduled",
+        "publishing",
+        "published",
+        "failed",
+        "canceled"
       ]
     }
   },
