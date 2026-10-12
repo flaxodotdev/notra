@@ -25,11 +25,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { withLocaleTooltip, withLocaleValueAxis } from "@/utils/chart-locale";
+import { buildZeroBaselineAxisLine } from "@/utils/chart-zero-baseline";
 import { EChartsPlotFrame } from "@/components/charts/echarts-plot-frame";
 import {
   Brush,
@@ -797,7 +799,11 @@ function buildMainAxes(ctx: OptionBuildContext): {
     nameLocation: "middle",
     nameGap: 30,
     nameTextStyle: { color: axisLabelColor, fontSize: 10 },
-    axisLine: { show: false },
+    axisLine: buildZeroBaselineAxisLine(
+      ctx.data,
+      isLoading ? [] : ctx.lines.map((line) => line.dataKey),
+      axisLabelColor
+    ),
     // Tick DOTS: a near-zero-length tick whose round caps form a true circle,
     // in the gridline gray (flattened opaque so the caps don't stack).
     axisTick: {
@@ -1596,17 +1602,19 @@ export function EChartsLineChart<TData extends Record<string, unknown>>({
   );
 
   // Refresh the handlers' snapshot of the latest callbacks/flags every render.
-  live.handlers = {
-    onBrushChange: brushSlot.onChange,
-    onSelectionChange,
-    clickableKeys,
-    selectedDataKey,
-    brushFormatLabel: brushSlot.formatLabel,
-    seriesKeys,
-    enableHoverHighlight,
-    enableHoverReveal,
-  };
-  live.dataLength = data.length;
+  useLayoutEffect(() => {
+    live.handlers = {
+      onBrushChange: brushSlot.onChange,
+      onSelectionChange,
+      clickableKeys,
+      selectedDataKey,
+      brushFormatLabel: brushSlot.formatLabel,
+      seriesKeys,
+      enableHoverHighlight,
+      enableHoverReveal,
+    };
+    live.dataLength = data.length;
+  });
 
   const toggleSelection = useCallback(
     (key: string) => {
@@ -1627,11 +1635,10 @@ export function EChartsLineChart<TData extends Record<string, unknown>>({
         live.hoveredKey = null;
         setHoveredDataKey(null);
       }
-      setSelectedDataKey((prev) => {
-        const next = prev === key ? null : key;
-        onSelectionChange?.(next);
-        return next;
-      });
+      const next = live.handlers.selectedDataKey === key ? null : key;
+      live.handlers.selectedDataKey = next;
+      setSelectedDataKey(next);
+      onSelectionChange?.(next);
     },
     [live, onSelectionChange]
   );

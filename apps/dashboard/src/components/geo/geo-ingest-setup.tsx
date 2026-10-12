@@ -1,13 +1,22 @@
 "use client";
 
 import {
+  GEO_DRAIN_PROVIDERS,
   GEO_INGEST_DEFAULT_FRAMEWORK,
+  GEO_INGEST_DEFAULT_METHOD,
   GEO_INGEST_DEFAULT_PACKAGE_MANAGER,
   GEO_INGEST_FRAMEWORK_OPTIONS,
+  GEO_INGEST_METHODS,
   GEO_INGEST_PACKAGE_MANAGER_OPTIONS,
   GEO_INGEST_TOKEN_ENV,
 } from "@notra/geo-core/constants/geo";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@notra/ui/components/ui/tabs";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 
@@ -17,6 +26,7 @@ import {
   CodeSnippetTabs,
   CopyPromptButton,
 } from "@/components/geo/code-snippet";
+import { GeoIngestDrainSetup } from "@/components/geo/geo-ingest-drain-setup";
 import { GeoPackageManagerIcon } from "@/components/geo/package-manager-icon";
 import { TRAFFIC_INSTALL_COPY_KINDS } from "@/constants/geo-analytics";
 import { trackEvent } from "@/lib/analytics/posthog-client";
@@ -28,6 +38,7 @@ import {
   geoIngestInstallCommand,
   geoIngestSnippet,
   isGeoIngestFramework,
+  isGeoIngestMethod,
   isGeoIngestPackageManager,
 } from "@/utils/geo-ingest";
 
@@ -41,6 +52,7 @@ const PACKAGE_MANAGER_TABS = GEO_INGEST_PACKAGE_MANAGER_OPTIONS.map(
 export function GeoIngestSetup({ setup, className }: GeoIngestSetupPanelProps) {
   const t = useTranslations("geo.geoIngestSetup");
   const tCommon = useTranslations("common");
+  const [method, setMethod] = useState(GEO_INGEST_DEFAULT_METHOD);
   const [framework, setFramework] = useState(GEO_INGEST_DEFAULT_FRAMEWORK);
   const [packageManager, setPackageManager] = useState(
     GEO_INGEST_DEFAULT_PACKAGE_MANAGER
@@ -71,76 +83,112 @@ export function GeoIngestSetup({ setup, className }: GeoIngestSetupPanelProps) {
     trackEvent(POSTHOG_EVENTS.TRAFFIC_INSTALL_SNIPPET_COPIED, {
       framework,
       package_manager: packageManager,
+      method,
       kind,
     });
   };
 
   return (
-    <div className={cn("space-y-5", className)}>
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium">
-          {tCommon("labels.installThePackage")}
-        </h3>
-        <CodeSnippet
-          code={installCommand}
-          onCopy={() => trackCopied(TRAFFIC_INSTALL_COPY_KINDS.INSTALL_COMMAND)}
-          tabs={
-            <CodeSnippetTabs
-              label={tCommon("labels.packageManager")}
-              onValueChange={(value) => {
-                if (isGeoIngestPackageManager(value)) {
-                  setPackageManager(value);
-                }
-              }}
-              options={PACKAGE_MANAGER_TABS}
-              value={packageManager}
-            />
+    <div className={className}>
+      <Tabs
+        onValueChange={(value) => {
+          if (isGeoIngestMethod(value)) {
+            setMethod(value);
           }
-        />
-      </section>
-      {token ? (
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium">{t("tokenTitle")}</h3>
-          <p className="text-muted-foreground text-xs">
-            {t("tokenDescription", { env: GEO_INGEST_TOKEN_ENV })}
-          </p>
-          <ApiKeyRevealField value={token} />
-        </section>
-      ) : null}
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium">{t("proxyTitle")}</h3>
-        <CodeSnippet
-          code={snippet}
-          filename={file}
-          onCopy={() => trackCopied(TRAFFIC_INSTALL_COPY_KINDS.PROXY_SNIPPET)}
-          tabs={
-            <CodeSnippetTabs
-              label={t("framework")}
-              onValueChange={(value) => {
-                if (isGeoIngestFramework(value)) {
-                  setFramework(value);
-                }
-              }}
-              options={GEO_INGEST_FRAMEWORK_OPTIONS}
-              value={framework}
+        }}
+        value={method}
+      >
+        <TabsList aria-label={t("method")} className="w-full">
+          {GEO_INGEST_METHODS.map((option) => (
+            <TabsTrigger key={option} value={option}>
+              {t(`methods.${option}`)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {GEO_DRAIN_PROVIDERS.map((provider) => (
+          <TabsContent className="mt-3" key={provider} value={provider}>
+            <GeoIngestDrainSetup
+              onCopy={() => trackCopied(TRAFFIC_INSTALL_COPY_KINDS.DRAIN_SETUP)}
+              provider={provider}
+              setup={setup}
             />
-          }
-        />
-      </section>
-      <div className="space-y-2">
-        <div aria-hidden className="flex items-center gap-3 py-1">
-          <span className="bg-border/80 h-px flex-1" />
-          <span className="text-muted-foreground text-xs">
-            {tCommon("labels.or")}
-          </span>
-          <span className="bg-border/80 h-px flex-1" />
-        </div>
-        <CopyPromptButton
-          className="mx-auto flex w-fit"
-          onCopy={() => trackCopied(TRAFFIC_INSTALL_COPY_KINDS.AGENT_PROMPT)}
-          prompt={agentPrompt}
-        />
-      </div>
+          </TabsContent>
+        ))}
+        <TabsContent className="mt-3" value="sdk">
+          <div className="space-y-5">
+            <section className="space-y-2">
+              <h3 className="text-sm font-medium">
+                {tCommon("labels.installThePackage")}
+              </h3>
+              <CodeSnippet
+                code={installCommand}
+                onCopy={() =>
+                  trackCopied(TRAFFIC_INSTALL_COPY_KINDS.INSTALL_COMMAND)
+                }
+                tabs={
+                  <CodeSnippetTabs
+                    label={tCommon("labels.packageManager")}
+                    onValueChange={(value) => {
+                      if (isGeoIngestPackageManager(value)) {
+                        setPackageManager(value);
+                      }
+                    }}
+                    options={PACKAGE_MANAGER_TABS}
+                    value={packageManager}
+                  />
+                }
+              />
+            </section>
+            {token ? (
+              <section className="space-y-2">
+                <h3 className="text-sm font-medium">{t("tokenTitle")}</h3>
+                <p className="text-muted-foreground text-xs">
+                  {t("tokenDescription", { env: GEO_INGEST_TOKEN_ENV })}
+                </p>
+                <ApiKeyRevealField value={token} />
+              </section>
+            ) : null}
+            <section className="space-y-2">
+              <h3 className="text-sm font-medium">{t("proxyTitle")}</h3>
+              <CodeSnippet
+                code={snippet}
+                filename={file}
+                onCopy={() =>
+                  trackCopied(TRAFFIC_INSTALL_COPY_KINDS.PROXY_SNIPPET)
+                }
+                tabs={
+                  <CodeSnippetTabs
+                    label={t("framework")}
+                    onValueChange={(value) => {
+                      if (isGeoIngestFramework(value)) {
+                        setFramework(value);
+                      }
+                    }}
+                    options={GEO_INGEST_FRAMEWORK_OPTIONS}
+                    value={framework}
+                  />
+                }
+              />
+            </section>
+            <div className="space-y-2">
+              <div aria-hidden className="flex items-center gap-3 py-1">
+                <span className="bg-border/80 h-px flex-1" />
+                <span className="text-muted-foreground text-xs">
+                  {tCommon("labels.or")}
+                </span>
+                <span className="bg-border/80 h-px flex-1" />
+              </div>
+              <CopyPromptButton
+                className="mx-auto flex w-fit"
+                onCopy={() =>
+                  trackCopied(TRAFFIC_INSTALL_COPY_KINDS.AGENT_PROMPT)
+                }
+                prompt={agentPrompt}
+              />
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

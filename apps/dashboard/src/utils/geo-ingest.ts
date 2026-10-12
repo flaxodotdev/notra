@@ -1,5 +1,7 @@
 import {
+  GEO_CLOUDFLARE_LOGPUSH_FIELDS,
   GEO_INGEST_DEFAULT_FRAMEWORK,
+  GEO_INGEST_METHODS,
   GEO_INGEST_DEFAULT_PACKAGE_MANAGER,
   GEO_INGEST_FRAMEWORK_OPTIONS,
   GEO_INGEST_INSTALL_COMMAND,
@@ -9,6 +11,7 @@ import {
 } from "@notra/geo-core/constants/geo";
 import type {
   GeoIngestFramework,
+  GeoIngestMethod,
   GeoIngestPackageManager,
   GeoIngestSetupResponse,
 } from "@notra/geo-core/types/geo";
@@ -78,4 +81,54 @@ export function isGeoIngestFramework(
   value: string
 ): value is GeoIngestFramework {
   return GEO_INGEST_FRAMEWORK_OPTIONS.some((option) => option.value === value);
+}
+
+export function isGeoIngestMethod(value: string): value is GeoIngestMethod {
+  return GEO_INGEST_METHODS.some((method) => method === value);
+}
+
+export function geoVercelDrainHeader(token: string): string {
+  return `Authorization: Bearer ${token}`;
+}
+
+export function geoCloudflareDestination(
+  setup: GeoIngestSetupResponse | undefined,
+  token: string
+): string {
+  const endpoint = setup?.drainUrls?.cloudflare ?? "";
+  return `${endpoint}?header_Authorization=Bearer%20${token}`;
+}
+
+export function geoCloudflareLogpushCommand(
+  setup: GeoIngestSetupResponse | undefined
+): string {
+  const filter = JSON.stringify({
+    where: {
+      and: [
+        { key: "ClientRequestMethod", operator: "eq", value: "GET" },
+        { key: "ClientRequestSource", operator: "eq", value: "eyeball" },
+      ],
+    },
+  });
+  const body = {
+    name: "notra-geo",
+    dataset: "http_requests",
+    destination_conf: geoCloudflareDestination(
+      setup,
+      `$${GEO_INGEST_TOKEN_ENV}`
+    ),
+    output_options: {
+      field_names: GEO_CLOUDFLARE_LOGPUSH_FIELDS,
+      timestamp_format: "rfc3339",
+    },
+    filter,
+    enabled: true,
+  };
+  return [
+    'curl "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/logpush/jobs" \\',
+    '  --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \\',
+    "  --json @- <<EOF",
+    JSON.stringify(body, null, 2),
+    "EOF",
+  ].join("\n");
 }

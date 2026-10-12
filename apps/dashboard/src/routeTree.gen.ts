@@ -19,16 +19,20 @@ import { Route as AuthExternalRouteImport } from './routes/auth.external'
 import { Route as AuthInitiateRouteImport } from './routes/auth.initiate'
 import { Route as RpcIndexRouteImport } from './routes/rpc.index'
 import { Route as RpcSplatRouteImport } from './routes/rpc.$'
+import { Route as SitesPreviewAccessRouteImport } from './routes/sites.preview-access'
+import { Route as SitesVercelDnsRouteImport } from './routes/sites.vercel-dns'
 import { Route as ApiAutumnSplatRouteImport } from './routes/api.autumn.$'
 import { Route as ApiBrandFontCssRouteImport } from './routes/api.brand-font.css'
 import { Route as ApiBrandFontFileRouteImport } from './routes/api.brand-font.file'
 import { Route as ApiCommandPaletteNavigateRouteImport } from './routes/api.command-palette.navigate'
 import { Route as ApiCronBrewContactsRouteImport } from './routes/api.cron.brew-contacts'
-import { Route as ApiCronDailySummaryRouteImport } from './routes/api.cron.daily-summary'
 import { Route as ApiCronGeoContentGapsRouteImport } from './routes/api.cron.geo-content-gaps'
+import { Route as ApiCronGeoRecapRouteImport } from './routes/api.cron.geo-recap'
 import { Route as ApiCronGeoScanRouteImport } from './routes/api.cron.geo-scan'
 import { Route as ApiCronMonitoringRouteImport } from './routes/api.cron.monitoring'
 import { Route as ApiCronScheduledPublicationsRouteImport } from './routes/api.cron.scheduled-publications'
+import { Route as ApiCronSitesRouteImport } from './routes/api.cron.sites'
+import { Route as ApiCronSitesCleanupRouteImport } from './routes/api.cron.sites-cleanup'
 import { Route as ApiDemoEnterRouteImport } from './routes/api.demo.enter'
 import { Route as ApiDemoRequestsRouteImport } from './routes/api.demo.requests'
 import { Route as ApiDemoSandboxRouteImport } from './routes/api.demo.sandbox'
@@ -43,12 +47,14 @@ import { Route as ApiWorkflowsScheduleRouteImport } from './routes/api.workflows
 import { Route as ApiWorkflowsScheduledPublicationWakeRouteImport } from './routes/api.workflows.scheduled-publication-wake'
 import { Route as ApiWorkflowsSocialAnalyticsSyncRouteImport } from './routes/api.workflows.social-analytics-sync'
 import { Route as AuthSocialCallbackRouteImport } from './routes/auth.social.callback'
+import { Route as SitesDomainConnectTokenRouteImport } from './routes/sites.domain-connect.$token'
 import { Route as DotwellKnownOauthAuthorizationServerApiAuthRouteImport } from './routes/[.]well-known.oauth-authorization-server.api.auth'
 import { Route as ApiDemoRequestsRequestIdRouteImport } from './routes/api.demo.requests.$requestId'
 import { Route as ApiDemoSandboxCustomizeRouteImport } from './routes/api.demo.sandbox.customize'
 import { Route as ApiDemoSandboxInfoRouteImport } from './routes/api.demo.sandbox.info'
 import { Route as ApiDemoSandboxResetRouteImport } from './routes/api.demo.sandbox.reset'
 import { Route as ApiDemoSandboxTimezoneRouteImport } from './routes/api.demo.sandbox.timezone'
+import { Route as ApiGeoDrainsProviderRouteImport } from './routes/api.geo.drains.$provider'
 import { Route as ApiIntegrationsGithubCallbackRouteImport } from './routes/api.integrations.github.callback'
 import { Route as ApiIntegrationsGoogleSearchConsoleAuthorizeRouteImport } from './routes/api.integrations.google-search-console.authorize'
 import { Route as ApiIntegrationsGoogleSearchConsoleCallbackRouteImport } from './routes/api.integrations.google-search-console.callback'
@@ -78,6 +84,7 @@ import { Route as ApiOrganizationsOrganizationIdChatChatIdRelayApprovalRouteImpo
 import { Route as ApiOrganizationsOrganizationIdChatChatIdStopRouteImport } from './routes/api.organizations.$organizationId.chat.$chatId.stop'
 import { Route as ApiOrganizationsOrganizationIdChatChatIdStreamRouteImport } from './routes/api.organizations.$organizationId.chat.$chatId.stream'
 import { Route as ApiOrganizationsOrganizationIdContentContentIdChatRouteImport } from './routes/api.organizations.$organizationId.content.$contentId.chat'
+import { Route as ApiOrganizationsOrganizationIdContentContentIdExcalidrawRouteImport } from './routes/api.organizations.$organizationId.content.$contentId.excalidraw'
 import { Route as ApiOrganizationsOrganizationIdDashboardAgentChatChatIdRouteImport } from './routes/api.organizations.$organizationId.dashboard-agent.chat.$chatId'
 import { Route as ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRouteImport } from './routes/api.webhooks.$provider.$organizationId.$integrationId.$repositoryId'
 import { Route as ApiOrganizationsOrganizationIdContentContentIdChatChatIdRouteImport } from './routes/api.organizations.$organizationId.content.$contentId.chat.$chatId'
@@ -133,6 +140,16 @@ const RpcSplatRoute = RpcSplatRouteImport.update({
   path: '/rpc/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitesPreviewAccessRoute = SitesPreviewAccessRouteImport.update({
+  id: '/sites/preview-access',
+  path: '/sites/preview-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitesVercelDnsRoute = SitesVercelDnsRouteImport.update({
+  id: '/sites/vercel-dns',
+  path: '/sites/vercel-dns',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAutumnSplatRoute = ApiAutumnSplatRouteImport.update({
   id: '/api/autumn/$',
   path: '/api/autumn/$',
@@ -159,14 +176,14 @@ const ApiCronBrewContactsRoute = ApiCronBrewContactsRouteImport.update({
   path: '/api/cron/brew-contacts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiCronDailySummaryRoute = ApiCronDailySummaryRouteImport.update({
-  id: '/api/cron/daily-summary',
-  path: '/api/cron/daily-summary',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiCronGeoContentGapsRoute = ApiCronGeoContentGapsRouteImport.update({
   id: '/api/cron/geo-content-gaps',
   path: '/api/cron/geo-content-gaps',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCronGeoRecapRoute = ApiCronGeoRecapRouteImport.update({
+  id: '/api/cron/geo-recap',
+  path: '/api/cron/geo-recap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCronGeoScanRoute = ApiCronGeoScanRouteImport.update({
@@ -185,6 +202,16 @@ const ApiCronScheduledPublicationsRoute =
     path: '/api/cron/scheduled-publications',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCronSitesRoute = ApiCronSitesRouteImport.update({
+  id: '/api/cron/sites',
+  path: '/api/cron/sites',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCronSitesCleanupRoute = ApiCronSitesCleanupRouteImport.update({
+  id: '/api/cron/sites-cleanup',
+  path: '/api/cron/sites-cleanup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDemoEnterRoute = ApiDemoEnterRouteImport.update({
   id: '/api/demo/enter',
   path: '/api/demo/enter',
@@ -258,6 +285,11 @@ const AuthSocialCallbackRoute = AuthSocialCallbackRouteImport.update({
   path: '/auth/social/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitesDomainConnectTokenRoute = SitesDomainConnectTokenRouteImport.update({
+  id: '/sites/domain-connect/$token',
+  path: '/sites/domain-connect/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DotwellKnownOauthAuthorizationServerApiAuthRoute =
   DotwellKnownOauthAuthorizationServerApiAuthRouteImport.update({
     id: '/api/auth',
@@ -289,6 +321,11 @@ const ApiDemoSandboxTimezoneRoute = ApiDemoSandboxTimezoneRouteImport.update({
   id: '/timezone',
   path: '/timezone',
   getParentRoute: () => ApiDemoSandboxRoute,
+} as any)
+const ApiGeoDrainsProviderRoute = ApiGeoDrainsProviderRouteImport.update({
+  id: '/api/geo/drains/$provider',
+  path: '/api/geo/drains/$provider',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiIntegrationsGithubCallbackRoute =
   ApiIntegrationsGithubCallbackRouteImport.update({
@@ -463,6 +500,12 @@ const ApiOrganizationsOrganizationIdContentContentIdChatRoute =
     path: '/api/organizations/$organizationId/content/$contentId/chat',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute =
+  ApiOrganizationsOrganizationIdContentContentIdExcalidrawRouteImport.update({
+    id: '/api/organizations/$organizationId/content/$contentId/excalidraw',
+    path: '/api/organizations/$organizationId/content/$contentId/excalidraw',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiOrganizationsOrganizationIdDashboardAgentChatChatIdRoute =
   ApiOrganizationsOrganizationIdDashboardAgentChatChatIdRouteImport.update({
     id: '/$chatId',
@@ -493,17 +536,21 @@ export interface FileRoutesByFullPath {
   '/auth/external': typeof AuthExternalRoute
   '/auth/initiate': typeof AuthInitiateRoute
   '/rpc/$': typeof RpcSplatRoute
+  '/sites/preview-access': typeof SitesPreviewAccessRoute
+  '/sites/vercel-dns': typeof SitesVercelDnsRoute
   '/rpc/': typeof RpcIndexRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
   '/api/brand-font/css': typeof ApiBrandFontCssRoute
   '/api/brand-font/file': typeof ApiBrandFontFileRoute
   '/api/command-palette/navigate': typeof ApiCommandPaletteNavigateRoute
   '/api/cron/brew-contacts': typeof ApiCronBrewContactsRoute
-  '/api/cron/daily-summary': typeof ApiCronDailySummaryRoute
   '/api/cron/geo-content-gaps': typeof ApiCronGeoContentGapsRoute
+  '/api/cron/geo-recap': typeof ApiCronGeoRecapRoute
   '/api/cron/geo-scan': typeof ApiCronGeoScanRoute
   '/api/cron/monitoring': typeof ApiCronMonitoringRoute
   '/api/cron/scheduled-publications': typeof ApiCronScheduledPublicationsRoute
+  '/api/cron/sites': typeof ApiCronSitesRoute
+  '/api/cron/sites-cleanup': typeof ApiCronSitesCleanupRoute
   '/api/demo/enter': typeof ApiDemoEnterRoute
   '/api/demo/requests': typeof ApiDemoRequestsRouteWithChildren
   '/api/demo/sandbox': typeof ApiDemoSandboxRouteWithChildren
@@ -518,12 +565,14 @@ export interface FileRoutesByFullPath {
   '/api/workflows/scheduled-publication-wake': typeof ApiWorkflowsScheduledPublicationWakeRoute
   '/api/workflows/social-analytics-sync': typeof ApiWorkflowsSocialAnalyticsSyncRoute
   '/auth/social/callback': typeof AuthSocialCallbackRoute
+  '/sites/domain-connect/$token': typeof SitesDomainConnectTokenRoute
   '/.well-known/oauth-authorization-server/api/auth': typeof DotwellKnownOauthAuthorizationServerApiAuthRoute
   '/api/demo/requests/$requestId': typeof ApiDemoRequestsRequestIdRoute
   '/api/demo/sandbox/customize': typeof ApiDemoSandboxCustomizeRoute
   '/api/demo/sandbox/info': typeof ApiDemoSandboxInfoRoute
   '/api/demo/sandbox/reset': typeof ApiDemoSandboxResetRoute
   '/api/demo/sandbox/timezone': typeof ApiDemoSandboxTimezoneRoute
+  '/api/geo/drains/$provider': typeof ApiGeoDrainsProviderRoute
   '/api/integrations/github/callback': typeof ApiIntegrationsGithubCallbackRoute
   '/api/integrations/google-search-console/authorize': typeof ApiIntegrationsGoogleSearchConsoleAuthorizeRoute
   '/api/integrations/google-search-console/callback': typeof ApiIntegrationsGoogleSearchConsoleCallbackRoute
@@ -553,6 +602,7 @@ export interface FileRoutesByFullPath {
   '/api/organizations/$organizationId/chat/$chatId/stop': typeof ApiOrganizationsOrganizationIdChatChatIdStopRoute
   '/api/organizations/$organizationId/chat/$chatId/stream': typeof ApiOrganizationsOrganizationIdChatChatIdStreamRoute
   '/api/organizations/$organizationId/content/$contentId/chat': typeof ApiOrganizationsOrganizationIdContentContentIdChatRouteWithChildren
+  '/api/organizations/$organizationId/content/$contentId/excalidraw': typeof ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute
   '/api/organizations/$organizationId/dashboard-agent/chat/$chatId': typeof ApiOrganizationsOrganizationIdDashboardAgentChatChatIdRoute
   '/api/webhooks/$provider/$organizationId/$integrationId/$repositoryId': typeof ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute
   '/api/organizations/$organizationId/content/$contentId/chat/$chatId': typeof ApiOrganizationsOrganizationIdContentContentIdChatChatIdRoute
@@ -567,17 +617,21 @@ export interface FileRoutesByTo {
   '/auth/external': typeof AuthExternalRoute
   '/auth/initiate': typeof AuthInitiateRoute
   '/rpc/$': typeof RpcSplatRoute
+  '/sites/preview-access': typeof SitesPreviewAccessRoute
+  '/sites/vercel-dns': typeof SitesVercelDnsRoute
   '/rpc': typeof RpcIndexRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
   '/api/brand-font/css': typeof ApiBrandFontCssRoute
   '/api/brand-font/file': typeof ApiBrandFontFileRoute
   '/api/command-palette/navigate': typeof ApiCommandPaletteNavigateRoute
   '/api/cron/brew-contacts': typeof ApiCronBrewContactsRoute
-  '/api/cron/daily-summary': typeof ApiCronDailySummaryRoute
   '/api/cron/geo-content-gaps': typeof ApiCronGeoContentGapsRoute
+  '/api/cron/geo-recap': typeof ApiCronGeoRecapRoute
   '/api/cron/geo-scan': typeof ApiCronGeoScanRoute
   '/api/cron/monitoring': typeof ApiCronMonitoringRoute
   '/api/cron/scheduled-publications': typeof ApiCronScheduledPublicationsRoute
+  '/api/cron/sites': typeof ApiCronSitesRoute
+  '/api/cron/sites-cleanup': typeof ApiCronSitesCleanupRoute
   '/api/demo/enter': typeof ApiDemoEnterRoute
   '/api/demo/requests': typeof ApiDemoRequestsRouteWithChildren
   '/api/demo/sandbox': typeof ApiDemoSandboxRouteWithChildren
@@ -592,12 +646,14 @@ export interface FileRoutesByTo {
   '/api/workflows/scheduled-publication-wake': typeof ApiWorkflowsScheduledPublicationWakeRoute
   '/api/workflows/social-analytics-sync': typeof ApiWorkflowsSocialAnalyticsSyncRoute
   '/auth/social/callback': typeof AuthSocialCallbackRoute
+  '/sites/domain-connect/$token': typeof SitesDomainConnectTokenRoute
   '/.well-known/oauth-authorization-server/api/auth': typeof DotwellKnownOauthAuthorizationServerApiAuthRoute
   '/api/demo/requests/$requestId': typeof ApiDemoRequestsRequestIdRoute
   '/api/demo/sandbox/customize': typeof ApiDemoSandboxCustomizeRoute
   '/api/demo/sandbox/info': typeof ApiDemoSandboxInfoRoute
   '/api/demo/sandbox/reset': typeof ApiDemoSandboxResetRoute
   '/api/demo/sandbox/timezone': typeof ApiDemoSandboxTimezoneRoute
+  '/api/geo/drains/$provider': typeof ApiGeoDrainsProviderRoute
   '/api/integrations/github/callback': typeof ApiIntegrationsGithubCallbackRoute
   '/api/integrations/google-search-console/authorize': typeof ApiIntegrationsGoogleSearchConsoleAuthorizeRoute
   '/api/integrations/google-search-console/callback': typeof ApiIntegrationsGoogleSearchConsoleCallbackRoute
@@ -627,6 +683,7 @@ export interface FileRoutesByTo {
   '/api/organizations/$organizationId/chat/$chatId/stop': typeof ApiOrganizationsOrganizationIdChatChatIdStopRoute
   '/api/organizations/$organizationId/chat/$chatId/stream': typeof ApiOrganizationsOrganizationIdChatChatIdStreamRoute
   '/api/organizations/$organizationId/content/$contentId/chat': typeof ApiOrganizationsOrganizationIdContentContentIdChatRouteWithChildren
+  '/api/organizations/$organizationId/content/$contentId/excalidraw': typeof ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute
   '/api/organizations/$organizationId/dashboard-agent/chat/$chatId': typeof ApiOrganizationsOrganizationIdDashboardAgentChatChatIdRoute
   '/api/webhooks/$provider/$organizationId/$integrationId/$repositoryId': typeof ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute
   '/api/organizations/$organizationId/content/$contentId/chat/$chatId': typeof ApiOrganizationsOrganizationIdContentContentIdChatChatIdRoute
@@ -642,17 +699,21 @@ export interface FileRoutesById {
   '/auth/external': typeof AuthExternalRoute
   '/auth/initiate': typeof AuthInitiateRoute
   '/rpc/$': typeof RpcSplatRoute
+  '/sites/preview-access': typeof SitesPreviewAccessRoute
+  '/sites/vercel-dns': typeof SitesVercelDnsRoute
   '/rpc/': typeof RpcIndexRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
   '/api/brand-font/css': typeof ApiBrandFontCssRoute
   '/api/brand-font/file': typeof ApiBrandFontFileRoute
   '/api/command-palette/navigate': typeof ApiCommandPaletteNavigateRoute
   '/api/cron/brew-contacts': typeof ApiCronBrewContactsRoute
-  '/api/cron/daily-summary': typeof ApiCronDailySummaryRoute
   '/api/cron/geo-content-gaps': typeof ApiCronGeoContentGapsRoute
+  '/api/cron/geo-recap': typeof ApiCronGeoRecapRoute
   '/api/cron/geo-scan': typeof ApiCronGeoScanRoute
   '/api/cron/monitoring': typeof ApiCronMonitoringRoute
   '/api/cron/scheduled-publications': typeof ApiCronScheduledPublicationsRoute
+  '/api/cron/sites': typeof ApiCronSitesRoute
+  '/api/cron/sites-cleanup': typeof ApiCronSitesCleanupRoute
   '/api/demo/enter': typeof ApiDemoEnterRoute
   '/api/demo/requests': typeof ApiDemoRequestsRouteWithChildren
   '/api/demo/sandbox': typeof ApiDemoSandboxRouteWithChildren
@@ -667,12 +728,14 @@ export interface FileRoutesById {
   '/api/workflows/scheduled-publication-wake': typeof ApiWorkflowsScheduledPublicationWakeRoute
   '/api/workflows/social-analytics-sync': typeof ApiWorkflowsSocialAnalyticsSyncRoute
   '/auth/social/callback': typeof AuthSocialCallbackRoute
+  '/sites/domain-connect/$token': typeof SitesDomainConnectTokenRoute
   '/.well-known/oauth-authorization-server/api/auth': typeof DotwellKnownOauthAuthorizationServerApiAuthRoute
   '/api/demo/requests/$requestId': typeof ApiDemoRequestsRequestIdRoute
   '/api/demo/sandbox/customize': typeof ApiDemoSandboxCustomizeRoute
   '/api/demo/sandbox/info': typeof ApiDemoSandboxInfoRoute
   '/api/demo/sandbox/reset': typeof ApiDemoSandboxResetRoute
   '/api/demo/sandbox/timezone': typeof ApiDemoSandboxTimezoneRoute
+  '/api/geo/drains/$provider': typeof ApiGeoDrainsProviderRoute
   '/api/integrations/github/callback': typeof ApiIntegrationsGithubCallbackRoute
   '/api/integrations/google-search-console/authorize': typeof ApiIntegrationsGoogleSearchConsoleAuthorizeRoute
   '/api/integrations/google-search-console/callback': typeof ApiIntegrationsGoogleSearchConsoleCallbackRoute
@@ -702,6 +765,7 @@ export interface FileRoutesById {
   '/api/organizations/$organizationId/chat/$chatId/stop': typeof ApiOrganizationsOrganizationIdChatChatIdStopRoute
   '/api/organizations/$organizationId/chat/$chatId/stream': typeof ApiOrganizationsOrganizationIdChatChatIdStreamRoute
   '/api/organizations/$organizationId/content/$contentId/chat': typeof ApiOrganizationsOrganizationIdContentContentIdChatRouteWithChildren
+  '/api/organizations/$organizationId/content/$contentId/excalidraw': typeof ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute
   '/api/organizations/$organizationId/dashboard-agent/chat/$chatId': typeof ApiOrganizationsOrganizationIdDashboardAgentChatChatIdRoute
   '/api/webhooks/$provider/$organizationId/$integrationId/$repositoryId': typeof ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute
   '/api/organizations/$organizationId/content/$contentId/chat/$chatId': typeof ApiOrganizationsOrganizationIdContentContentIdChatChatIdRoute
@@ -718,17 +782,21 @@ export interface FileRouteTypes {
     | '/auth/external'
     | '/auth/initiate'
     | '/rpc/$'
+    | '/sites/preview-access'
+    | '/sites/vercel-dns'
     | '/rpc/'
     | '/api/autumn/$'
     | '/api/brand-font/css'
     | '/api/brand-font/file'
     | '/api/command-palette/navigate'
     | '/api/cron/brew-contacts'
-    | '/api/cron/daily-summary'
     | '/api/cron/geo-content-gaps'
+    | '/api/cron/geo-recap'
     | '/api/cron/geo-scan'
     | '/api/cron/monitoring'
     | '/api/cron/scheduled-publications'
+    | '/api/cron/sites'
+    | '/api/cron/sites-cleanup'
     | '/api/demo/enter'
     | '/api/demo/requests'
     | '/api/demo/sandbox'
@@ -743,12 +811,14 @@ export interface FileRouteTypes {
     | '/api/workflows/scheduled-publication-wake'
     | '/api/workflows/social-analytics-sync'
     | '/auth/social/callback'
+    | '/sites/domain-connect/$token'
     | '/.well-known/oauth-authorization-server/api/auth'
     | '/api/demo/requests/$requestId'
     | '/api/demo/sandbox/customize'
     | '/api/demo/sandbox/info'
     | '/api/demo/sandbox/reset'
     | '/api/demo/sandbox/timezone'
+    | '/api/geo/drains/$provider'
     | '/api/integrations/github/callback'
     | '/api/integrations/google-search-console/authorize'
     | '/api/integrations/google-search-console/callback'
@@ -778,6 +848,7 @@ export interface FileRouteTypes {
     | '/api/organizations/$organizationId/chat/$chatId/stop'
     | '/api/organizations/$organizationId/chat/$chatId/stream'
     | '/api/organizations/$organizationId/content/$contentId/chat'
+    | '/api/organizations/$organizationId/content/$contentId/excalidraw'
     | '/api/organizations/$organizationId/dashboard-agent/chat/$chatId'
     | '/api/webhooks/$provider/$organizationId/$integrationId/$repositoryId'
     | '/api/organizations/$organizationId/content/$contentId/chat/$chatId'
@@ -792,17 +863,21 @@ export interface FileRouteTypes {
     | '/auth/external'
     | '/auth/initiate'
     | '/rpc/$'
+    | '/sites/preview-access'
+    | '/sites/vercel-dns'
     | '/rpc'
     | '/api/autumn/$'
     | '/api/brand-font/css'
     | '/api/brand-font/file'
     | '/api/command-palette/navigate'
     | '/api/cron/brew-contacts'
-    | '/api/cron/daily-summary'
     | '/api/cron/geo-content-gaps'
+    | '/api/cron/geo-recap'
     | '/api/cron/geo-scan'
     | '/api/cron/monitoring'
     | '/api/cron/scheduled-publications'
+    | '/api/cron/sites'
+    | '/api/cron/sites-cleanup'
     | '/api/demo/enter'
     | '/api/demo/requests'
     | '/api/demo/sandbox'
@@ -817,12 +892,14 @@ export interface FileRouteTypes {
     | '/api/workflows/scheduled-publication-wake'
     | '/api/workflows/social-analytics-sync'
     | '/auth/social/callback'
+    | '/sites/domain-connect/$token'
     | '/.well-known/oauth-authorization-server/api/auth'
     | '/api/demo/requests/$requestId'
     | '/api/demo/sandbox/customize'
     | '/api/demo/sandbox/info'
     | '/api/demo/sandbox/reset'
     | '/api/demo/sandbox/timezone'
+    | '/api/geo/drains/$provider'
     | '/api/integrations/github/callback'
     | '/api/integrations/google-search-console/authorize'
     | '/api/integrations/google-search-console/callback'
@@ -852,6 +929,7 @@ export interface FileRouteTypes {
     | '/api/organizations/$organizationId/chat/$chatId/stop'
     | '/api/organizations/$organizationId/chat/$chatId/stream'
     | '/api/organizations/$organizationId/content/$contentId/chat'
+    | '/api/organizations/$organizationId/content/$contentId/excalidraw'
     | '/api/organizations/$organizationId/dashboard-agent/chat/$chatId'
     | '/api/webhooks/$provider/$organizationId/$integrationId/$repositoryId'
     | '/api/organizations/$organizationId/content/$contentId/chat/$chatId'
@@ -866,17 +944,21 @@ export interface FileRouteTypes {
     | '/auth/external'
     | '/auth/initiate'
     | '/rpc/$'
+    | '/sites/preview-access'
+    | '/sites/vercel-dns'
     | '/rpc/'
     | '/api/autumn/$'
     | '/api/brand-font/css'
     | '/api/brand-font/file'
     | '/api/command-palette/navigate'
     | '/api/cron/brew-contacts'
-    | '/api/cron/daily-summary'
     | '/api/cron/geo-content-gaps'
+    | '/api/cron/geo-recap'
     | '/api/cron/geo-scan'
     | '/api/cron/monitoring'
     | '/api/cron/scheduled-publications'
+    | '/api/cron/sites'
+    | '/api/cron/sites-cleanup'
     | '/api/demo/enter'
     | '/api/demo/requests'
     | '/api/demo/sandbox'
@@ -891,12 +973,14 @@ export interface FileRouteTypes {
     | '/api/workflows/scheduled-publication-wake'
     | '/api/workflows/social-analytics-sync'
     | '/auth/social/callback'
+    | '/sites/domain-connect/$token'
     | '/.well-known/oauth-authorization-server/api/auth'
     | '/api/demo/requests/$requestId'
     | '/api/demo/sandbox/customize'
     | '/api/demo/sandbox/info'
     | '/api/demo/sandbox/reset'
     | '/api/demo/sandbox/timezone'
+    | '/api/geo/drains/$provider'
     | '/api/integrations/github/callback'
     | '/api/integrations/google-search-console/authorize'
     | '/api/integrations/google-search-console/callback'
@@ -926,6 +1010,7 @@ export interface FileRouteTypes {
     | '/api/organizations/$organizationId/chat/$chatId/stop'
     | '/api/organizations/$organizationId/chat/$chatId/stream'
     | '/api/organizations/$organizationId/content/$contentId/chat'
+    | '/api/organizations/$organizationId/content/$contentId/excalidraw'
     | '/api/organizations/$organizationId/dashboard-agent/chat/$chatId'
     | '/api/webhooks/$provider/$organizationId/$integrationId/$repositoryId'
     | '/api/organizations/$organizationId/content/$contentId/chat/$chatId'
@@ -941,17 +1026,21 @@ export interface RootRouteChildren {
   AuthExternalRoute: typeof AuthExternalRoute
   AuthInitiateRoute: typeof AuthInitiateRoute
   RpcSplatRoute: typeof RpcSplatRoute
+  SitesPreviewAccessRoute: typeof SitesPreviewAccessRoute
+  SitesVercelDnsRoute: typeof SitesVercelDnsRoute
   RpcIndexRoute: typeof RpcIndexRoute
   ApiAutumnSplatRoute: typeof ApiAutumnSplatRoute
   ApiBrandFontCssRoute: typeof ApiBrandFontCssRoute
   ApiBrandFontFileRoute: typeof ApiBrandFontFileRoute
   ApiCommandPaletteNavigateRoute: typeof ApiCommandPaletteNavigateRoute
   ApiCronBrewContactsRoute: typeof ApiCronBrewContactsRoute
-  ApiCronDailySummaryRoute: typeof ApiCronDailySummaryRoute
   ApiCronGeoContentGapsRoute: typeof ApiCronGeoContentGapsRoute
+  ApiCronGeoRecapRoute: typeof ApiCronGeoRecapRoute
   ApiCronGeoScanRoute: typeof ApiCronGeoScanRoute
   ApiCronMonitoringRoute: typeof ApiCronMonitoringRoute
   ApiCronScheduledPublicationsRoute: typeof ApiCronScheduledPublicationsRoute
+  ApiCronSitesRoute: typeof ApiCronSitesRoute
+  ApiCronSitesCleanupRoute: typeof ApiCronSitesCleanupRoute
   ApiDemoEnterRoute: typeof ApiDemoEnterRoute
   ApiDemoRequestsRoute: typeof ApiDemoRequestsRouteWithChildren
   ApiDemoSandboxRoute: typeof ApiDemoSandboxRouteWithChildren
@@ -966,6 +1055,8 @@ export interface RootRouteChildren {
   ApiWorkflowsScheduledPublicationWakeRoute: typeof ApiWorkflowsScheduledPublicationWakeRoute
   ApiWorkflowsSocialAnalyticsSyncRoute: typeof ApiWorkflowsSocialAnalyticsSyncRoute
   AuthSocialCallbackRoute: typeof AuthSocialCallbackRoute
+  SitesDomainConnectTokenRoute: typeof SitesDomainConnectTokenRoute
+  ApiGeoDrainsProviderRoute: typeof ApiGeoDrainsProviderRoute
   ApiIntegrationsGithubCallbackRoute: typeof ApiIntegrationsGithubCallbackRoute
   ApiIntegrationsGoogleSearchConsoleAuthorizeRoute: typeof ApiIntegrationsGoogleSearchConsoleAuthorizeRoute
   ApiIntegrationsGoogleSearchConsoleCallbackRoute: typeof ApiIntegrationsGoogleSearchConsoleCallbackRoute
@@ -990,6 +1081,7 @@ export interface RootRouteChildren {
   ApiOrganizationsOrganizationIdAgentSplatRoute: typeof ApiOrganizationsOrganizationIdAgentSplatRoute
   ApiOrganizationsOrganizationIdDashboardAgentChatRoute: typeof ApiOrganizationsOrganizationIdDashboardAgentChatRouteWithChildren
   ApiOrganizationsOrganizationIdContentContentIdChatRoute: typeof ApiOrganizationsOrganizationIdContentContentIdChatRouteWithChildren
+  ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute: typeof ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute
   ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute: typeof ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute
 }
 
@@ -1065,6 +1157,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RpcSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sites/preview-access': {
+      id: '/sites/preview-access'
+      path: '/sites/preview-access'
+      fullPath: '/sites/preview-access'
+      preLoaderRoute: typeof SitesPreviewAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sites/vercel-dns': {
+      id: '/sites/vercel-dns'
+      path: '/sites/vercel-dns'
+      fullPath: '/sites/vercel-dns'
+      preLoaderRoute: typeof SitesVercelDnsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/autumn/$': {
       id: '/api/autumn/$'
       path: '/api/autumn/$'
@@ -1100,18 +1206,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronBrewContactsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/cron/daily-summary': {
-      id: '/api/cron/daily-summary'
-      path: '/api/cron/daily-summary'
-      fullPath: '/api/cron/daily-summary'
-      preLoaderRoute: typeof ApiCronDailySummaryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/cron/geo-content-gaps': {
       id: '/api/cron/geo-content-gaps'
       path: '/api/cron/geo-content-gaps'
       fullPath: '/api/cron/geo-content-gaps'
       preLoaderRoute: typeof ApiCronGeoContentGapsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/geo-recap': {
+      id: '/api/cron/geo-recap'
+      path: '/api/cron/geo-recap'
+      fullPath: '/api/cron/geo-recap'
+      preLoaderRoute: typeof ApiCronGeoRecapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/geo-scan': {
@@ -1133,6 +1239,20 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/scheduled-publications'
       fullPath: '/api/cron/scheduled-publications'
       preLoaderRoute: typeof ApiCronScheduledPublicationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/sites': {
+      id: '/api/cron/sites'
+      path: '/api/cron/sites'
+      fullPath: '/api/cron/sites'
+      preLoaderRoute: typeof ApiCronSitesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/sites-cleanup': {
+      id: '/api/cron/sites-cleanup'
+      path: '/api/cron/sites-cleanup'
+      fullPath: '/api/cron/sites-cleanup'
+      preLoaderRoute: typeof ApiCronSitesCleanupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/demo/enter': {
@@ -1233,6 +1353,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSocialCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sites/domain-connect/$token': {
+      id: '/sites/domain-connect/$token'
+      path: '/sites/domain-connect/$token'
+      fullPath: '/sites/domain-connect/$token'
+      preLoaderRoute: typeof SitesDomainConnectTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/.well-known/oauth-authorization-server/api/auth': {
       id: '/.well-known/oauth-authorization-server/api/auth'
       path: '/api/auth'
@@ -1274,6 +1401,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/demo/sandbox/timezone'
       preLoaderRoute: typeof ApiDemoSandboxTimezoneRouteImport
       parentRoute: typeof ApiDemoSandboxRoute
+    }
+    '/api/geo/drains/$provider': {
+      id: '/api/geo/drains/$provider'
+      path: '/api/geo/drains/$provider'
+      fullPath: '/api/geo/drains/$provider'
+      preLoaderRoute: typeof ApiGeoDrainsProviderRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/integrations/github/callback': {
       id: '/api/integrations/github/callback'
@@ -1478,6 +1612,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOrganizationsOrganizationIdContentContentIdChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/organizations/$organizationId/content/$contentId/excalidraw': {
+      id: '/api/organizations/$organizationId/content/$contentId/excalidraw'
+      path: '/api/organizations/$organizationId/content/$contentId/excalidraw'
+      fullPath: '/api/organizations/$organizationId/content/$contentId/excalidraw'
+      preLoaderRoute: typeof ApiOrganizationsOrganizationIdContentContentIdExcalidrawRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/organizations/$organizationId/dashboard-agent/chat/$chatId': {
       id: '/api/organizations/$organizationId/dashboard-agent/chat/$chatId'
       path: '/$chatId'
@@ -1615,17 +1756,21 @@ const rootRouteChildren: RootRouteChildren = {
   AuthExternalRoute: AuthExternalRoute,
   AuthInitiateRoute: AuthInitiateRoute,
   RpcSplatRoute: RpcSplatRoute,
+  SitesPreviewAccessRoute: SitesPreviewAccessRoute,
+  SitesVercelDnsRoute: SitesVercelDnsRoute,
   RpcIndexRoute: RpcIndexRoute,
   ApiAutumnSplatRoute: ApiAutumnSplatRoute,
   ApiBrandFontCssRoute: ApiBrandFontCssRoute,
   ApiBrandFontFileRoute: ApiBrandFontFileRoute,
   ApiCommandPaletteNavigateRoute: ApiCommandPaletteNavigateRoute,
   ApiCronBrewContactsRoute: ApiCronBrewContactsRoute,
-  ApiCronDailySummaryRoute: ApiCronDailySummaryRoute,
   ApiCronGeoContentGapsRoute: ApiCronGeoContentGapsRoute,
+  ApiCronGeoRecapRoute: ApiCronGeoRecapRoute,
   ApiCronGeoScanRoute: ApiCronGeoScanRoute,
   ApiCronMonitoringRoute: ApiCronMonitoringRoute,
   ApiCronScheduledPublicationsRoute: ApiCronScheduledPublicationsRoute,
+  ApiCronSitesRoute: ApiCronSitesRoute,
+  ApiCronSitesCleanupRoute: ApiCronSitesCleanupRoute,
   ApiDemoEnterRoute: ApiDemoEnterRoute,
   ApiDemoRequestsRoute: ApiDemoRequestsRouteWithChildren,
   ApiDemoSandboxRoute: ApiDemoSandboxRouteWithChildren,
@@ -1641,6 +1786,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiWorkflowsScheduledPublicationWakeRoute,
   ApiWorkflowsSocialAnalyticsSyncRoute: ApiWorkflowsSocialAnalyticsSyncRoute,
   AuthSocialCallbackRoute: AuthSocialCallbackRoute,
+  SitesDomainConnectTokenRoute: SitesDomainConnectTokenRoute,
+  ApiGeoDrainsProviderRoute: ApiGeoDrainsProviderRoute,
   ApiIntegrationsGithubCallbackRoute: ApiIntegrationsGithubCallbackRoute,
   ApiIntegrationsGoogleSearchConsoleAuthorizeRoute:
     ApiIntegrationsGoogleSearchConsoleAuthorizeRoute,
@@ -1676,6 +1823,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiOrganizationsOrganizationIdDashboardAgentChatRouteWithChildren,
   ApiOrganizationsOrganizationIdContentContentIdChatRoute:
     ApiOrganizationsOrganizationIdContentContentIdChatRouteWithChildren,
+  ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute:
+    ApiOrganizationsOrganizationIdContentContentIdExcalidrawRoute,
   ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute:
     ApiWebhooksProviderOrganizationIdIntegrationIdRepositoryIdRoute,
 }

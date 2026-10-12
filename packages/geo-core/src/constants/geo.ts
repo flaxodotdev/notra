@@ -10,6 +10,8 @@ import type {
   GeoChatSkin,
   GeoCompetitor,
   GeoCompetitorShareTimeseriesPoint,
+  GeoDrainProvider,
+  GeoIngestMethod,
   GeoGroundedProvider,
   GeoGroundedProviderConfig,
   GeoIngestFramework,
@@ -486,6 +488,12 @@ export const GEO_DISCOVERY_CACHE_TTL_SECONDS = 60 * 60;
 export const GEO_COMPETITOR_SUGGESTIONS_CACHE_PREFIX =
   "geo:competitor-suggestions:v1";
 export const GEO_INGEST_HOSTS_CACHE_PREFIX = "geo:ingest-hosts:v2";
+export const GEO_INGEST_SITE_CACHE_PREFIX = "geo:ingest-site:v2";
+export const GEO_INGEST_SITE_INACTIVE_TTL_SECONDS = 60;
+export const GEO_INGEST_SITE_MEMORY_TTL_MS = 60_000;
+export const GEO_INGEST_SITE_MEMORY_MAX_ENTRIES = 5000;
+export const GEO_INGEST_ORGANIZATION_SITES_CACHE_PREFIX =
+  "geo:ingest-organization-sites:v2";
 export const GEO_INGEST_IDENTITY_ACTIVE_TTL_SECONDS = 5 * 60;
 export const GEO_ONBOARDING_MAX_PROMPTS = 30;
 export const GEO_ONBOARDING_SUGGESTED_COMPETITORS = 10;
@@ -516,6 +524,43 @@ export const GEO_CITATIONS_ROW_HEIGHT = 40;
 export const GEO_PURPOSE_COLUMN_WIDTH = "12.5rem";
 export const GEO_TRAFFIC_LIVE_INTERVAL_MS = 30_000;
 export const GEO_INGEST_PATH = "/api/geo/ingest";
+export const GEO_DRAIN_PROVIDERS = [
+  "vercel",
+  "cloudflare",
+] as const satisfies readonly GeoDrainProvider[];
+export const GEO_DRAIN_PATHS = {
+  vercel: "/api/geo/drains/vercel",
+  cloudflare: "/api/geo/drains/cloudflare",
+} as const satisfies Record<GeoDrainProvider, string>;
+export const GEO_DRAIN_DOCS_URLS = {
+  vercel: "https://docs.usenotra.com/ai-traffic/install/vercel-log-drain",
+  cloudflare: "https://docs.usenotra.com/ai-traffic/install/cloudflare-logpush",
+} as const satisfies Record<GeoDrainProvider, string>;
+export const GEO_INGEST_DEFAULT_METHOD: GeoIngestMethod = "sdk";
+export const GEO_INGEST_METHODS = [
+  "sdk",
+  "vercel",
+  "cloudflare",
+] as const satisfies readonly GeoIngestMethod[];
+export const GEO_CLOUDFLARE_LOGPUSH_FIELDS = [
+  "ClientCity",
+  "ClientCountry",
+  "ClientIP",
+  "ClientLatitude",
+  "ClientLongitude",
+  "ClientRegionCode",
+  "ClientRequestHost",
+  "ClientRequestMethod",
+  "ClientRequestReferer",
+  "ClientRequestScheme",
+  "ClientRequestSource",
+  "ClientRequestURI",
+  "ClientRequestUserAgent",
+  "EdgeResponseStatus",
+  "EdgeStartTimestamp",
+  "RayID",
+  "RequestHeaders",
+] as const;
 export const GEO_INGEST_SNIPPET_FALLBACK =
   "// Set GEO_INGEST_SECRET to generate your install snippet";
 export const GEO_INGEST_PACKAGE = "@usenotra/geo";
@@ -554,6 +599,8 @@ export const GEO_INGEST_FRAMEWORK_OPTIONS = [
 export const GEO_INGEST_SECRET_ENV = "GEO_INGEST_SECRET";
 export const GEO_INGEST_SECRET_FALLBACK_ENV = "BEACON_INGEST_SECRET";
 export const GEO_INGEST_TOKEN_SEPARATOR = ".";
+export const GEO_INGEST_SITE_TOKEN_PREFIX = "nst.";
+export const GEO_INGEST_SITE_TOKEN_SIGNING_DOMAIN = "notra-sites-traffic:";
 export const GEO_INGEST_BEARER_PREFIX = "Bearer ";
 export const GEO_MAX_STORED_UA_LENGTH = 200;
 export const AI_TRAFFIC_DEFAULT_JOURNEYS_LIMIT = 25;
