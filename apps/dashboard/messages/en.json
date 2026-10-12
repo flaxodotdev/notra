@@ -671,7 +671,9 @@
         "created": "Account API key created",
         "updated": "Account API key updated",
         "deleted": "Account API key deleted"
-      }
+      },
+      "loadFailedTitle": "Couldn't load account API keys",
+      "loadFailedDescription": "Your keys are still there. Try loading them again."
     }
   },
   "feedback": {

@@ -671,7 +671,9 @@
         "created": "Account-API-Schlüssel erstellt",
         "updated": "Account-API-Schlüssel aktualisiert",
         "deleted": "Account-API-Schlüssel gelöscht"
-      }
+      },
+      "loadFailedTitle": "Account-API-Schlüssel konnten nicht geladen werden",
+      "loadFailedDescription": "Deine Schlüssel sind weiterhin da. Versuche es noch einmal."
     }
   },
   "feedback": {

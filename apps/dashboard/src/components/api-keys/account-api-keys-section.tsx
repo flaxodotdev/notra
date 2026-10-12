@@ -2,6 +2,7 @@
 
 import {
   Add01Icon,
+  AlertCircleIcon,
   Delete02Icon,
   Dots,
   Edit02Icon,
@@ -105,9 +106,13 @@ export function AccountApiKeysSection() {
   const [deletingKey, setDeletingKey] = useState<ApiKeyListItem | null>(null);
 
   const accountListKey = dashboardOrpc.apiKeys.account.list.queryKey();
-  const { data: keys = [], isPending } = useQuery(
-    dashboardOrpc.apiKeys.account.list.queryOptions()
-  );
+  const {
+    data: keys = [],
+    isError,
+    isFetching,
+    isPending,
+    refetch,
+  } = useQuery(dashboardOrpc.apiKeys.account.list.queryOptions());
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateApiKeyInput) =>
@@ -320,7 +325,7 @@ export function AccountApiKeysSection() {
     },
   ];
 
-  const isEmpty = !isPending && keys.length === 0;
+  const isEmpty = !(isPending || isError) && keys.length === 0;
   const visibleRows = isPending ? 2 : keys.length;
 
   return (
@@ -352,30 +357,58 @@ export function AccountApiKeysSection() {
         columns={columns}
         data={keys}
         emptyState={
-          <Empty className="py-0 md:py-0">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={UserCircleIcon} />
-              </EmptyMedia>
-              <EmptyTitle>{tAccount("emptyTitle")}</EmptyTitle>
-              <EmptyDescription>
-                {tAccount("emptyDescription")}
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <Button
-                onClick={() => setDialogOpen(true)}
-                size="sm"
-                variant="outline"
-              >
-                <HugeiconsIcon className="size-4" icon={Add01Icon} />
-                {tAccount("createKey")}
-              </Button>
-            </EmptyContent>
-          </Empty>
+          isError ? (
+            <Empty className="py-0 md:py-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={AlertCircleIcon} />
+                </EmptyMedia>
+                <EmptyTitle>{tAccount("loadFailedTitle")}</EmptyTitle>
+                <EmptyDescription>
+                  {tAccount("loadFailedDescription")}
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  disabled={isFetching}
+                  onClick={() => refetch()}
+                  size="sm"
+                  variant="outline"
+                >
+                  {tCommon("actions.tryAgain")}
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : (
+            <Empty className="py-0 md:py-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={UserCircleIcon} />
+                </EmptyMedia>
+                <EmptyTitle>{tAccount("emptyTitle")}</EmptyTitle>
+                <EmptyDescription>
+                  {tAccount("emptyDescription")}
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  onClick={() => setDialogOpen(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <HugeiconsIcon className="size-4" icon={Add01Icon} />
+                  {tAccount("createKey")}
+                </Button>
+              </EmptyContent>
+            </Empty>
+          )
         }
         getRowId={(key) => key.keyId}
-        height={isEmpty ? API_KEYS_EMPTY_TABLE_HEIGHT : (visibleRows + 1) * 48}
+        height={
+          isEmpty || isError
+            ? API_KEYS_EMPTY_TABLE_HEIGHT
+            : (visibleRows + 1) * 48
+        }
         loading={isPending}
         rowHeight={48}
       />

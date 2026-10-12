@@ -14,6 +14,7 @@ import {
   LEGACY_API_READ_SCOPE,
   LEGACY_API_WRITE_SCOPE,
 } from "@notra/utils/api-scopes";
+import { ACCOUNT_API_KEY_ORGANIZATION_HEADERS } from "@notra/utils/constants/account-api-key";
 import { DEMO_CONSOLE_HEADER } from "@notra/utils/constants/demo";
 import { isDemoMode } from "@notra/utils/demo-mode";
 import type { Context } from "hono";
@@ -171,9 +172,12 @@ const securityHeadersMiddleware = async (
     );
     c.header(
       "Access-Control-Allow-Headers",
-      IS_DEMO
-        ? `Content-Type, Authorization, ${DEMO_CONSOLE_HEADER}`
-        : "Content-Type, Authorization"
+      [
+        "Content-Type",
+        "Authorization",
+        ...ACCOUNT_API_KEY_ORGANIZATION_HEADERS,
+        ...(IS_DEMO ? [DEMO_CONSOLE_HEADER] : []),
+      ].join(", ")
     );
   }
 
