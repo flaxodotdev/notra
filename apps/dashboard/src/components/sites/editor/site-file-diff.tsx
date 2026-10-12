@@ -15,20 +15,20 @@ import { cn } from "@/lib/utils";
 import type { SiteFileDiffProps } from "@/types/components/site-editor";
 import { siteCodeThemeType } from "@/utils/site-editor";
 
-export function SiteFileDiff({
-  path,
-  before,
-  after,
-  className,
-}: SiteFileDiffProps) {
+export function SiteFileDiff(props: SiteFileDiffProps) {
   const { resolvedTheme } = useTheme();
+  const parsed = "fileDiff" in props ? props.fileDiff : undefined;
+  const path = "path" in props ? props.path : "";
+  const before = "before" in props ? props.before : null;
+  const after = "after" in props ? props.after : null;
   const fileDiff = useMemo(
     () =>
+      parsed ??
       parseDiffFromFile(
         before === null ? null : { name: path, contents: before },
         after === null ? null : { name: path, contents: after }
       ),
-    [path, before, after]
+    [parsed, path, before, after]
   );
   const options = useMemo<FileDiffOptions<undefined, undefined>>(
     () => ({
@@ -47,7 +47,7 @@ export function SiteFileDiff({
 
   return (
     <FileDiff
-      className={cn(SITE_CODE_SURFACE_CLASS, className)}
+      className={cn(SITE_CODE_SURFACE_CLASS, props.className)}
       disableWorkerPool
       fileDiff={fileDiff}
       options={options}

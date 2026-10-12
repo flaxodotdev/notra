@@ -40,17 +40,16 @@ export function SitePublishChange({
   const document = readQuery.data ?? null;
   const before = change === "added" ? null : (document?.published ?? null);
   const after = change === "deleted" ? null : (document?.content ?? null);
-  const counts = useMemo(() => {
+  const fileDiff = useMemo(() => {
     if (!document) {
       return null;
     }
-    return diffLineCounts(
-      parseDiffFromFile(
-        before === null ? null : { name: path, contents: before },
-        after === null ? null : { name: path, contents: after }
-      )
+    return parseDiffFromFile(
+      before === null ? null : { name: path, contents: before },
+      after === null ? null : { name: path, contents: after }
     );
   }, [document, before, after, path]);
+  const counts = fileDiff ? diffLineCounts(fileDiff) : null;
 
   let diff: ReactNode;
   if (readQuery.isPending || !highlighterReady) {
@@ -67,7 +66,7 @@ export function SitePublishChange({
       </p>
     );
   } else {
-    diff = <SiteFileDiff after={after} before={before} path={path} />;
+    diff = fileDiff ? <SiteFileDiff fileDiff={fileDiff} /> : null;
   }
 
   return (

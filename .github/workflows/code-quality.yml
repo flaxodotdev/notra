@@ -71,7 +71,7 @@ jobs:
         run: bun check
 
       - name: Run unit and integration tests
-        run: bun run test --force
+        run: bun run test --force --log-order=stream
 
       - name: Verify production markdown endpoints
         run: |

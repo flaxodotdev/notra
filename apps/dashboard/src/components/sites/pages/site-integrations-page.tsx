@@ -3,6 +3,7 @@
 import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { siteIntegrationSchemas } from "@notra/sites-core/schemas/site-integrations";
+import type { SiteIntegrationName } from "@notra/sites-core/types/site-integrations";
 import { PageHeading } from "@notra/ui/components/shared/page-heading";
 import {
   Alert,
@@ -27,7 +28,6 @@ import {
   useSiteIntegrations,
 } from "@/lib/hooks/use-site-integrations";
 import { dashboardOrpc } from "@/lib/orpc/query";
-import type { SiteIntegrationName } from "@/types/site-integrations";
 import type { SiteEditorFiles } from "@/types/sites";
 import { toErrorMessage } from "@/utils/error-message";
 import { siteIntegrationSettings } from "@/utils/site-integrations";
