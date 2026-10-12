@@ -92,7 +92,10 @@ export function PostSocialButton({
     setOpen(nextOpen);
     if (nextOpen) {
       setLocalDraft(content);
-      setVideo(initialVideo ?? null);
+      // A save still in flight is newer than the saved video.
+      if (!saveVideo.isPending) {
+        setVideo(initialVideo ?? null);
+      }
       return;
     }
     publishMutation.reset();

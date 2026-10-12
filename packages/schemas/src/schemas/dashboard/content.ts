@@ -20,6 +20,7 @@ import {
   GITHUB_CONTENT_PATH_MAX_LENGTH,
   GITHUB_PUBLISH_CONTENT_TYPES,
 } from "../../constants/dashboard/github";
+import { ALLOWED_VIDEO_MIME_TYPES } from "../../constants/dashboard/upload";
 import { createPostFieldsSchema, postSlugSchema } from "../shared/post";
 import {
   contentAuthorFieldsSchema,
@@ -39,7 +40,7 @@ export type PostStatus = z.infer<typeof postStatusSchema>;
 export const socialVideoAttachmentSchema = z.object({
   key: z.string().min(1),
   url: z.url().max(2048),
-  mimeType: z.enum(["video/mp4", "video/webm"]),
+  mimeType: z.enum(ALLOWED_VIDEO_MIME_TYPES),
   size: z.number().int().positive(),
 });
 

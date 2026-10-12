@@ -102,6 +102,17 @@ const publishDemoPost = Effect.fn("publishDemoPost")(function* (
 export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
   params: PublishSocialPostParams
 ) {
+  yield* Effect.try({
+    try: () =>
+      assertAllowedSocialMediaUrls(params.mediaUrls, params.organizationId),
+    catch: (cause) =>
+      cause instanceof SocialConnectRequestError
+        ? cause
+        : new SocialConnectRequestError({
+            message: "Invalid media URL",
+            cause: null,
+          }),
+  });
   if (isDemoMode()) {
     return yield* publishDemoPost(params);
   }
@@ -159,18 +170,6 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
     );
   }
   const client = getSocialConnectClient(parsedPlatform.data);
-
-  yield* Effect.try({
-    try: () =>
-      assertAllowedSocialMediaUrls(params.mediaUrls, params.organizationId),
-    catch: (cause) =>
-      cause instanceof SocialConnectRequestError
-        ? cause
-        : new SocialConnectRequestError({
-            message: "Invalid media URL",
-            cause: null,
-          }),
-  });
 
   // Creating a post is not idempotent, so the SDK must not resend it on a
   // timeout or a server error: the first request may have posted already.

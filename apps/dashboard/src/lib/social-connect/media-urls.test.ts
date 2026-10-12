@@ -58,6 +58,12 @@ test("allows the configured R2 host, rejects app and other hosts", () => {
     assertAllowedSocialMediaUrls(["https://evil.example.com/a.mp4"])
   ).toThrow("Media URL host is not allowed");
   expect(() =>
+    assertAllowedSocialMediaUrls([
+      "ftp://cdn.example.com/organization/org_1/a.mp4",
+      "https://cdn.example.com:8443/organization/org_1/a.mp4",
+    ])
+  ).toThrow("Media URL host is not allowed");
+  expect(() =>
     assertAllowedSocialMediaUrls(["//evil.example.com/a.mp4"])
   ).toThrow("Media URL must be an absolute URL");
   expect(() => assertAllowedSocialMediaUrls(["not a url"])).toThrow(

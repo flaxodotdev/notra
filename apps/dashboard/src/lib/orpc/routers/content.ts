@@ -339,7 +339,8 @@ export async function buildContentUpdateData(
 
   if (input.socialVideo !== undefined) {
     // Merge in SQL so a concurrent write to another metadata key survives.
-    updateData.sourceMetadata = sql`coalesce(${posts.sourceMetadata}, '{}'::jsonb) || jsonb_build_object('socialVideo', ${JSON.stringify(input.socialVideo)}::jsonb)`;
+    // SQL NULL, JSON null or a non-object would turn `||` into an array.
+    updateData.sourceMetadata = sql`(case when jsonb_typeof(${posts.sourceMetadata}) = 'object' then ${posts.sourceMetadata} else '{}'::jsonb end) || jsonb_build_object('socialVideo', ${JSON.stringify(input.socialVideo)}::jsonb)`;
   }
 
   return updateData;

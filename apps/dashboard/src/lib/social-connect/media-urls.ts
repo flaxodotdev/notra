@@ -4,21 +4,21 @@ import { getOptionalR2PublicUrl } from "@/lib/upload/r2";
 
 import { SocialConnectRequestError } from "./errors";
 
-function allowedMediaHosts(): Set<string> {
-  const hosts = new Set<string>();
+function allowedMediaOrigins(): Set<string> {
+  const origins = new Set<string>();
   // ponytail: R2 public origin only. App-origin media (`/api/uploads/...`)
   // requires dashboard auth, which PostForMe does not have — allowing the
   // app host would pass validation and fail at provider delivery.
   const value = getOptionalR2PublicUrl();
   if (!value) {
-    return hosts;
+    return origins;
   }
   try {
-    hosts.add(new URL(value).hostname.toLowerCase());
+    origins.add(new URL(value).origin);
   } catch {
-    // ignore malformed env — the host simply stays disallowed
+    // ignore malformed env — the origin simply stays disallowed
   }
-  return hosts;
+  return origins;
 }
 
 // ponytail: UI only sends uploaded URLs, but the API takes any URL and hands
@@ -32,7 +32,7 @@ export function assertAllowedSocialMediaUrls(
   if (!urls?.length) {
     return;
   }
-  const hosts = allowedMediaHosts();
+  const origins = allowedMediaOrigins();
   for (const raw of urls) {
     // PostForMe fetches the URL server-side, so app-relative paths can never
     // resolve there. Reject early instead of failing at delivery.
@@ -51,8 +51,9 @@ export function assertAllowedSocialMediaUrls(
         cause: null,
       });
     }
-    const hostname = url.hostname.toLowerCase();
-    if (!hosts.has(hostname)) {
+    // Origin covers scheme and port too: `ftp://` or another port on the
+    // same host is not our storage.
+    if (!origins.has(url.origin)) {
       throw new SocialConnectRequestError({
         message: "Media URL host is not allowed",
         cause: null,
