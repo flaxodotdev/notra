@@ -650,6 +650,28 @@
     "shared": {
       "editApiKey": "API-Schlüssel bearbeiten",
       "deleteApiKey": "API-Schlüssel löschen"
+    },
+    "emptyState": {
+      "title": "Noch keine API-Schlüssel",
+      "description": "Erstelle einen Schlüssel, um die Inhalte dieser Organisation per Skript, SDK oder MCP-Client zu lesen und zu bearbeiten."
+    },
+    "account": {
+      "title": "Account-API-Schlüssel",
+      "description": "Persönliche Schlüssel, die in jeder Organisation funktionieren, in der du Mitglied bist. Wähle sie mit dem Header <code>X-Notra-Organization-Id</code> aus.",
+      "createKey": "Account-Schlüssel erstellen",
+      "emptyTitle": "Noch keine Account-API-Schlüssel",
+      "emptyDescription": "Nutze einen Account-Schlüssel für persönliche Automatisierung über mehrere Workspaces. Für geteilte Systeme sind Organisations-Schlüssel gedacht.",
+      "createTitle": "Account-API-Schlüssel erstellen",
+      "createDescription": "Dieser Schlüssel funktioniert in jeder Organisation, in der du Mitglied bist.",
+      "editTitle": "Account-API-Schlüssel bearbeiten",
+      "viewTitle": "Account-API-Schlüssel anzeigen",
+      "namePlaceholder": "z. B. Persönliche Automatisierung",
+      "deleteTitle": "Account-API-Schlüssel löschen?",
+      "toasts": {
+        "created": "Account-API-Schlüssel erstellt",
+        "updated": "Account-API-Schlüssel aktualisiert",
+        "deleted": "Account-API-Schlüssel gelöscht"
+      }
     }
   },
   "feedback": {

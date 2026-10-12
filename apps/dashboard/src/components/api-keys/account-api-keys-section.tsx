@@ -6,6 +6,7 @@ import {
   Dots,
   Edit02Icon,
   InformationCircleIcon,
+  UserCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { API_KEY_DEFAULT_SCOPES } from "@notra/schemas/constants/dashboard/api-keys";
@@ -22,6 +23,7 @@ import {
   ResponsiveDialog,
   ResponsiveDialogClose,
   ResponsiveDialogContent,
+  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -39,6 +41,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@notra/ui/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@notra/ui/components/ui/empty";
 import { Field, FieldLabel } from "@notra/ui/components/ui/field";
 import { Input } from "@notra/ui/components/ui/input";
 import {
@@ -51,67 +61,31 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useTranslations } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 
 import { ApiKeyRevealField } from "@/components/api-keys/api-key-reveal-field";
 import { ApiKeyPermissionSelector } from "@/components/api-keys/permission-selector";
 import { Button } from "@/components/button";
 import {
   API_KEY_EXPIRATION_OPTIONS,
-  API_KEY_PERMISSION_SUMMARY,
+  API_KEYS_EMPTY_TABLE_HEIGHT,
 } from "@/constants/api-keys";
+import { inferApiKeyExpiration } from "@/lib/api-keys/expiration";
 import { expandLegacyApiKeyScopes } from "@/lib/api-keys/scopes";
 import { useApiKeyExpirationItems } from "@/lib/hooks/use-api-key-expiration-items";
 import { dashboardOrpc } from "@/lib/orpc/query";
-import type { ApiKeyAccessMode, ApiKeyExpiration } from "@/types/api-keys";
-
-interface AccountKeyItem {
-  keyId: string;
-  name: string;
-  start: string;
-  createdAt: number;
-  expires: number | null;
-  enabled: boolean;
-  accessMode: ApiKeyAccessMode;
-  permission: (typeof API_KEY_PERMISSION_SUMMARY)[number];
-  permissions: string[];
-  createdBy: string | null;
-  accountWide: boolean;
-}
-
-function formatExpiry(expires: number | null) {
-  if (!expires) {
-    return "Never";
-  }
-  if (new Date(expires).getTime() < Date.now()) {
-    return "Expired";
-  }
-  return new Date(expires).toLocaleDateString();
-}
-
-function getAccountEditExpiration(
-  createdAt: number,
-  expires: number | null
-): ApiKeyExpiration {
-  if (expires === null) {
-    return "never";
-  }
-  const ttl = Math.max(0, expires - createdAt);
-  const day = 24 * 60 * 60 * 1000;
-  if (ttl <= 7 * day) {
-    return "7d";
-  }
-  if (ttl <= 30 * day) {
-    return "30d";
-  }
-  if (ttl <= 60 * day) {
-    return "60d";
-  }
-  return "90d";
-}
+import type {
+  ApiKeyAccessMode,
+  ApiKeyExpiration,
+  ApiKeyListItem,
+} from "@/types/api-keys";
 
 export function AccountApiKeysSection() {
   const t = useTranslations("apiKeys");
+  const tAccount = useTranslations("apiKeys.account");
+  const tApiKeysShared = useTranslations("apiKeys.shared");
+  const tCommon = useTranslations("common");
+  const locale = useLocale();
   const expirationItems = useApiKeyExpirationItems();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -121,14 +95,14 @@ export function AccountApiKeysSection() {
   const [accessMode, setAccessMode] = useState<ApiKeyAccessMode>("restricted");
   const [scopes, setScopes] = useState<string[]>([...API_KEY_DEFAULT_SCOPES]);
   const [expiration, setExpiration] = useState<ApiKeyExpiration>("30d");
-  const [editingKey, setEditingKey] = useState<AccountKeyItem | null>(null);
+  const [editingKey, setEditingKey] = useState<ApiKeyListItem | null>(null);
   const [editValues, setEditValues] = useState({
     name: "",
     accessMode: "restricted" as ApiKeyAccessMode,
     scopes: [] as string[],
     expiration: "never" as ApiKeyExpiration,
   });
-  const [deletingKey, setDeletingKey] = useState<AccountKeyItem | null>(null);
+  const [deletingKey, setDeletingKey] = useState<ApiKeyListItem | null>(null);
 
   const accountListKey = dashboardOrpc.apiKeys.account.list.queryKey();
   const { data: keys = [], isPending } = useQuery(
@@ -142,7 +116,7 @@ export function AccountApiKeysSection() {
       setCreatedKey(data.key);
       setCreateError(null);
       queryClient.invalidateQueries({ queryKey: accountListKey });
-      toast.success("Account API key created");
+      toast.success(tAccount("toasts.created"));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -158,7 +132,7 @@ export function AccountApiKeysSection() {
     onSuccess: () => {
       setEditingKey(null);
       queryClient.invalidateQueries({ queryKey: accountListKey });
-      toast.success("Account API key updated");
+      toast.success(tAccount("toasts.updated"));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -174,7 +148,7 @@ export function AccountApiKeysSection() {
     onSuccess: () => {
       setDeletingKey(null);
       queryClient.invalidateQueries({ queryKey: accountListKey });
-      toast.success("Account API key deleted");
+      toast.success(tAccount("toasts.deleted"));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -196,19 +170,26 @@ export function AccountApiKeysSection() {
       expiration,
     });
     if (!result.success) {
-      setCreateError(result.error.issues[0]?.message ?? "Invalid API key");
+      const field = result.error.issues[0]?.path[0];
+      if (field === "name") {
+        setCreateError(tCommon("labels.nameIsRequired"));
+      } else if (field === "scopes") {
+        setCreateError(t("validation.selectPermission"));
+      } else {
+        setCreateError(t("validation.invalidKey"));
+      }
       return;
     }
     setCreateError(null);
     createMutation.mutate(result.data);
   };
 
-  const openEditDialog = (key: AccountKeyItem) => {
+  const openEditDialog = (key: ApiKeyListItem) => {
     setEditValues({
       name: key.name,
       accessMode: key.accessMode,
       scopes: expandLegacyApiKeyScopes(key.permissions),
-      expiration: getAccountEditExpiration(key.createdAt, key.expires),
+      expiration: inferApiKeyExpiration(key.createdAt, key.expires),
     });
     setEditingKey(key);
   };
@@ -222,23 +203,41 @@ export function AccountApiKeysSection() {
       ...editValues,
     });
     if (!result.success) {
-      toast.error(result.error.issues[0]?.message ?? "Invalid API key");
+      toast.error(
+        result.error.issues[0]?.path[0] === "name"
+          ? tCommon("labels.nameIsRequired")
+          : t("validation.invalidKey")
+      );
       return;
     }
     updateMutation.mutate(result.data);
   };
 
-  const columns: TableColumn<AccountKeyItem>[] = [
+  const formatExpiry = (expires: number | null) => {
+    if (!expires) {
+      return tCommon("labels.never");
+    }
+    if (expires < Date.now()) {
+      return t("expiry.expired");
+    }
+    return new Date(expires).toLocaleDateString(locale);
+  };
+
+  const columns: TableColumn<ApiKeyListItem>[] = [
     {
       key: "name",
-      header: "Name",
+      header: tCommon("labels.name"),
       width: "1fr",
       minWidth: "10rem",
-      cell: (key) => <span className="font-medium">{key.name}</span>,
+      cell: (key) => (
+        <span className="font-medium" title={key.name}>
+          {key.name}
+        </span>
+      ),
     },
     {
       key: "start",
-      header: "Key",
+      header: t("columns.key"),
       width: "1fr",
       minWidth: "9rem",
       cell: (key) => (
@@ -249,18 +248,29 @@ export function AccountApiKeysSection() {
     },
     {
       key: "permission",
-      header: "Permission",
+      header: t("columns.permission"),
       width: "1fr",
       minWidth: "9rem",
-      cell: (key) => key.permission,
+      cell: (key) => t("permissionSummary", { permission: key.permission }),
     },
     {
       key: "expires",
-      header: "Expires",
+      header: tCommon("labels.expires"),
       width: "8.75rem",
       cell: (key) => (
         <span className="text-muted-foreground text-sm">
           {formatExpiry(key.expires)}
+        </span>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: tCommon("labels.createdAt"),
+      sortable: true,
+      width: "9.5rem",
+      cell: (key) => (
+        <span className="text-muted-foreground text-sm">
+          {new Date(key.createdAt).toLocaleDateString(locale)}
         </span>
       ),
     },
@@ -275,7 +285,9 @@ export function AccountApiKeysSection() {
           <DropdownMenuTrigger
             render={
               <Button
-                aria-label={`Actions for ${key.name}`}
+                aria-label={tCommon("labels.actionsForName", {
+                  name: key.name,
+                })}
                 size="icon"
                 variant="ghost"
               >
@@ -285,17 +297,21 @@ export function AccountApiKeysSection() {
           />
           <DropdownMenuContent align="end" className="min-w-44">
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => openEditDialog(key)}>
+              <DropdownMenuItem
+                disabled={updateMutation.isPending || deleteMutation.isPending}
+                onClick={() => openEditDialog(key)}
+              >
                 <HugeiconsIcon className="size-4" icon={Edit02Icon} />
-                Edit API key
+                {tApiKeysShared("editApiKey")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                disabled={updateMutation.isPending || deleteMutation.isPending}
                 onClick={() => setDeletingKey(key)}
                 variant="destructive"
               >
                 <HugeiconsIcon className="size-4" icon={Delete02Icon} />
-                Delete API key
+                {tApiKeysShared("deleteApiKey")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
@@ -304,39 +320,62 @@ export function AccountApiKeysSection() {
     },
   ];
 
+  const isEmpty = !isPending && keys.length === 0;
+  const visibleRows = isPending ? 2 : keys.length;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold tracking-tight">
-            Account API keys
+            {tAccount("title")}
           </h2>
           <p className="text-muted-foreground text-sm">
-            One credential that works across every organization you belong to.
+            {tAccount.rich("description", {
+              code: (chunks) => (
+                <code className="text-foreground font-mono text-[0.8125rem]">
+                  {chunks}
+                </code>
+              ),
+            })}
           </p>
         </div>
-        <Button className="gap-1.5" onClick={() => setDialogOpen(true)}>
-          <HugeiconsIcon className="size-4" icon={Add01Icon} />
-          Create account key
-        </Button>
+        {isEmpty ? null : (
+          <Button onClick={() => setDialogOpen(true)} variant="outline">
+            <HugeiconsIcon className="size-4" icon={Add01Icon} />
+            {tAccount("createKey")}
+          </Button>
+        )}
       </div>
-
-      <Alert variant="info">
-        <HugeiconsIcon icon={InformationCircleIcon} />
-        <AlertDescription>
-          One key for every organization you belong to. Send{" "}
-          <span className="font-mono">X-Notra-Organization-Id</span> to choose a
-          workspace. Best for personal automation — use organization keys for
-          shared systems.
-        </AlertDescription>
-      </Alert>
 
       <DataTable
         columns={columns}
         data={keys}
-        emptyState="No account API keys yet"
+        emptyState={
+          <Empty className="py-0 md:py-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={UserCircleIcon} />
+              </EmptyMedia>
+              <EmptyTitle>{tAccount("emptyTitle")}</EmptyTitle>
+              <EmptyDescription>
+                {tAccount("emptyDescription")}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button
+                onClick={() => setDialogOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <HugeiconsIcon className="size-4" icon={Add01Icon} />
+                {tAccount("createKey")}
+              </Button>
+            </EmptyContent>
+          </Empty>
+        }
         getRowId={(key) => key.keyId}
-        height={(Math.max(isPending ? 3 : keys.length, 1) + 1) * 48}
+        height={isEmpty ? API_KEYS_EMPTY_TABLE_HEIGHT : (visibleRows + 1) * 48}
         loading={isPending}
         rowHeight={48}
       />
@@ -367,26 +406,31 @@ export function AccountApiKeysSection() {
             <>
               <ResponsiveDialogHeader className="shrink-0">
                 <ResponsiveDialogTitle>
-                  View account API key
+                  {tAccount("viewTitle")}
                 </ResponsiveDialogTitle>
               </ResponsiveDialogHeader>
               <div className="space-y-4">
                 <Alert variant="info">
                   <HugeiconsIcon icon={InformationCircleIcon} />
                   <AlertDescription>
-                    You can only see this key once.{" "}
-                    <span className="text-foreground font-medium">
-                      Store it safely.
-                    </span>
+                    {t.rich("create.onceNotice", {
+                      strong: (chunks) => (
+                        <span className="text-foreground font-medium">
+                          {chunks}
+                        </span>
+                      ),
+                    })}
                   </AlertDescription>
                 </Alert>
                 <Field>
-                  <FieldLabel>API Key</FieldLabel>
+                  <FieldLabel>{tCommon("labels.apiKey")}</FieldLabel>
                   <ApiKeyRevealField value={createdKey} />
                 </Field>
               </div>
               <ResponsiveDialogFooter>
-                <ResponsiveDialogClose render={<Button>Done</Button>} />
+                <ResponsiveDialogClose
+                  render={<Button>{tCommon("actions.done")}</Button>}
+                />
               </ResponsiveDialogFooter>
             </>
           ) : (
@@ -396,13 +440,17 @@ export function AccountApiKeysSection() {
             >
               <ResponsiveDialogHeader className="shrink-0 border-b p-4 pr-14">
                 <ResponsiveDialogTitle className="text-2xl">
-                  Create account API key
+                  {tAccount("createTitle")}
                 </ResponsiveDialogTitle>
+                <ResponsiveDialogDescription>
+                  {tAccount("createDescription")}
+                </ResponsiveDialogDescription>
               </ResponsiveDialogHeader>
               <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
                 <Field className="shrink-0">
                   <FieldLabel>
-                    Name<span className="text-destructive -ml-1">*</span>
+                    {tCommon("labels.name")}
+                    <span className="text-destructive -ml-1">*</span>
                   </FieldLabel>
                   <Input
                     disabled={createMutation.isPending}
@@ -410,7 +458,7 @@ export function AccountApiKeysSection() {
                       setCreateError(null);
                       setName(event.target.value);
                     }}
-                    placeholder="e.g. Personal automation"
+                    placeholder={tAccount("namePlaceholder")}
                     value={name}
                   />
                   {createError ? (
@@ -418,7 +466,7 @@ export function AccountApiKeysSection() {
                   ) : null}
                 </Field>
                 <Field className="shrink-0">
-                  <FieldLabel>Expiration</FieldLabel>
+                  <FieldLabel>{t("form.expiration")}</FieldLabel>
                   <Select
                     disabled={createMutation.isPending}
                     items={expirationItems}
@@ -441,7 +489,7 @@ export function AccountApiKeysSection() {
                 </Field>
                 <Field className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                   <FieldLabel>
-                    Permissions
+                    {tCommon("labels.permissions")}
                     <span className="text-destructive -ml-1">*</span>
                   </FieldLabel>
                   <ApiKeyPermissionSelector
@@ -459,10 +507,16 @@ export function AccountApiKeysSection() {
               <ResponsiveDialogFooter className="bg-background/95 supports-backdrop-filter:bg-background/80 mx-0 mb-0 shrink-0 rounded-b-xl border-t p-4 sm:justify-between">
                 <ResponsiveDialogClose
                   disabled={createMutation.isPending}
-                  render={<Button variant="outline">Cancel</Button>}
+                  render={
+                    <Button variant="outline">
+                      {tCommon("actions.cancel")}
+                    </Button>
+                  }
                 />
                 <Button disabled={createMutation.isPending} type="submit">
-                  {createMutation.isPending ? "Creating…" : "Create Key"}
+                  {createMutation.isPending
+                    ? tCommon("actions.creating")
+                    : t("create.submit")}
                 </Button>
               </ResponsiveDialogFooter>
             </form>
@@ -485,13 +539,14 @@ export function AccountApiKeysSection() {
           >
             <ResponsiveDialogHeader className="shrink-0 border-b p-4 pr-14">
               <ResponsiveDialogTitle className="text-2xl">
-                Edit account API key
+                {tAccount("editTitle")}
               </ResponsiveDialogTitle>
             </ResponsiveDialogHeader>
             <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
               <Field className="shrink-0">
                 <FieldLabel>
-                  Name<span className="text-destructive -ml-1">*</span>
+                  {tCommon("labels.name")}
+                  <span className="text-destructive -ml-1">*</span>
                 </FieldLabel>
                 <Input
                   disabled={updateMutation.isPending}
@@ -502,7 +557,7 @@ export function AccountApiKeysSection() {
                 />
               </Field>
               <Field className="shrink-0">
-                <FieldLabel>Expiration</FieldLabel>
+                <FieldLabel>{t("form.expiration")}</FieldLabel>
                 <Select
                   disabled={updateMutation.isPending}
                   items={expirationItems}
@@ -528,7 +583,7 @@ export function AccountApiKeysSection() {
               </Field>
               <Field className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <FieldLabel>
-                  Permissions
+                  {tCommon("labels.permissions")}
                   <span className="text-destructive -ml-1">*</span>
                 </FieldLabel>
                 <ApiKeyPermissionSelector
@@ -554,10 +609,14 @@ export function AccountApiKeysSection() {
             <ResponsiveDialogFooter className="bg-background/95 supports-backdrop-filter:bg-background/80 mx-0 mb-0 shrink-0 rounded-b-xl border-t p-4">
               <ResponsiveDialogClose
                 disabled={updateMutation.isPending}
-                render={<Button variant="outline">Cancel</Button>}
+                render={
+                  <Button variant="outline">{tCommon("actions.cancel")}</Button>
+                }
               />
               <Button disabled={updateMutation.isPending} type="submit">
-                {updateMutation.isPending ? "Saving…" : "Save Changes"}
+                {updateMutation.isPending
+                  ? tCommon("actions.saving")
+                  : tCommon("actions.saveChanges")}
               </Button>
             </ResponsiveDialogFooter>
           </form>
@@ -565,8 +624,12 @@ export function AccountApiKeysSection() {
       </ResponsiveDialog>
 
       <ConfirmDialog
-        confirmLabel="Delete API key"
-        description={`This will permanently delete ${deletingKey ? deletingKey.name : "this API key"}. This action cannot be undone.`}
+        confirmLabel={tApiKeysShared("deleteApiKey")}
+        description={
+          deletingKey
+            ? t("delete.descriptionNamed", { name: deletingKey.name })
+            : t("delete.description")
+        }
         onConfirm={() => {
           if (deletingKey) {
             deleteMutation.mutate(deletingKey.keyId);
@@ -579,9 +642,9 @@ export function AccountApiKeysSection() {
         }}
         open={!!deletingKey}
         pending={deleteMutation.isPending}
-        title="Delete account API key?"
+        title={tAccount("deleteTitle")}
         variant="destructive"
       />
-    </div>
+    </section>
   );
 }

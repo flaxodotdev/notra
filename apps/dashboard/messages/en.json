@@ -650,6 +650,28 @@
     "shared": {
       "editApiKey": "Edit API key",
       "deleteApiKey": "Delete API key"
+    },
+    "emptyState": {
+      "title": "No API keys yet",
+      "description": "Create a key to read and write this organization's content from scripts, SDKs or MCP clients."
+    },
+    "account": {
+      "title": "Account API keys",
+      "description": "Personal keys that work in every organization you belong to. Send the <code>X-Notra-Organization-Id</code> header to pick one.",
+      "createKey": "Create account key",
+      "emptyTitle": "No account API keys yet",
+      "emptyDescription": "Use an account key for personal automation across workspaces. Shared systems should use organization keys.",
+      "createTitle": "Create account API key",
+      "createDescription": "This key works in every organization you belong to.",
+      "editTitle": "Edit account API key",
+      "viewTitle": "View account API key",
+      "namePlaceholder": "e.g. Personal automation",
+      "deleteTitle": "Delete account API key?",
+      "toasts": {
+        "created": "Account API key created",
+        "updated": "Account API key updated",
+        "deleted": "Account API key deleted"
+      }
     }
   },
   "feedback": {
