@@ -6,8 +6,10 @@ import {
 } from "@usenotra/geo";
 
 import {
+  DYNAMIC_PAGE_CACHE_CONTROL,
+  GEO_INGEST_ENDPOINT,
   PROXY_EXCLUDED_PATH_PREFIXES,
-  STATIC_PAGE_CACHE_CONTROL,
+  PUBLIC_PAGE_CACHE_CONTROL,
 } from "@/constants/proxy";
 import { appendHeaderValue, negotiateMarkdown } from "@/lib/proxy/dualmark";
 import { findRedirect } from "@/lib/proxy/redirects";
@@ -15,7 +17,7 @@ import { HOMEPAGE_LINK_HEADER, SITE_URL } from "@/utils/urls";
 
 const geoOptions = {
   token: process.env.NOTRA_GEO_TOKEN ?? "",
-  endpoint: process.env.NOTRA_GEO_ENDPOINT,
+  endpoint: GEO_INGEST_ENDPOINT,
   tagLinks: { host: new URL(SITE_URL).hostname, html: true },
 };
 const geoTracker = new Tracker(geoOptions);
@@ -46,6 +48,7 @@ async function proxy(request: Request, next: () => Promise<Response>) {
   if (geoTagLinks) {
     const tagged = await tagMarkdownResponse(request, geoTagLinks, {});
     if (tagged) {
+      tagged.headers.set("Cache-Control", DYNAMIC_PAGE_CACHE_CONTROL);
       waitUntil(request, geoTracker.track(request));
       return tagged;
     }
@@ -68,7 +71,7 @@ async function proxy(request: Request, next: () => Promise<Response>) {
       request.method === "GET" &&
       !response.headers.has("cache-control")
     ) {
-      response.headers.set("Cache-Control", STATIC_PAGE_CACHE_CONTROL);
+      response.headers.set("Cache-Control", PUBLIC_PAGE_CACHE_CONTROL);
     }
     return response;
   });

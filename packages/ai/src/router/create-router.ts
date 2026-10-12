@@ -13,6 +13,8 @@ import type {
   RouteRequest,
   RouterLogger,
 } from "@notra/ai/types/router";
+import { getOperationalContext } from "@notra/ai/utils/operational-context";
+import { recordRequestAICost } from "@notra/ai/utils/request-ai-usage";
 
 import { createCreditTracker } from "./credits";
 import { GatewayCreditBalanceError } from "./errors";
@@ -125,6 +127,7 @@ export function createModelRouter(config: ModelRouterConfig): ModelRouter {
           organizationId: options?.organizationId,
           gateway: options?.gateway,
           zdr: options?.zdr,
+          logContext: options?.logContext,
         },
         policy: config.policy,
         adapters: config.adapters,
@@ -148,13 +151,56 @@ export function createModelRouter(config: ModelRouterConfig): ModelRouter {
         const enriched = await adapter.lookupRouteMetadata(
           metadata.generationId
         );
+        try {
+          if (enriched.costUsd !== undefined) {
+            recordRequestAICost(metadata.generationId, enriched.costUsd);
+          }
+          // Generation ID permits deduplication in queries. This is usage, not
+          // cash paid: only provider billing can account for promotional credits.
+          logger.info("ai.cost.reported", {
+            costId: `${metadata.gateway}:${metadata.generationId}`,
+            ...(metadata.organizationId
+              ? { organizationId: metadata.organizationId }
+              : {}),
+            generationId: metadata.generationId,
+            gateway: metadata.gateway,
+            model: enriched.model ?? metadata.model,
+            upstreamProvider: enriched.upstreamProvider,
+            gatewayCostUsd: enriched.gatewayCostUsd,
+            byokInferenceCostUsd: enriched.byokInferenceCostUsd,
+            isByok: enriched.isByok,
+            costUsd: enriched.costUsd,
+          });
+        } catch {
+          // Logging must not discard successfully fetched billing metadata.
+        }
+        try {
+          logger.info("ai.call.cost_enriched", {
+            ...getOperationalContext(),
+            generationId: metadata.generationId,
+            gateway: metadata.gateway,
+            model: enriched.model ?? metadata.model,
+            upstreamProvider: enriched.upstreamProvider,
+            costUsd: enriched.costUsd,
+            gatewayCostUsd: enriched.gatewayCostUsd,
+            upstreamInferenceCostUsd: enriched.upstreamInferenceCostUsd,
+            isByok: enriched.isByok,
+            costSource: enriched.costSource,
+          });
+        } catch {
+          // Enrichment can outlive its request; logging is still best-effort.
+        }
         return { ...metadata, ...enriched };
       } catch (error) {
-        logger.warn("ai.router.generation_lookup_failed", {
-          gateway: metadata.gateway,
-          generationId: metadata.generationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        try {
+          logger.warn("ai.router.generation_lookup_failed", {
+            gateway: metadata.gateway,
+            generationId: metadata.generationId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // A logging failure must not turn a best-effort lookup into a failure.
+        }
         return metadata;
       }
     },

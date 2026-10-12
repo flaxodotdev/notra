@@ -136,6 +136,11 @@ export interface ContextDevBrandSearchResponse {
   results: ContextDevBrandSearchResult[];
 }
 
+export interface ContextDevParseResponse {
+  markdown?: string | null;
+  type?: string;
+}
+
 export interface ContextDevStyleguideResponse {
   status: "ok";
   domain?: string;

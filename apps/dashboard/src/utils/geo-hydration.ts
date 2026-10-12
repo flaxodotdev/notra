@@ -4,7 +4,9 @@ import {
   GEO_TRAFFIC_HOST_PARAM,
 } from "@notra/geo-core/constants/geo";
 
+import { TRAFFIC_PATH_PARAM } from "@/constants/traffic-path";
 import {
+  geoHostQueryInput,
   geoOverviewQueryInput,
   geoSettingsQueryInput,
   geoTrafficJourneysQueryInput,
@@ -58,11 +60,15 @@ export function geoProjectRepairPath(
   return `/${encodeURIComponent(slug)}${basePath}${suffix ? `?${suffix}` : ""}`;
 }
 
+// Project ids are generated tokens; anything else (e.g. a NUL byte, which
+// Postgres rejects with an error that quotes the SQL) is not a project.
+const PROJECT_ID = /^[\w-]+$/;
+
 export function normalizeGeoProjectId(
   projectId: string | null | undefined
 ): string | undefined {
   const trimmed = projectId?.trim();
-  return trimmed ? trimmed : undefined;
+  return trimmed && PROJECT_ID.test(trimmed) ? trimmed : undefined;
 }
 
 /**
@@ -116,15 +122,18 @@ export function geoTrafficHydrationInputs(
   );
   const window = { from: range.dateFrom, to: range.dateTo };
   const host = firstSearchParam(search[GEO_TRAFFIC_HOST_PARAM]);
+  const path = firstSearchParam(search[TRAFFIC_PATH_PARAM]);
 
   return {
     settings: geoSettingsQueryInput(scope),
-    aiTraffic: geoOverviewQueryInput(scope, window),
-    trafficPages: geoTrafficPagesQueryInput(scope, window, host),
+    aiTraffic: geoHostQueryInput(scope, window, host, path),
+    webAnalytics: geoHostQueryInput(scope, window, host, path),
+    trafficPages: geoTrafficPagesQueryInput(scope, window, host, path),
     trafficLog: geoTrafficLogQueryInput(
       scope,
       { visitorTypes: [], categories: [] },
-      host
+      host,
+      path
     ),
     ingestSetup: geoSettingsQueryInput(scope),
   };

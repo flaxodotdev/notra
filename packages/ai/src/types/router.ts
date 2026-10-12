@@ -4,6 +4,7 @@ import type {
   SharedV4ProviderOptions,
 } from "@ai-sdk/provider";
 import type { routerProviderOptionsSchema } from "@notra/ai/schemas/router";
+import type { OperationalContext } from "@notra/ai/types/operational-log";
 import type { ProviderMetadata } from "ai";
 import type * as z from "zod";
 
@@ -56,6 +57,7 @@ export interface RouteRequest {
   /** Pin the request to a specific gateway (e.g. provider-defined tools). */
   gateway?: GatewayId;
   zdr?: ZdrMode;
+  logContext?: Partial<OperationalContext>;
 }
 
 export interface RouteDecision {
@@ -83,12 +85,24 @@ export interface RouteDecision {
 
 export interface RouteMetadata {
   gateway: GatewayId;
+  organizationId?: string;
   requestedModel: string;
   model: string;
   reason: RouteReason;
   plan?: Plan;
   generationId?: string;
   upstreamProvider?: string;
+  /** Customer total: gateway charge plus separately reported BYOK inference. */
+  costUsd?: number;
+  /** Gateway charge, including inference for system credentials; not just a fee. */
+  gatewayCostUsd?: number;
+  /** Separately reported upstream inference (BYOK only); not a market benchmark. */
+  upstreamInferenceCostUsd?: number;
+  /** Omitted when the provider metadata does not identify credential type. */
+  isByok?: boolean;
+  costSource?: "reported";
+  /** Provider-reported BYOK inference value, before provider credits or invoice adjustments. */
+  byokInferenceCostUsd?: number;
   fallbackFrom?: GatewayId;
   fallbackReason?: FallbackReason;
   /** Whether the call that produced this metadata ran with ZDR enforced. */
@@ -104,6 +118,20 @@ export interface GatewayHealth {
   ok: boolean;
   reason?: string;
 }
+
+export type GatewayRouteMetadata = Partial<
+  Pick<
+    RouteMetadata,
+    | "upstreamProvider"
+    | "model"
+    | "costUsd"
+    | "gatewayCostUsd"
+    | "byokInferenceCostUsd"
+    | "upstreamInferenceCostUsd"
+    | "isByok"
+    | "costSource"
+  >
+>;
 
 /**
  * Adapter for a concrete gateway. Adapters are pure: no env access, no
@@ -129,17 +157,19 @@ export interface GatewayAdapter {
   ): SharedV4ProviderOptions;
   checkHealth(): Promise<GatewayHealth>;
   getBalance(): Promise<GatewayBalance>;
+  /**
+   * `servedModelId` is the model id the provider reported in its response,
+   * which differs from the requested one after a gateway-side fallback.
+   */
   extractRouteMetadata(
-    providerMetadata: SharedV4ProviderMetadata | undefined
-  ): Partial<
-    Pick<RouteMetadata, "generationId" | "upstreamProvider" | "model">
-  >;
-  lookupRouteMetadata?(
-    generationId: string
-  ): Promise<Partial<Pick<RouteMetadata, "upstreamProvider" | "model">>>;
+    providerMetadata: SharedV4ProviderMetadata | undefined,
+    servedModelId?: string
+  ): GatewayRouteMetadata & Pick<Partial<RouteMetadata>, "generationId">;
+  lookupRouteMetadata?(generationId: string): Promise<GatewayRouteMetadata>;
 }
 
 export interface BuildProviderOptionsInput {
+  organizationId?: string;
   /** Caller provider options, already stripped of the router block. */
   providerOptions: SharedV4ProviderOptions;
   router: RouterProviderOptions;
@@ -170,6 +200,7 @@ export interface RouterPolicyConfig {
 export interface RouterLogFields {
   [key: string]:
     | string
+    | string[]
     | number
     | boolean
     | undefined
@@ -250,6 +281,7 @@ export interface RoutedModelOptions {
   organizationId?: string;
   gateway?: GatewayId;
   zdr?: ZdrMode;
+  logContext?: Partial<OperationalContext>;
 }
 
 export interface ModelRouter {
@@ -335,8 +367,18 @@ export interface RouteUsageSummary {
   route?: RouteMetadata;
   /** Prompt size of the largest step, for long-context pricing. */
   maxPromptTokens?: number;
-  /** Token cost of the steps, summed per call. */
+  /** Reported modeled spend when complete, otherwise estimated token cost, summed per call. */
   tokenCostUsd?: number;
+  /** Provenance of the priced steps, independent of the last call's route. */
+  costSource?: "reported" | "estimated" | "mixed";
+  reportedCostUsd?: number;
+  estimatedCostUsd?: number;
+  reportedSteps?: number;
+  estimatedSteps?: number;
+  /** Known reported gateway subtotal; may be partial when steps lack a breakdown. */
+  gatewayCostUsd?: number;
+  /** Known reported upstream subtotal; may be partial, not the full provider cost. */
+  upstreamInferenceCostUsd?: number;
 }
 
 export interface RouteUsageStep {

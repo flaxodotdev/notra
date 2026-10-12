@@ -1,20 +1,23 @@
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import { members, organizations } from "@notra/db/schema";
 import {
   deleteWithTransfersSchema,
   organizationMembershipActionSchema,
 } from "@notra/schemas/dashboard/api-params";
+import { deleteOrganizationSites } from "@notra/sites-server/organization";
 import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { Effect } from "effect";
-import { getTranslations } from "next-intl/server";
 
 import { deleteAutumnCustomer } from "@/lib/billing/delete-autumn-customer";
+import { getTranslations } from "@/lib/i18n/server";
 import {
   deleteOrganizationFromWorkOS,
   removeMembershipFromWorkOS,
   updateMembershipRoleInWorkOS,
 } from "@/lib/organizations/workos-sync";
 import { authorizedProcedure } from "@/lib/orpc/base";
+import { revokeSitePreviewAccess } from "@/lib/sites/preview-revocation";
 import {
   deleteOrganizationChatFiles,
   deleteOrganizationFiles,
@@ -24,10 +27,14 @@ import type {
   NextOwnerCandidate,
   OwnedOrganizationSummary,
 } from "@/types/user";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 
 import { badRequest, forbidden, notFound } from "../utils/errors";
+import { userAccountRouter, userSecurityRouter } from "./user-account";
 
 export const userRouter = {
+  account: userAccountRouter,
+  security: userSecurityRouter,
   organizations: {
     listOwned: authorizedProcedure.handler(async ({ context }) => {
       const ownedMemberships = await db.query.members.findMany({
@@ -47,6 +54,13 @@ export const userRouter = {
       const organizationIds = ownedMemberships.map(
         (membership) => membership.organizationId
       );
+      for (const organizationId of organizationIds) {
+        recordAuthorizedOrganization(
+          context.headers,
+          organizationId,
+          context.user.id
+        );
+      }
       const [memberCountRows, ownerCandidates] = await Promise.all([
         db
           .select({
@@ -144,6 +158,11 @@ export const userRouter = {
             const tErrors = await getTranslations("errors.user");
             throw forbidden(tErrors("notMember"));
           }
+          recordAuthorizedOrganization(
+            context.headers,
+            input.organizationId,
+            context.user.id
+          );
 
           const [membershipCountResult] = await tx
             .select({ count: count() })
@@ -168,6 +187,7 @@ export const userRouter = {
               where: eq(organizations.id, input.organizationId),
             });
 
+            await deleteOrganizationSites(input.organizationId, tx);
             await tx
               .delete(organizations)
               .where(eq(organizations.id, input.organizationId));
@@ -209,26 +229,26 @@ export const userRouter = {
           await Effect.runPromise(
             removeMembershipFromWorkOS(input.organizationId, context.user.id)
           );
+          await revokeSitePreviewAccess(input.organizationId, context.user.id);
         }
 
         if (shouldCleanupDeletedOrganization) {
           await Promise.all([
             deleteOrganizationFiles(input.organizationId).catch((error) => {
-              console.error(
-                `[Delete Org] Failed to cleanup R2 files for ${input.organizationId}:`,
-                error
-              );
+              logError("[Delete Org] Failed to cleanup R2 files", error, {
+                organizationId: input.organizationId,
+              });
             }),
             deleteOrganizationChatFiles(input.organizationId).catch((error) => {
-              console.error(
-                `[Delete Org] Failed to cleanup chat files for ${input.organizationId}:`,
-                error
-              );
+              logError("[Delete Org] Failed to cleanup chat files", error, {
+                organizationId: input.organizationId,
+              });
             }),
             deleteAutumnCustomer(input.organizationId).catch((error) => {
-              console.error(
-                `[Delete Org] Failed to cancel Autumn subscription for ${input.organizationId}:`,
-                error
+              logError(
+                "[Delete Org] Failed to cancel Autumn subscription",
+                error,
+                { organizationId: input.organizationId }
               );
             }),
           ]);
@@ -256,6 +276,11 @@ export const userRouter = {
             const tErrors = await getTranslations("errors.user");
             throw forbidden(tErrors("notOwner", { orgId: transfer.orgId }));
           }
+          recordAuthorizedOrganization(
+            context.headers,
+            transfer.orgId,
+            context.user.id
+          );
 
           if (transfer.action === "transfer") {
             let newOwner = await tx.query.members.findFirst({
@@ -311,6 +336,7 @@ export const userRouter = {
             throw notFound(`Organization ${transfer.orgId} not found`);
           }
 
+          await deleteOrganizationSites(transfer.orgId, tx);
           await tx
             .delete(organizations)
             .where(eq(organizations.id, transfer.orgId));
@@ -334,6 +360,7 @@ export const userRouter = {
           await Effect.runPromise(
             removeMembershipFromWorkOS(transfer.orgId, context.user.id)
           );
+          await revokeSitePreviewAccess(transfer.orgId, context.user.id);
         } else {
           await Effect.runPromise(
             deleteOrganizationFromWorkOS(outcome.workosOrgId)
@@ -344,31 +371,29 @@ export const userRouter = {
       await Promise.all(
         organizationsToCleanup.flatMap((orgId) => [
           deleteOrganizationFiles(orgId).catch((error) => {
-            console.error(
-              `[Delete Org] Failed to cleanup R2 files for ${orgId}:`,
-              error
-            );
+            logError("[Delete Org] Failed to cleanup R2 files", error, {
+              organizationId: orgId,
+            });
           }),
           deleteOrganizationChatFiles(orgId).catch((error) => {
-            console.error(
-              `[Delete Org] Failed to cleanup chat files for ${orgId}:`,
-              error
-            );
+            logError("[Delete Org] Failed to cleanup chat files", error, {
+              organizationId: orgId,
+            });
           }),
           deleteAutumnCustomer(orgId).catch((error) => {
-            console.error(
-              `[Delete Org] Failed to cancel Autumn subscription for ${orgId}:`,
-              error
+            logError(
+              "[Delete Org] Failed to cancel Autumn subscription",
+              error,
+              { organizationId: orgId }
             );
           }),
         ])
       );
 
       await deleteUserFiles(context.user.id).catch((error) => {
-        console.error(
-          `[Delete User] Failed to cleanup R2 files for user ${context.user.id}:`,
-          error
-        );
+        logError("[Delete User] Failed to cleanup R2 files", error, {
+          userId: context.user.id,
+        });
       });
 
       return {

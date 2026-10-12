@@ -1,3 +1,4 @@
+import { GEO_CONTEXT_COMPETITOR_LIMIT } from "@notra/db/constants/geo-context-competitors";
 import { isDemoMode } from "@notra/utils/demo-mode";
 
 import type {
@@ -9,6 +10,8 @@ import type {
   GeoChatSkin,
   GeoCompetitor,
   GeoCompetitorShareTimeseriesPoint,
+  GeoDrainProvider,
+  GeoIngestMethod,
   GeoGroundedProvider,
   GeoGroundedProviderConfig,
   GeoIngestFramework,
@@ -326,6 +329,7 @@ export const GEO_BRAND_LABELS: Record<string, string> = {
   codex: "Codex",
   copilot: "Copilot",
   mistral: "Mistral",
+  cohere: "Cohere",
   deepseek: "DeepSeek",
   meta: "Meta",
   grok: "Grok",
@@ -342,10 +346,12 @@ export const GEO_MAX_SEQUENCES = 10;
 export const GEO_COMPETITOR_SHARE_LIMIT = 50;
 export const GEO_PROMPT_HISTORY_LIMIT = 120;
 export const GEO_PROMPT_HISTORY_SKELETON_ROWS = 4;
-/** Named brands shown in the scan-history "New brands" cell before +N. */
-export const GEO_PROMPT_HISTORY_NEW_COMPETITORS_VISIBLE = 3;
-export const GEO_PROMPT_HISTORY_EMPTY_POSITION = "\u2013";
-export const GEO_PROMPT_HISTORY_EMPTY_COMPETITORS = "\u2013";
+/** Scans the prompt sheet's history renders per infinite-scroll page. */
+export const GEO_PROMPT_HISTORY_PAGE_SIZE = 10;
+/** Sources listed in the prompt sheet before "Show all". */
+export const GEO_PROMPT_SOURCES_VISIBLE_ROWS = 5;
+/** Brands named in the prompts table's "Mentioned instead" cell before +N. */
+export const GEO_PROMPT_MENTIONED_INSTEAD_VISIBLE = 2;
 export const GEO_SHARE_OF_VOICE_TOP_BRANDS = 5;
 export const GEO_SHARE_OF_VOICE_PAGE_TOP_BRANDS = 8;
 export const GEO_VISIBILITY_TABLE_ROWS = GEO_SHARE_OF_VOICE_TOP_BRANDS + 1;
@@ -362,6 +368,13 @@ export const GEO_CONVERSATION_CONTEXT_PROMPT_LIMIT = 12;
 export const GEO_GROUNDED_MAX_SEARCHES = 3;
 export const GEO_ANSWER_MAX_TOKENS = 4096;
 export const GEO_GROUNDED_ANSWER_MAX_TOKENS = 4096;
+export const GEO_FLEX_MODELS: ReadonlySet<string> = new Set([
+  "openai/gpt-6-sol",
+  "openai/gpt-6-astra",
+  "openai/gpt-5.6-sol",
+  "openai/gpt-5.6-luna",
+  "openai/gpt-5.6-terra",
+]);
 export const GEO_JUDGE_MAX_TOKENS = 800;
 export const GEO_SCAN_CONCURRENCY = 4;
 export const GEO_SCAN_DEFAULT_INTERVAL_HOURS = 24;
@@ -474,10 +487,14 @@ export const GEO_DISCOVERY_CACHE_PREFIX = "geo:discovery:v7";
 export const GEO_DISCOVERY_CACHE_TTL_SECONDS = 60 * 60;
 export const GEO_COMPETITOR_SUGGESTIONS_CACHE_PREFIX =
   "geo:competitor-suggestions:v1";
-export const GEO_INGEST_IDENTITY_CACHE_PREFIX = "geo:ingest-identity:v1";
 export const GEO_INGEST_HOSTS_CACHE_PREFIX = "geo:ingest-hosts:v2";
+export const GEO_INGEST_SITE_CACHE_PREFIX = "geo:ingest-site:v2";
+export const GEO_INGEST_SITE_INACTIVE_TTL_SECONDS = 60;
+export const GEO_INGEST_SITE_MEMORY_TTL_MS = 60_000;
+export const GEO_INGEST_SITE_MEMORY_MAX_ENTRIES = 5000;
+export const GEO_INGEST_ORGANIZATION_SITES_CACHE_PREFIX =
+  "geo:ingest-organization-sites:v2";
 export const GEO_INGEST_IDENTITY_ACTIVE_TTL_SECONDS = 5 * 60;
-export const GEO_INGEST_IDENTITY_INACTIVE_TTL_SECONDS = 60;
 export const GEO_ONBOARDING_MAX_PROMPTS = 30;
 export const GEO_ONBOARDING_SUGGESTED_COMPETITORS = 10;
 export const GEO_BRAND_SEARCH_MIN_QUERY_LENGTH = 2;
@@ -507,6 +524,43 @@ export const GEO_CITATIONS_ROW_HEIGHT = 40;
 export const GEO_PURPOSE_COLUMN_WIDTH = "12.5rem";
 export const GEO_TRAFFIC_LIVE_INTERVAL_MS = 30_000;
 export const GEO_INGEST_PATH = "/api/geo/ingest";
+export const GEO_DRAIN_PROVIDERS = [
+  "vercel",
+  "cloudflare",
+] as const satisfies readonly GeoDrainProvider[];
+export const GEO_DRAIN_PATHS = {
+  vercel: "/api/geo/drains/vercel",
+  cloudflare: "/api/geo/drains/cloudflare",
+} as const satisfies Record<GeoDrainProvider, string>;
+export const GEO_DRAIN_DOCS_URLS = {
+  vercel: "https://docs.usenotra.com/ai-traffic/install/vercel-log-drain",
+  cloudflare: "https://docs.usenotra.com/ai-traffic/install/cloudflare-logpush",
+} as const satisfies Record<GeoDrainProvider, string>;
+export const GEO_INGEST_DEFAULT_METHOD: GeoIngestMethod = "sdk";
+export const GEO_INGEST_METHODS = [
+  "sdk",
+  "vercel",
+  "cloudflare",
+] as const satisfies readonly GeoIngestMethod[];
+export const GEO_CLOUDFLARE_LOGPUSH_FIELDS = [
+  "ClientCity",
+  "ClientCountry",
+  "ClientIP",
+  "ClientLatitude",
+  "ClientLongitude",
+  "ClientRegionCode",
+  "ClientRequestHost",
+  "ClientRequestMethod",
+  "ClientRequestReferer",
+  "ClientRequestScheme",
+  "ClientRequestSource",
+  "ClientRequestURI",
+  "ClientRequestUserAgent",
+  "EdgeResponseStatus",
+  "EdgeStartTimestamp",
+  "RayID",
+  "RequestHeaders",
+] as const;
 export const GEO_INGEST_SNIPPET_FALLBACK =
   "// Set GEO_INGEST_SECRET to generate your install snippet";
 export const GEO_INGEST_PACKAGE = "@usenotra/geo";
@@ -545,6 +599,8 @@ export const GEO_INGEST_FRAMEWORK_OPTIONS = [
 export const GEO_INGEST_SECRET_ENV = "GEO_INGEST_SECRET";
 export const GEO_INGEST_SECRET_FALLBACK_ENV = "BEACON_INGEST_SECRET";
 export const GEO_INGEST_TOKEN_SEPARATOR = ".";
+export const GEO_INGEST_SITE_TOKEN_PREFIX = "nst.";
+export const GEO_INGEST_SITE_TOKEN_SIGNING_DOMAIN = "notra-sites-traffic:";
 export const GEO_INGEST_BEARER_PREFIX = "Bearer ";
 export const GEO_MAX_STORED_UA_LENGTH = 200;
 export const AI_TRAFFIC_DEFAULT_JOURNEYS_LIMIT = 25;
@@ -668,6 +724,7 @@ export const GEO_AGENT_LABELS: Record<string, string> = {
   "cohere-ai": "Cohere-AI",
   "cohere-training-data-crawler": "Cohere Training Crawler",
   "kagi-fetcher": "Kagi-Fetcher",
+  "google-extended": "Google-Extended",
   omgili: "Omgili",
 };
 
@@ -936,7 +993,18 @@ export const GEO_EMPTY_TRAFFIC_RESPONSE: AiTrafficResponse = {
 };
 
 export const GEO_MAX_ALIASES = 10;
-export const GEO_MAX_COMPETITORS = 25;
+/**
+ * Tracking a competitor only adds a name to match in answers, so this is a
+ * safety ceiling rather than a product limit. LLM prompts never see the whole
+ * list; see GEO_COMPETITOR_CONTEXT_LIMIT.
+ */
+export const GEO_MAX_COMPETITORS = 2000;
+/**
+ * How many tracked competitors an LLM prompt gets (personas, conversations,
+ * suggestions, writer briefs, agent context), ranked by how often engines
+ * recommend them. Keeps token usage flat however many are tracked.
+ */
+export const GEO_COMPETITOR_CONTEXT_LIMIT = GEO_CONTEXT_COMPETITOR_LIMIT;
 export const GEO_MAX_CONVERSION_PATHS = 20;
 export const GEO_CONVERSION_PATH_MAX_LENGTH = 200;
 export const GEO_CONVERSION_PATHS_PLACEHOLDER = "/signup";
@@ -951,15 +1019,11 @@ export const GEO_MAX_LANGUAGES = 4;
 export const GEO_LANGUAGE_MAX_PROMPTS = 5;
 export const GEO_TRANSLATION_MAX_TOKENS = 2000;
 
-export const COPY_FEEDBACK_MS = 2000;
-
 export const GEO_TAB_VALUES = [
   "visibility",
   "brand-sentiment",
   "journeys",
 ] as const satisfies readonly GeoTab[];
-
-export const GEO_TRAFFIC_REVEAL_MS = 150;
 
 export const GEO_DEFAULT_TAB: GeoTab = "visibility";
 
@@ -1061,3 +1125,37 @@ export const GEO_MENTION_EVALUATION_TIMEOUT_MS = 10_000;
 /** Highest list rank the evaluation model can pick; longer lists fall back to the judge. */
 export const GEO_MENTION_EVALUATION_MAX_POSITION = 10;
 export const GEO_MENTION_EVALUATION_NO_POSITION = "none";
+
+export const GEO_LIVE_CHANNEL_PREFIX = "geo";
+export const GEO_LIVE_WATCH_KEY_PREFIX = "geo:live:watch";
+// Refreshed on every realtime (re)connect, which happens at least every
+// 300 s (Upstash Realtime's Fluid stream limit), so it lapses shortly after
+// the last GEO tab closed.
+export const GEO_LIVE_WATCH_TTL_SECONDS = 330;
+// How long ingest trusts a watch lookup. A tab opened within this window
+// waits at most this long for its first live update; polling covers it.
+export const GEO_LIVE_WATCH_MEMO_MS = 15_000;
+// "Nobody watches" is remembered only briefly: a tab that just opened should
+// not miss the traffic of its first seconds.
+export const GEO_LIVE_UNWATCHED_MEMO_MS = 3000;
+// Scan batches finish every few seconds; viewers refetch at most this often
+// while a scan runs. Start and finish are always announced.
+export const GEO_VISIBILITY_LIVE_PROGRESS_INTERVAL_SECONDS = 10;
+// Consecutive realtime connects that never opened (expired session, outage)
+// before the GEO pages stop retrying for a while and rely on polling.
+export const GEO_LIVE_MAX_FAILED_CONNECTS = 3;
+export const GEO_LIVE_PAUSE_AFTER_FAILURES_MS = 60_000;
+// Tinybird buffers rows written with wait=false and flushes them within
+// ~2.8 s (p90). Traffic updates are announced once that window has passed,
+// so the refetch they trigger already sees the new rows.
+export const GEO_TRAFFIC_LIVE_SETTLE_MS = 4000;
+// A busy site announces at most this often, so open tabs refetch the traffic
+// pipes every few seconds instead of after every request burst.
+export const GEO_TRAFFIC_LIVE_MIN_INTERVAL_MS = 10_000;
+// With a live connection, polling only covers missed or dropped events.
+export const GEO_LIVE_FALLBACK_INTERVAL_MS = 120_000;
+// A running scan still polls slowly: its last batch can finish between two
+// events while the stream reconnects.
+export const GEO_LIVE_SCAN_FALLBACK_INTERVAL_MS = 15_000;
+// Coalesces bursts (parallel scan batches, several projects) into one refetch.
+export const GEO_LIVE_INVALIDATE_THROTTLE_MS = 2000;

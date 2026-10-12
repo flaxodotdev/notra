@@ -6,6 +6,9 @@ import type {
 import type { PersonaDialogView } from "@/types/geo-personas-ui";
 
 export const GEO_PERSONA_RESULTS_POLL_MS = 15_000;
+
+/** Query param that opens a persona's detail on the personas page. */
+export const GEO_PERSONA_DETAIL_QUERY_KEY = "persona";
 export const GEO_PERSONA_FORECAST_DAYS = 7;
 export const GEO_PERSONA_FORECAST_SAMPLE_DAYS = 7;
 /** The activity chart's y-axis never shrinks below this ceiling (percent). */

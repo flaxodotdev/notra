@@ -1,5 +1,9 @@
 import "zod/compile";
 import { z } from "@hono/zod-openapi";
+import {
+  POST_AUTHORS_MAX,
+  POST_TAGS_MAX,
+} from "@notra/ai/constants/post-metadata";
 import { supportedLanguageSchema } from "@notra/ai/schemas/language";
 import {
   BRAND_AUDIENCE_MAX_LENGTH,
@@ -14,6 +18,11 @@ import {
   POST_TITLE_MAX_LENGTH,
 } from "@notra/ai/schemas/limits";
 import { POST_SLUG_MAX_LENGTH, POST_SLUG_REGEX } from "@notra/ai/schemas/post";
+import {
+  postCoverImageSchema,
+  postExcerptPatchSchema,
+  postTagsSchema,
+} from "@notra/ai/schemas/post-metadata";
 import { toneProfileSchema } from "@notra/ai/schemas/tone";
 import { isValidTimezone } from "@notra/ai/utils/current-date";
 import { SUPPORTED_CONTENT_GENERATION_TYPES } from "@notra/content-generation/schemas";
@@ -21,6 +30,10 @@ import { lookbackWindowEnum, postStatusEnum } from "@notra/db/schema";
 import { assertPublicHttpUrl } from "@notra/utils/url";
 
 import { createPostFieldsSchema } from "../shared/post";
+import {
+  postAuthorIdsSchema,
+  postDisplayDatePatchSchema,
+} from "../shared/post-metadata";
 import { resourceIdSchema } from "./ids";
 
 const HTTP_PROTOCOL_REGEX = /^https?:\/\//i;
@@ -341,6 +354,70 @@ export const createGitHubIntegrationResponseSchema = z.object({
   organization: organizationResponseSchema,
 });
 
+const postCoverImageResponseSchema = z
+  .object({
+    url: z.string().openapi({
+      description:
+        "Absolute https URL, or a path to an image uploaded in Notra (starting with /api/uploads/).",
+      example: "https://cdn.example.com/covers/ship-notes.png",
+    }),
+    alt: z.string().openapi({
+      description: "Alt text. Empty string when none is set.",
+      example: "Screenshot of the new editor",
+    }),
+  })
+  .openapi({
+    description: "Cover image shown on post cards and social previews.",
+  });
+
+const postAuthorSummarySchema = z.object({
+  id: z.string().openapi({ example: "auth_8f2kq1" }),
+  slug: z.string().openapi({
+    description:
+      "Stable author handle; hosted sites list the author's posts at /author/{slug}.",
+    example: "jane-doe",
+  }),
+  name: z.string().openapi({ example: "Jane Doe" }),
+  title: z.string().nullable().openapi({ example: "Head of Product" }),
+  avatarUrl: z
+    .string()
+    .nullable()
+    .openapi({ example: "https://cdn.example.com/avatars/jane.png" }),
+});
+
+const postMetadataResponseSchema = z
+  .object({
+    coverImage: postCoverImageResponseSchema.nullable(),
+    tags: z.array(z.string()).openapi({ example: ["editor", "performance"] }),
+    excerpt: z.string().nullable().openapi({
+      description:
+        "Summary shown on post cards and in meta descriptions. Null means it is derived from the first paragraph.",
+      example: "The editor now opens twice as fast on long posts.",
+    }),
+    authors: z.array(postAuthorSummarySchema).openapi({
+      description:
+        "Credited authors in display order. Authors deleted since they were assigned are omitted.",
+    }),
+    featured: z.boolean().openapi({
+      description: "Pinned to the top of the blog index on hosted sites.",
+      example: false,
+    }),
+    noindex: z.boolean().openapi({
+      description:
+        "Asks search engines not to index the post and leaves it out of the sitemap.",
+      example: false,
+    }),
+    displayDate: z.string().nullable().openapi({
+      description:
+        "Date shown on the post as YYYY-MM-DD. Null means the publish date is used.",
+      example: "2026-10-01",
+    }),
+  })
+  .openapi({
+    description:
+      "Site metadata for blog posts and changelogs, written into the frontmatter when the post is published to a site.",
+  });
+
 const postResponseSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -363,6 +440,10 @@ const postResponseSchema = z.object({
   recommendations: z.string().nullable(),
   contentType: postContentTypeSchema,
   sourceMetadata: z.unknown().nullable(),
+  metadata: postMetadataResponseSchema.nullable().openapi({
+    description:
+      "Cover image, tags, excerpt, authors and other site metadata. Set for blog posts and changelogs, null for every other content type.",
+  }),
   status: postStatusSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -387,6 +468,55 @@ export const getPostResponseSchema = z.object({
   organization: organizationResponseSchema,
   post: postResponseSchema.nullable(),
 });
+
+const patchPostMetadataRequestSchema = z
+  .object({
+    coverImage: postCoverImageSchema
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          "Cover image as { url, alt }. url must be an https URL (or a Notra upload path returned by the dashboard). Send null to remove the cover.",
+        example: {
+          url: "https://cdn.example.com/covers/ship-notes.png",
+          alt: "Screenshot of the new editor",
+        },
+      }),
+    tags: postTagsSchema.optional().openapi({
+      description: `Replaces all tags. Up to ${POST_TAGS_MAX} tags; duplicates are dropped case-insensitively, keeping the first spelling. Send [] to clear.`,
+      example: ["editor", "performance"],
+    }),
+    excerpt: postExcerptPatchSchema.optional().openapi({
+      description:
+        "Custom summary for post cards and meta descriptions. Send null or an empty string to derive it from the first paragraph again.",
+      example: "The editor now opens twice as fast on long posts.",
+    }),
+    authorIds: postAuthorIdsSchema.optional().openapi({
+      description: `Replaces the credited authors, in display order. Up to ${POST_AUTHORS_MAX} IDs from GET /v1/posts/authors. Send [] to clear.`,
+      example: ["auth_8f2kq1"],
+    }),
+    featured: z.boolean().optional().openapi({
+      description: "Pin the post to the top of the blog index.",
+      example: true,
+    }),
+    noindex: z.boolean().optional().openapi({
+      description:
+        "Ask search engines not to index the post and leave it out of the sitemap.",
+      example: false,
+    }),
+    displayDate: postDisplayDatePatchSchema.optional().openapi({
+      description:
+        "Date shown on the post as YYYY-MM-DD. Send null to fall back to the publish date.",
+      example: "2026-10-01",
+    }),
+  })
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: "At least one metadata field must be provided",
+  })
+  .openapi({
+    description:
+      "Site metadata for blog posts and changelogs. Send only the fields you want to change. Rejected with 400 for other content types.",
+  });
 
 export const patchPostRequestSchema = z
   .object({
@@ -424,13 +554,15 @@ export const patchPostRequestSchema = z
     status: postStatusSchema.optional().openapi({
       example: "published",
     }),
+    metadata: patchPostMetadataRequestSchema.optional(),
   })
   .refine(
     (data) =>
       data.title !== undefined ||
       data.slug !== undefined ||
       data.markdown !== undefined ||
-      data.status !== undefined,
+      data.status !== undefined ||
+      data.metadata !== undefined,
     {
       message: "At least one field must be provided",
     }
@@ -439,6 +571,27 @@ export const patchPostRequestSchema = z
 export const patchPostResponseSchema = z.object({
   organization: organizationResponseSchema,
   post: postResponseSchema,
+});
+
+const contentAuthorResponseSchema = z.object({
+  id: z.string().openapi({
+    description: "Pass this ID in metadata.authorIds when updating a post.",
+    example: "auth_8f2kq1",
+  }),
+  slug: z.string().openapi({ example: "jane-doe" }),
+  name: z.string().openapi({ example: "Jane Doe" }),
+  title: z.string().nullable().openapi({ example: "Head of Product" }),
+  bio: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  url: z.string().nullable(),
+  x: z.string().nullable(),
+  linkedin: z.string().nullable(),
+  github: z.string().nullable(),
+});
+
+export const listPostAuthorsResponseSchema = z.object({
+  organization: organizationResponseSchema,
+  authors: z.array(contentAuthorResponseSchema),
 });
 
 export const createPostRequestSchema = createPostFieldsSchema

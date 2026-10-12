@@ -1,18 +1,20 @@
 import { isDemoMode } from "@notra/utils/demo-mode";
-import { headers } from "next/headers";
+import { getRequestHeaders as headers } from "@tanstack/react-start/server";
 
 import { createDemoSandbox, maintainDemoSandboxPool } from "@/lib/demo/sandbox";
 import { writeDemoSession } from "@/lib/demo/session";
 import { demoSandboxCreateInputSchema } from "@/schemas/demo";
 import type { DemoSandboxCreateResponse } from "@/types/demo";
 import { getDemoClientIp, hashDemoClientIp } from "@/utils/demo-ip-hash";
+import { isForeignDemoRequest } from "@/utils/demo-same-origin";
 import { ratelimit } from "@/utils/ratelimit";
-
-export const maxDuration = 60;
 
 export async function POST(request: Request) {
   if (!isDemoMode()) {
     return new Response(null, { status: 404 });
+  }
+  if (isForeignDemoRequest(request)) {
+    return Response.json({ error: "Cross-site request" }, { status: 403 });
   }
 
   const ipHash = hashDemoClientIp(getDemoClientIp(await headers()));
@@ -31,6 +33,12 @@ export async function POST(request: Request) {
     timeZone: parsed.success ? (parsed.data.timeZone ?? null) : null,
     ipHash,
   });
+  if (!sandbox) {
+    return Response.json(
+      { error: "Demo workspace creation is busy. Please try again." },
+      { status: 503, headers: { "Retry-After": "3" } }
+    );
+  }
   await writeDemoSession(sandbox.anonymousId);
   maintainDemoSandboxPool();
 

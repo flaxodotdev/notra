@@ -15,11 +15,14 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { BRAND_GUIDELINE_POLL_INTERVAL_MS } from "@/constants/brand-guidelines";
-import type { BrandGuidelinesResponse } from "@/types/hooks/brand-guidelines";
+import type {
+  AttachGuidelineSourcePdfInput,
+  BrandGuidelinesResponse,
+} from "@/types/hooks/brand-guidelines";
 
 import { dashboardOrpc } from "../orpc/query";
 
@@ -216,6 +219,37 @@ export function useCreateGuidelineAsset(
         organizationId,
         voiceId,
         ...input,
+      }),
+    organizationId,
+    voiceId,
+  });
+}
+
+export function useAttachGuidelineSourcePdf(
+  organizationId: string,
+  voiceId: string
+) {
+  return useGuidelineMutation<AttachGuidelineSourcePdfInput>({
+    mutationFn: (input) =>
+      dashboardOrpc.brand.guidelines.attachSourcePdf.call({
+        organizationId,
+        voiceId,
+        ...input,
+      }),
+    organizationId,
+    voiceId,
+  });
+}
+
+export function useRemoveGuidelineSourcePdf(
+  organizationId: string,
+  voiceId: string
+) {
+  return useGuidelineMutation({
+    mutationFn: () =>
+      dashboardOrpc.brand.guidelines.removeSourcePdf.call({
+        organizationId,
+        voiceId,
       }),
     organizationId,
     voiceId,

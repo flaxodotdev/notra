@@ -18,6 +18,7 @@ export const listNotraBlogPosts = cache(async (): Promise<NotraBlogPost[]> => {
     blog.map(async (entry) => ({
       ...(await normalizeContentEntry(entry)),
       contentType: "blog_post",
+      image: entry.image ?? null,
       authors: BLOG_AUTHORS.filter((author) => author.slug === entry.author),
     }))
   );

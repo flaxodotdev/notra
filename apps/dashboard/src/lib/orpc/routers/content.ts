@@ -6,19 +6,33 @@ import {
 } from "@notra/ai/integrations/linear";
 import { type ContentType, contentTypeSchema } from "@notra/ai/schemas/content";
 import { supportsPostSlug } from "@notra/ai/schemas/post";
+import { postCoverImageSchema } from "@notra/ai/schemas/post-metadata";
 import {
   createLinearClient,
   getLinearIssuePreviews,
 } from "@notra/ai/utils/linear";
 import { createOctokit } from "@notra/ai/utils/octokit";
+import { listOrganizationTags } from "@notra/ai/utils/post-service";
 import { sanitizeMarkdownHtml } from "@notra/ai/utils/sanitize";
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
-import { githubIntegrations, postCollections, posts } from "@notra/db/schema";
+import {
+  contentAuthors,
+  githubIntegrations,
+  postCollections,
+  posts,
+} from "@notra/db/schema";
 import type { BlogPostSubtype } from "@notra/db/types/content";
 import { buildPostCollectionName } from "@notra/db/utils/post-collections";
 import { extractImageArtifactHtml } from "@notra/db/utils/post-image-artifacts";
 import {
+  contentAuthorsInOrganization,
+  postMetadataUpdateData,
+} from "@notra/db/utils/post-metadata";
+import { publishedAtForStatusChange } from "@notra/db/utils/post-published-at";
+import {
   isProjectInOrganization,
+  projectScopedCollectionIds,
   projectScopeFilter,
 } from "@notra/db/utils/projects";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
@@ -30,6 +44,7 @@ import {
 import type {
   ContentResponse,
   PostsResponse,
+  SocialVideoAttachment,
 } from "@notra/schemas/dashboard/content";
 import {
   contentInputSchema,
@@ -43,13 +58,13 @@ import {
   postGitHubPublishSchema,
   publishContentToGitHubSchema,
   renamePostCollectionInputSchema,
+  updateContentMetadataInputSchema,
   updateContentSchema,
   updateExpectedPostCountInputSchema,
 } from "@notra/schemas/dashboard/content";
 import { clearCompletedGenerationSchema } from "@notra/schemas/dashboard/generations";
+import type { PostMetadata } from "@notra/schemas/shared/post-metadata";
 import { slugify } from "@notra/utils/slugify";
-import { publishEventInTransaction } from "@notra/webhooks/drizzle";
-import { postPublishedInput } from "@notra/webhooks/utils/posts";
 import {
   and,
   asc,
@@ -66,22 +81,22 @@ import {
 } from "drizzle-orm";
 import { marked } from "marked";
 import { nanoid } from "nanoid";
-import { getTranslations } from "next-intl/server";
-import { after } from "next/server";
 
+import { TAG_SUGGESTIONS_LIMIT } from "@/constants/content-overview";
 import {
   DASHBOARD_HOME_POST_LIMIT,
   GITHUB_API_MAX_PAGES,
   GITHUB_API_MAX_RESULTS,
   GITHUB_API_PAGE_SIZE,
 } from "@/constants/content-preview";
+import { SOCIAL_VIDEO } from "@/constants/social-video";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
 import { getEnabledDataPoints } from "@/lib/analytics/studio-events";
 import { assertOrganizationAccess } from "@/lib/auth/organization";
 import { assertActiveSubscription } from "@/lib/billing/subscription";
 import { getUtcDayRange } from "@/lib/content/content-calendar";
 import { getContentPublishingMetrics } from "@/lib/content/content-publishing-metrics.server";
-import { projectScopedCollectionIds } from "@/lib/content/project-scope";
+import { afterResponse } from "@/lib/framework/after-response";
 import {
   addActiveGeneration,
   clearCompletedGeneration,
@@ -90,9 +105,13 @@ import {
   getCompletedGenerations,
 } from "@/lib/generations/tracking";
 import { requestGeoRescanForPublishedPost } from "@/lib/geo/rescan";
+import { getTranslations } from "@/lib/i18n/server";
 import { publishSavedContentToGitHub } from "@/lib/integrations/github/publish-saved-content";
 import { baseProcedure } from "@/lib/orpc/base";
+import { contentAuthorsRouter } from "@/lib/orpc/routers/content-authors";
+import { isOwnSocialVideo } from "@/lib/social-connect/media-urls";
 import { startOnDemandRun } from "@/lib/workflows/start";
+import type { PostMetadataColumns } from "@/types/content/overview";
 import type {
   CommitPreview,
   LinearIntegrationPreviewItem,
@@ -135,6 +154,13 @@ const postReadColumns = {
   createdAt: true,
   sourceMetadata: true,
   githubPublish: true,
+  coverImage: true,
+  tags: true,
+  excerpt: true,
+  authorIds: true,
+  featured: true,
+  noindex: true,
+  displayDate: true,
   status: true,
   updatedAt: true,
 } as const;
@@ -196,20 +222,37 @@ function serializePost(post: {
   };
 }
 
-function serializeContent(post: {
-  content: string;
-  contentType: string;
-  createdAt: Date;
-  htmlUrl: string | null;
-  id: string;
-  markdown: string | null;
-  recommendations: string | null;
-  slug: string | null;
-  sourceMetadata: unknown;
-  githubPublish: unknown;
-  status: "draft" | "published";
-  title: string;
-}): ContentResponse {
+function serializePostMetadata(post: PostMetadataColumns): PostMetadata {
+  const cover = postCoverImageSchema.safeParse(post.coverImage);
+  return {
+    coverImage: cover.success ? cover.data : null,
+    tags: post.tags,
+    excerpt: post.excerpt,
+    authorIds: post.authorIds,
+    featured: post.featured,
+    noindex: post.noindex,
+    displayDate: post.displayDate
+      ? post.displayDate.toISOString().slice(0, 10)
+      : null,
+  };
+}
+
+function serializeContent(
+  post: PostMetadataColumns & {
+    content: string;
+    contentType: string;
+    createdAt: Date;
+    htmlUrl: string | null;
+    id: string;
+    markdown: string | null;
+    recommendations: string | null;
+    slug: string | null;
+    sourceMetadata: unknown;
+    githubPublish: unknown;
+    status: "draft" | "published";
+    title: string;
+  }
+): ContentResponse {
   const githubPublish = postGitHubPublishSchema.safeParse(post.githubPublish);
 
   return {
@@ -226,6 +269,7 @@ function serializeContent(post: {
     date: post.createdAt.toISOString(),
     sourceMetadata: post.sourceMetadata as ContentResponse["sourceMetadata"],
     githubPublish: githubPublish.success ? githubPublish.data : null,
+    metadata: serializePostMetadata(post),
   };
 }
 
@@ -255,12 +299,12 @@ function formatFailureMessage(error: unknown): string {
 }
 
 export async function buildContentUpdateData(
-  existingTitle: string,
+  existingPost: { title: string; status: "draft" | "published" },
   input: {
     markdown?: string;
     status?: "draft" | "published";
     title?: string;
-    sourceMetadata?: Record<string, unknown> | null;
+    socialVideo?: SocialVideoAttachment | null;
   }
 ) {
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
@@ -274,7 +318,7 @@ export async function buildContentUpdateData(
     updateData.markdown = input.markdown;
 
     if (input.title === undefined) {
-      updateData.title = titleMatch?.[1] ?? existingTitle;
+      updateData.title = titleMatch?.[1] ?? existingPost.title;
     }
 
     updateData.content = sanitizeMarkdownHtml(
@@ -284,15 +328,18 @@ export async function buildContentUpdateData(
 
   if (input.status !== undefined) {
     updateData.status = input.status;
+    const publishedAt = publishedAtForStatusChange(
+      existingPost.status,
+      input.status
+    );
+    if (publishedAt !== undefined) {
+      updateData.publishedAt = publishedAt;
+    }
   }
 
-  if (input.sourceMetadata !== undefined) {
-    const incoming =
-      input.sourceMetadata && typeof input.sourceMetadata === "object"
-        ? input.sourceMetadata
-        : {};
-    // ponytail: atomic jsonb merge — concurrent single-key patches must not clobber each other.
-    updateData.sourceMetadata = sql`coalesce(${posts.sourceMetadata}, '{}'::jsonb) || ${JSON.stringify(incoming)}::jsonb`;
+  if (input.socialVideo !== undefined) {
+    // Merge in SQL so a concurrent write to another metadata key survives.
+    updateData.sourceMetadata = sql`coalesce(${posts.sourceMetadata}, '{}'::jsonb) || jsonb_build_object('socialVideo', ${JSON.stringify(input.socialVideo)}::jsonb)`;
   }
 
   return updateData;
@@ -789,7 +836,6 @@ export const contentRouter = {
           title: true,
           contentType: true,
           status: true,
-          sourceMetadata: true,
         },
       });
 
@@ -797,10 +843,18 @@ export const contentRouter = {
         throw notFound("Content not found");
       }
 
-      const updateData = await buildContentUpdateData(
-        existingPost.title,
-        input
-      );
+      if (
+        input.socialVideo &&
+        !(
+          SOCIAL_VIDEO.contentTypes.has(existingPost.contentType) &&
+          isOwnSocialVideo(input.socialVideo, input.organizationId)
+        )
+      ) {
+        const tErrors = await getTranslations("errors.content");
+        throw badRequest(tErrors("socialVideoNotAllowed"));
+      }
+
+      const updateData = await buildContentUpdateData(existingPost, input);
 
       if (input.slug !== undefined) {
         if (!supportsPostSlug(existingPost.contentType)) {
@@ -835,23 +889,16 @@ export const contentRouter = {
               createdAt: posts.createdAt,
               sourceMetadata: posts.sourceMetadata,
               githubPublish: posts.githubPublish,
+              coverImage: posts.coverImage,
+              tags: posts.tags,
+              excerpt: posts.excerpt,
+              authorIds: posts.authorIds,
+              featured: posts.featured,
+              noindex: posts.noindex,
+              displayDate: posts.displayDate,
               status: posts.status,
               updatedAt: posts.updatedAt,
             });
-          const [row] = rows;
-          if (
-            row &&
-            row.status === "published" &&
-            existingPost.status !== "published"
-          ) {
-            await publishEventInTransaction(
-              tx,
-              postPublishedInput({
-                organizationId: input.organizationId,
-                postId: row.id,
-              })
-            );
-          }
           return rows;
         });
 
@@ -895,7 +942,7 @@ export const contentRouter = {
           updatedPost.status === "published" &&
           existingPost.status !== "published"
         ) {
-          after(() =>
+          afterResponse(() =>
             requestGeoRescanForPublishedPost({
               organizationId: input.organizationId,
               postId: updatedPost.id,
@@ -919,6 +966,80 @@ export const contentRouter = {
         }
         throw error;
       }
+    }),
+  updateMetadata: baseProcedure
+    .input(updateContentMetadataInputSchema)
+    .handler(async ({ context, input }) => {
+      await assertOrganizationAccess({
+        headers: context.headers,
+        organizationId: input.organizationId,
+      });
+      await assertActiveSubscription(input.organizationId);
+
+      const existingPost = await db.query.posts.findFirst({
+        where: and(
+          eq(posts.id, input.contentId),
+          eq(posts.organizationId, input.organizationId)
+        ),
+        columns: { contentType: true },
+      });
+      if (!existingPost) {
+        throw notFound("Content not found");
+      }
+      const tErrors = await getTranslations("errors.content");
+      if (!supportsPostSlug(existingPost.contentType)) {
+        throw badRequest(tErrors("metadataNotSupported"));
+      }
+
+      const { metadata } = input;
+      if (metadata.authorIds && metadata.authorIds.length > 0) {
+        const known = await db
+          .select({ id: contentAuthors.id })
+          .from(contentAuthors)
+          .where(
+            contentAuthorsInOrganization(
+              input.organizationId,
+              metadata.authorIds
+            )
+          );
+        if (known.length !== metadata.authorIds.length) {
+          throw badRequest(tErrors("unknownAuthor"));
+        }
+      }
+
+      const [updated] = await db
+        .update(posts)
+        .set({
+          ...postMetadataUpdateData(metadata),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(posts.id, input.contentId),
+            eq(posts.organizationId, input.organizationId)
+          )
+        )
+        .returning();
+      if (!updated) {
+        throw notFound("Content not found");
+      }
+      return { content: serializeContent(updated) };
+    }),
+  authors: contentAuthorsRouter,
+  /** Tags already used in the organization, most used first. */
+  tagSuggestions: baseProcedure
+    .input(contentOrganizationIdInputSchema)
+    .handler(async ({ context, input }) => {
+      await assertOrganizationAccess({
+        headers: context.headers,
+        organizationId: input.organizationId,
+      });
+      return {
+        tags: await listOrganizationTags(
+          input.organizationId,
+          TAG_SUGGESTIONS_LIMIT
+        ),
+      };
     }),
   publishChangelogToGitHub: baseProcedure
     .input(contentInputSchema.and(publishContentToGitHubSchema))
@@ -944,7 +1065,9 @@ export const contentRouter = {
         }
       }
 
-      return publishSavedContentToGitHub(input);
+      return publishSavedContentToGitHub(input, {
+        publisherUserId: auth.user.id,
+      });
     }),
   delete: baseProcedure
     .input(contentInputSchema)
@@ -1558,10 +1681,9 @@ export const contentRouter = {
                 issues,
               };
             } catch (error) {
-              console.error(
-                `[Preview] Failed to fetch Linear issues for ${integration.id}:`,
-                error
-              );
+              logError("[Preview] Failed to fetch Linear issues", error, {
+                integrationId: integration.id,
+              });
               return {
                 integrationId: integration.id,
                 displayName: integration.displayName,

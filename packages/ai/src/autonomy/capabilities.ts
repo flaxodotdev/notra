@@ -203,6 +203,7 @@ const generateIrisText = Effect.fn("iris.capabilities.generateText")(
         generateText({
           model: gateway(IRIS_CONTENT_MODEL_ID, {
             organizationId: params.input.organizationId,
+            logContext: { runId: params.input.runId },
           }),
           instructions: buildIrisContentSystemPrompt({
             objective: params.input.mandate.objective,
@@ -397,11 +398,10 @@ const resolveIrisRepository = Effect.fn("iris.capabilities.resolveRepository")(
     );
     const signalRepositoryId =
       (signalRepository.success
-        ? (signalRepository.data.repositoryId ?? null)
-        : null) ??
-      (rootRepository.success
-        ? (rootRepository.data.repositoryId ?? null)
-        : null);
+        ? signalRepository.data.repositoryId
+        : undefined) ??
+      (rootRepository.success ? rootRepository.data.repositoryId : undefined) ??
+      null;
 
     const candidates: IrisRepositoryTarget[] = [];
     for (const integration of integrations) {
@@ -453,12 +453,14 @@ const reviewIrisImage = Effect.fn("iris.capabilities.reviewImage")(
     description: string;
     articleTitle: string;
     organizationId: string;
+    runId: string;
   }) {
     const reviewed = yield* Effect.tryPromise({
       try: () =>
         generateText({
           model: gateway(IMAGE_REVIEW_MODEL_ID, {
             organizationId: params.organizationId,
+            logContext: { runId: params.runId },
           }),
           output: Output.object({ schema: irisImageReviewSchema }),
           messages: [
@@ -517,6 +519,7 @@ const runRepoImageGeneration = Effect.fn("iris.capabilities.generateImage")(
           },
           restoreSnapshotId: params.restoreSnapshotId,
           snapshotName: `iris-${params.input.runId}-${Date.now()}`,
+          logContext: { runId: params.input.runId },
           userId: null,
         }),
       catch: (cause) => cause,
@@ -581,6 +584,7 @@ const generateIrisIllustration = Effect.fn("iris.capabilities.illustration")(
         description: marker.description,
         articleTitle: params.articleTitle,
         organizationId: params.input.organizationId,
+        runId: params.input.runId,
       })
     );
     let accept = false;
@@ -625,6 +629,7 @@ const generateIrisIllustration = Effect.fn("iris.capabilities.illustration")(
             description: marker.description,
             articleTitle: params.articleTitle,
             organizationId: params.input.organizationId,
+            runId: params.input.runId,
           })
         );
 

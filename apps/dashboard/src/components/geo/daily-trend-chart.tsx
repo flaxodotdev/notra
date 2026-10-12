@@ -1,8 +1,8 @@
 "use client";
 
 import { formatDayLabel, todayIsoDate } from "@notra/geo-core/utils/day-label";
-import { useLocale } from "next-intl";
 import { useMemo } from "react";
+import { useLocale } from "use-intl";
 
 import { EChartsBarChart } from "@/components/evilcharts/charts/echarts-bar-chart";
 import { CHART_PRIMARY_COLOR } from "@/constants/charts";
@@ -37,7 +37,7 @@ export function DailyTrendChart({ points, label }: DailyTrendChartProps) {
 
   return (
     <EChartsBarChart
-      animation={false}
+      barRadius={4}
       className="h-44 w-full"
       config={config}
       data={rows}
@@ -49,6 +49,7 @@ export function DailyTrendChart({ points, label }: DailyTrendChartProps) {
       <EChartsBarChart.Bar
         bufferBar={incompleteTail}
         dataKey={DAILY_TREND_SERIES_KEY}
+        variant="gradient"
       />
       <EChartsBarChart.Tooltip />
     </EChartsBarChart>

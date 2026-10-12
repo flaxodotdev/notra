@@ -14,6 +14,7 @@ import type {
   EvaluationQuestions,
   EvaluationResult,
 } from "@notra/ai/types/evaluation";
+import { withGatewayEvaluationTelemetry } from "@notra/ai/utils/gateway-evaluation-model";
 import { experimental_evaluate as evaluateWithModel } from "ai";
 
 function isFlagEnabled(): boolean {
@@ -83,7 +84,16 @@ export function createEvaluationClient(
     const startedAt = performance.now();
 
     const result = await evaluateWithModel({
-      model: getGateway().evaluationModel(modelId),
+      model: withGatewayEvaluationTelemetry(
+        getGateway().evaluationModel(modelId),
+        {
+          ...params.logContext,
+          ...(params.organizationId
+            ? { organizationId: params.organizationId }
+            : {}),
+        },
+        { ...config, apiKey }
+      ),
       state: params.state,
       questions: params.questions,
       abortSignal: combineSignals(
@@ -95,6 +105,7 @@ export function createEvaluationClient(
           zeroDataRetention: true,
           disallowPromptTraining: true,
           tags: [`evaluation-${params.feature}`],
+          ...(params.organizationId ? { user: params.organizationId } : {}),
         },
       },
     });

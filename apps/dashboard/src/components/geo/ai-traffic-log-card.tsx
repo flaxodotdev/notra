@@ -10,6 +10,10 @@ import {
 import type { GeoTrafficLogFilters } from "@notra/geo-core/types/geo";
 import { toggleGeoTrafficFilterValue } from "@notra/geo-core/utils/ai-traffic";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
+import {
+  InstrumentEmpty,
+  InstrumentSection,
+} from "@notra/ui/components/instrument/instrument-module";
 import { Button } from "@notra/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -21,19 +25,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@notra/ui/components/ui/dropdown-menu";
-import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { CitationsTable } from "@/components/geo/citations-table";
-import {
-  InstrumentEmpty,
-  InstrumentSection,
-} from "@/components/instrument/instrument-module";
 import { AI_TRAFFIC_PURPOSE_LABEL_KEYS } from "@/constants/ai-traffic-purposes";
 import { TRAFFIC_LOG_FILTER_KINDS } from "@/constants/geo-analytics";
 import { trackEvent } from "@/lib/analytics/posthog-client";
 import { useGeoTrafficLog } from "@/lib/hooks/use-geo";
 import { useGeoTrafficHostQuery } from "@/lib/hooks/use-geo-traffic-host";
+import { useTrafficPathQuery } from "@/lib/hooks/use-traffic-path";
 import type { AiTrafficLogCardProps } from "@/types/geo";
 import { tableHeightFor } from "@/utils/table";
 
@@ -48,11 +49,13 @@ export function AiTrafficLogCard({ organizationId }: AiTrafficLogCardProps) {
     categories: [],
   });
   const [hostQuery] = useGeoTrafficHostQuery();
-  const { data, isPending, isFetching } = useGeoTrafficLog(
+  const [pathQuery] = useTrafficPathQuery();
+  const { data, isPending, isPlaceholderData } = useGeoTrafficLog(
     organizationId,
     filters,
     {
       host: hostQuery,
+      path: pathQuery,
     }
   );
   const log = data?.log ?? [];
@@ -68,7 +71,14 @@ export function AiTrafficLogCard({ organizationId }: AiTrafficLogCardProps) {
           log.length === 0 ? LOG_SKELETON_ROWS : log.length,
           GEO_CITATIONS_ROW_HEIGHT
         )}
-        loading={isPending || isFetching}
+        liveKey={
+          isPlaceholderData
+            ? undefined
+            : JSON.stringify([filters, hostQuery, pathQuery])
+        }
+        // Live refetches swap rows in place; only a new filter or host,
+        // which shows the previous result as placeholder, dims the table.
+        loading={isPending || isPlaceholderData}
       />
     );
   }

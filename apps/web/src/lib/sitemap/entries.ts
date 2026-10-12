@@ -1,14 +1,24 @@
 import { changelog } from "@/../.source/server";
+import { COMPARE_COMPETITORS } from "@/constants/compare/competitors";
+import { COMPARE_LAST_MODIFIED, COMPARE_PATH } from "@/constants/compare/page";
+import {
+  FEATURE_DETAIL_LAST_MODIFIED,
+  FEATURE_DETAIL_PATHS,
+} from "@/constants/feature-pages/paths";
 import { MCP_USE_CASES, MCP_USE_CASES_PATH } from "@/constants/mcp-use-cases";
+import { STATE_OF_AI_SEARCH_URL } from "@/constants/state-of-ai-search";
 import { fetchIntegrations } from "@/lib/integrations/fetch";
 import { getIntegrationHref } from "@/lib/integrations/helpers";
+import { listSummaries } from "@/lib/state-of-ai-search/reports";
 import type { SitemapEntry } from "@/types/sitemap";
 import { getAuthorHref } from "@/utils/author-href";
 import { filterPostsByAuthorSlug, listNotraAuthors } from "@/utils/authors";
 import { listNotraBlogPosts } from "@/utils/blog";
 import { listNotraChangelogPosts } from "@/utils/changelog";
+import { getCompareHref } from "@/utils/compare";
 import { getMcpUseCaseHref } from "@/utils/mcp-use-cases";
 import { getShowcaseEntrySlug, SHOWCASE_COMPANIES } from "@/utils/showcase";
+import { reportPath } from "@/utils/state-of-ai-search";
 import { SITE_URL } from "@/utils/urls";
 
 const STATIC_PAGE_LAST_MODIFIED = new Date("2026-04-24");
@@ -103,10 +113,22 @@ export async function buildSitemapEntries(): Promise<SitemapEntry[]> {
       url: `${SITE_URL}/features/marketing/assets`,
       lastModified: STATIC_PAGE_LAST_MODIFIED,
     },
+    ...FEATURE_DETAIL_PATHS.map((path) => ({
+      url: `${SITE_URL}${path}`,
+      lastModified: FEATURE_DETAIL_LAST_MODIFIED,
+    })),
     {
       url: `${SITE_URL}/pricing`,
       lastModified: STATIC_PAGE_LAST_MODIFIED,
     },
+    {
+      url: `${SITE_URL}${COMPARE_PATH}`,
+      lastModified: COMPARE_LAST_MODIFIED,
+    },
+    ...COMPARE_COMPETITORS.map((competitor) => ({
+      url: `${SITE_URL}${getCompareHref(competitor)}`,
+      lastModified: COMPARE_LAST_MODIFIED,
+    })),
     {
       url: `${SITE_URL}/mcp`,
       lastModified: STATIC_PAGE_LAST_MODIFIED,
@@ -129,6 +151,26 @@ export async function buildSitemapEntries(): Promise<SitemapEntry[]> {
     },
     {
       url: `${SITE_URL}/integrations/slack`,
+      lastModified: STATIC_PAGE_LAST_MODIFIED,
+    },
+    {
+      url: `${SITE_URL}/integrations/github`,
+      lastModified: STATIC_PAGE_LAST_MODIFIED,
+    },
+    {
+      url: `${SITE_URL}/integrations/linear`,
+      lastModified: STATIC_PAGE_LAST_MODIFIED,
+    },
+    {
+      url: `${SITE_URL}/integrations/granola`,
+      lastModified: STATIC_PAGE_LAST_MODIFIED,
+    },
+    {
+      url: `${SITE_URL}/about`,
+      lastModified: STATIC_PAGE_LAST_MODIFIED,
+    },
+    {
+      url: `${SITE_URL}/contact`,
       lastModified: STATIC_PAGE_LAST_MODIFIED,
     },
     {
@@ -159,6 +201,23 @@ export async function buildSitemapEntries(): Promise<SitemapEntry[]> {
       url: `${SITE_URL}/ip-checker`,
       lastModified: STATIC_PAGE_LAST_MODIFIED,
     },
+    {
+      url: `${SITE_URL}/offering`,
+      lastModified: STATIC_PAGE_LAST_MODIFIED,
+    },
+    {
+      url: STATE_OF_AI_SEARCH_URL,
+      lastModified: new Date(
+        listSummaries()
+          .map((report) => report.publishedAt)
+          .toSorted()
+          .at(-1) ?? STATIC_PAGE_LAST_MODIFIED
+      ),
+    },
+    ...listSummaries().map((report) => ({
+      url: `${SITE_URL}${reportPath(report.slug, report.edition)}`,
+      lastModified: new Date(report.publishedAt),
+    })),
     {
       url: `${SITE_URL}/html-to-paper`,
       lastModified: STATIC_PAGE_LAST_MODIFIED,

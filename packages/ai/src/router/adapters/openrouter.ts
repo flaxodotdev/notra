@@ -11,7 +11,11 @@ import type {
 } from "@notra/ai/types/router";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
-import { isModelSupported, toOpenRouterModelId } from "../model-ids";
+import {
+  fromOpenRouterModelId,
+  isModelSupported,
+  toOpenRouterModelId,
+} from "../model-ids";
 import { buildOpenRouterProviderOptions } from "../provider-options";
 
 function readNumber(value: unknown): number | undefined {
@@ -88,14 +92,52 @@ export function createOpenRouterAdapter(
     },
     getBalance,
     extractRouteMetadata(
-      providerMetadata: SharedV4ProviderMetadata | undefined
+      providerMetadata: SharedV4ProviderMetadata | undefined,
+      servedModelId?: string
     ) {
+      // OpenRouter reports the model that answered, which is the fallback
+      // model when the requested one failed. Billing prices each step by it.
+      const model = servedModelId
+        ? fromOpenRouterModelId(servedModelId)
+        : undefined;
       const openrouter = providerMetadata?.openrouter;
-      if (!openrouter || typeof openrouter !== "object") {
-        return {};
-      }
-      const record = openrouter as Record<string, unknown>;
+      const record =
+        openrouter && typeof openrouter === "object"
+          ? (openrouter as Record<string, unknown>)
+          : {};
+      const usage =
+        record.usage && typeof record.usage === "object"
+          ? (record.usage as Record<string, unknown>)
+          : {};
+      const gatewayCost = readNumber(usage.cost);
+      const costDetails =
+        usage.costDetails && typeof usage.costDetails === "object"
+          ? (usage.costDetails as Record<string, unknown>)
+          : undefined;
+      // SDK usage.cost is the OpenRouter credit charge, not BYOK passthrough.
+      // Missing/null details do not establish that upstream inference was free.
+      const upstreamCost = readNumber(costDetails?.upstreamInferenceCost);
+      const costUsd =
+        gatewayCost !== undefined &&
+        gatewayCost >= 0 &&
+        upstreamCost !== undefined &&
+        upstreamCost >= 0
+          ? gatewayCost + upstreamCost
+          : undefined;
       return {
+        ...(model ? { model } : {}),
+        ...(gatewayCost !== undefined && gatewayCost >= 0
+          ? { gatewayCostUsd: gatewayCost }
+          : {}),
+        ...(costDetails && upstreamCost !== undefined && upstreamCost >= 0
+          ? {
+              upstreamInferenceCostUsd: upstreamCost,
+              byokInferenceCostUsd: upstreamCost,
+            }
+          : {}),
+        ...(costUsd !== undefined && Number.isFinite(costUsd)
+          ? { costUsd, costSource: "reported" as const }
+          : {}),
         upstreamProvider:
           typeof record.provider === "string" && record.provider.length > 0
             ? record.provider

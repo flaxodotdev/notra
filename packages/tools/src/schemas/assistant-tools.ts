@@ -1,4 +1,5 @@
 import { POST_SLUG_MAX_LENGTH, POST_SLUG_REGEX } from "@notra/ai/schemas/post";
+import { generatedPostMetadataShape } from "@notra/ai/schemas/post-metadata";
 import { editOperationSchema } from "@notra/ai/schemas/tools";
 import { z } from "zod";
 
@@ -37,6 +38,7 @@ export const createPostInputSchema = z.object(createPostBaseShape);
 
 export const createPostWithSlugInputSchema = z.object({
   ...createPostBaseShape,
+  ...generatedPostMetadataShape,
   slug: postSlugSchema
     .nullable()
     .optional()

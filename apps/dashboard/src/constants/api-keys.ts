@@ -1,10 +1,23 @@
 import {
+  Cancel01Icon,
+  Clock01Icon,
+  Edit02Icon,
+  GlobalIcon,
+  LockIcon,
+  Settings02Icon,
+  Tick02Icon,
+  ViewIcon,
+} from "@hugeicons/core-free-icons";
+import {
   API_READ_SCOPES,
   API_SCOPE_RESOURCES,
   API_WRITE_SCOPES,
   getApiScopeId,
   LEGACY_API_SCOPES,
 } from "@notra/utils/api-scopes";
+
+import type { ApiKeyStatus } from "@/types/api-keys";
+import type { StatusBadgeAppearance } from "@/types/components/status-badge";
 
 /**
  * Scope names and resource metadata come from the shared registry in
@@ -99,3 +112,33 @@ export const API_KEY_EXPIRATION_MS = {
   "60d": 60 * 24 * 60 * 60 * 1000,
   "90d": 90 * 24 * 60 * 60 * 1000,
 } as const;
+
+/** Header row plus enough body for the empty state's icon, copy and button. */
+export const API_KEYS_EMPTY_TABLE_HEIGHT = 320;
+
+/** A key inside this window of its expiry is flagged before it stops working. */
+export const API_KEY_EXPIRING_SOON_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** How often the table re-evaluates status so a key flips when its expiry passes. */
+export const API_KEY_STATUS_REFRESH_MS = 60_000;
+
+export const API_KEY_STATUS_BADGES: Record<
+  ApiKeyStatus,
+  StatusBadgeAppearance
+> = {
+  active: { variant: "success", icon: Tick02Icon, square: true },
+  expiringSoon: { variant: "warning", icon: Clock01Icon },
+  expired: { variant: "destructive", icon: Cancel01Icon, square: true },
+  disabled: { variant: "secondary" },
+};
+
+export const API_KEY_PERMISSION_BADGES: Record<
+  (typeof API_KEY_PERMISSION_SUMMARY)[number],
+  StatusBadgeAppearance
+> = {
+  none: { variant: "secondary", icon: LockIcon },
+  read: { variant: "info", icon: ViewIcon },
+  write: { variant: "warning", icon: Edit02Icon },
+  geo: { variant: "secondary", icon: GlobalIcon },
+  custom: { variant: "secondary", icon: Settings02Icon },
+};

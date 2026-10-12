@@ -23,6 +23,12 @@
   --info: oklch(0.55 0.13 250);
   --info-foreground: oklch(0.985 0 0);
 
+  /* Foregrounds for text on translucent badge tints, not solid status fills. */
+  --badge-success: oklch(0.46 0.109 155);
+  --badge-warning: oklch(0.46 0.113 55);
+  --badge-info: oklch(0.46 0.13 250);
+  --badge-destructive: oklch(0.48 0.18 25);
+
   /* GEO signals. Shared by the dashboard and the marketing site. */
   /* Search / own brand. Light matches --primary; charts keep a hex twin. */
   --geo-search: var(--primary);
@@ -41,12 +47,21 @@
   --info: oklch(0.7 0.12 250);
   --info-foreground: oklch(0.145 0 0);
 
+  --badge-success: oklch(0.76 0.125 155);
+  --badge-warning: oklch(0.76 0.125 55);
+  --badge-info: oklch(0.76 0.12 250);
+  --badge-destructive: oklch(0.76 0.16 25);
+
   --geo-search: oklch(0.68 0.134 292.717);
   --geo-memory: oklch(0.68 0.111 206.2);
   --geo-down: oklch(0.7 0.138 27);
 }
 
 @theme inline {
+  --color-badge-success: var(--badge-success);
+  --color-badge-warning: var(--badge-warning);
+  --color-badge-info: var(--badge-info);
+  --color-badge-destructive: var(--badge-destructive);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);

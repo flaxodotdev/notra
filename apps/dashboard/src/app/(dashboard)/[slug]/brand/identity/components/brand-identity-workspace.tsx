@@ -5,7 +5,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@notra/ui/components/ui/alert";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "use-intl";
 
 import { PageContainer } from "@/components/layout/container";
 import type { BrandIdentityWorkspaceProps } from "@/types/brand-identity";
@@ -62,6 +62,8 @@ export function BrandIdentityWorkspace({
             dispatchUi({ type: "set-add-sitemap-open", open: true })
           }
           onRefreshGuidelines={onRefreshGuidelines}
+          organizationId={organizationId}
+          voiceId={selectedVoice.id}
         />
 
         <VoiceSelector

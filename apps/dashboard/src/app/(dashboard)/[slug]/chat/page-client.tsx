@@ -1,18 +1,20 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { ArrowReloadHorizontalIcon, X } from "@hugeicons/core-free-icons";
+import {
+  ArrowReloadHorizontalIcon,
+  File02Icon,
+  X,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { externalChannelIdSchema } from "@notra/ai/schemas/chat";
-import type { ContentType } from "@notra/ai/schemas/content";
 import { createdPostToolOutputSchema } from "@notra/ai/schemas/post";
+import { chatTodoListSchema } from "@notra/ai/schemas/todos";
 import type {
   ChatAttachment,
   ChatInputHandle,
   ChatMessagePart,
   ChatUIMessage,
   ContextItem,
-  ExternalChannelId,
   MirrorChatStatus,
 } from "@notra/ai/types/chat";
 import { linkSavedChatPosts } from "@notra/ai/utils/chat-post";
@@ -21,6 +23,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@notra/ui/components/ai-elements/message";
+import { Button } from "@notra/ui/components/ui/button";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -30,13 +33,16 @@ import {
   MessageScrollerViewport,
 } from "@notra/ui/components/ui/message-scroller";
 import { Skeleton } from "@notra/ui/components/ui/skeleton";
+import { ORPCError } from "@orpc/client";
 import {
   useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
+import { useLocation } from "@tanstack/react-router";
 import {
+  type ChatOnFinishCallback,
   type DynamicToolUIPart,
   getToolName,
   isToolUIPart,
@@ -44,9 +50,6 @@ import {
 } from "ai";
 import { LazyMotion, m, useReducedMotion } from "motion/react";
 import { nanoid } from "nanoid";
-import { useLocale, useTranslations } from "next-intl";
-import dynamic from "next/dynamic";
-import { usePathname, useRouter } from "next/navigation";
 import { parseAsString, useQueryState } from "nuqs";
 import {
   Children,
@@ -61,24 +64,31 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useLocale, useTranslations } from "use-intl";
 
 import { ChatActivityStatus } from "@/components/ai/chat-activity-status";
 import { ChatAssistantParts } from "@/components/ai/chat-assistant-parts";
 import { ChatReasoningBlock } from "@/components/ai/chat-reasoning-block";
+import { ChatSubagentToolPart } from "@/components/ai/chat-subagent-tool-part";
+import { ChatTodoList } from "@/components/ai/chat-todo-list";
 import { ChatToolBlock } from "@/components/ai/chat-tool-block";
 import { getMcpToolServerId } from "@/components/ai/chat-tool-block/mcp/utils";
 import { AssistantMetadataHover } from "@/components/chat/assistant-metadata-hover";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview";
+import { ChatContentPanel } from "@/components/chat/chat-content-panel";
+import { ChatFileAttachment } from "@/components/chat/chat-file-attachment";
 import { ChatImageAttachment } from "@/components/chat/chat-image-attachment";
 import {
   ChatInputAdvanced,
   type ThinkingLevel,
 } from "@/components/chat/chat-input";
+import { ChatMessageAnnotations } from "@/components/chat/chat-message-annotations";
 import { ChatMinimapRail } from "@/components/chat/chat-minimap-rail";
 import type { QueuedMessage } from "@/components/chat/chat-queue";
 import {
   ChatQuoteProvider,
   ChatQuoteMessage as Message,
+  useChatQuote,
 } from "@/components/chat/chat-quote";
 import { ChatScrollOnSend } from "@/components/chat/chat-scroll-on-send";
 import { ChatSuggestions } from "@/components/chat/chat-suggestions";
@@ -89,6 +99,7 @@ import {
   UserMessageActions,
   UserMessageTextBubble,
 } from "@/components/chat/user-message-actions";
+import { useRightPanel } from "@/components/dashboard/right-panel-context";
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { CHAT_ACTIVE_STREAM_POLL_INTERVAL_MS } from "@/constants/chat-active-stream";
 import { ACTIVITY_STEP_SETTLE_MS } from "@/constants/chat-activity";
@@ -97,8 +108,13 @@ import {
   AVAILABLE_MODELS,
   ZDR_AVAILABLE_MODELS,
 } from "@/constants/chat-models";
+import {
+  CHAT_CREATE_TOOL_TYPES,
+  CHAT_POST_EDIT_TOOL_NAMES,
+  CHAT_REFERENCE_TOKEN_SPLIT_REGEX,
+  UPDATE_TODOS_TOOL_NAME,
+} from "@/constants/chat-posts";
 import { TOOL_TIMER_THRESHOLD_SECONDS } from "@/constants/chat-tool-timer";
-import { INTEGRATION_REFERENCE_TOKEN_SPLIT_REGEX } from "@/constants/integration-reference";
 import { MIRROR_WORKING_TIMEOUT_MS } from "@/constants/slack-mirror";
 import { localStorageKeys } from "@/constants/storage";
 import { trackEvent } from "@/lib/analytics/posthog-client";
@@ -120,7 +136,10 @@ import { useDelayedAppearance } from "@/lib/hooks/use-delayed-appearance";
 import { useElapsedSeconds } from "@/lib/hooks/use-elapsed-seconds";
 import { useHasZdrEntitlement } from "@/lib/hooks/use-plan";
 import { useSlackMirrorStream } from "@/lib/hooks/use-slack-mirror-stream";
+import { useStableValue } from "@/lib/hooks/use-stable-value";
 import { getMcpIconUrls } from "@/lib/integrations/mcp";
+import { usePathname, useRouter } from "@/lib/navigation";
+import { dashboardOrpcClient } from "@/lib/orpc/client";
 import { dashboardOrpc } from "@/lib/orpc/query";
 import { isImageMimeType } from "@/lib/upload/mime";
 import { cn } from "@/lib/utils";
@@ -130,24 +149,29 @@ import type {
 } from "@/types/analytics/studio-events";
 import type { ChatMessageAuthor } from "@/types/chat";
 import type {
-  CreateToolContentType,
   StandaloneChatPageClientProps,
   UserImageGridProps,
 } from "@/types/components/chat-page";
 import type { PublishedSocialPost } from "@/types/content/post-social";
 import { getChatActivity, hasVisibleChatContent } from "@/utils/chat-activity";
 import {
+  parseChatAnnotations,
+  restoreChatReferences,
+} from "@/utils/chat-annotations";
+import {
   hasPendingApproval,
   isTerminalToolState,
   shouldContinueAfterApprovalResponse,
 } from "@/utils/chat-approvals";
 import { handleStandaloneChatError } from "@/utils/chat-error";
+import { chatHistoryQueryOptions } from "@/utils/chat-history-query";
 import {
   resolveChatMessageAuthor,
   shouldShowChatAuthorAvatars,
   toChatMessageAuthor,
 } from "@/utils/chat-message-author";
 import { buildChatMinimapTurns } from "@/utils/chat-minimap";
+import { getChatPosts, parsePostReferenceValue } from "@/utils/chat-posts";
 import {
   CHAT_PREFERENCES_STORAGE_KEY,
   DEFAULT_CHAT_PREFERENCES,
@@ -159,6 +183,7 @@ import {
 import {
   markQueuedMessageSteering,
   parseQueuedMessages,
+  shouldDrainQueueAfterFinish,
   takeQueuedMessage,
 } from "@/utils/chat-queue";
 import {
@@ -166,6 +191,7 @@ import {
   resetNewChatClientState,
   updateWasStoppedByUser,
 } from "@/utils/chat-state";
+import { isChatSubagentName } from "@/utils/chat-subagents";
 import { isContentEditorStandaloneTool } from "@/utils/content-editor-standalone-tool";
 import { formatLongDate } from "@/utils/dashboard-greeting";
 import { getGreetingPeriod } from "@/utils/dashboard-greeting-period";
@@ -174,6 +200,7 @@ import {
   getReferenceDisplay,
   parseReferenceValue,
 } from "@/utils/integration-reference";
+import dynamic from "@/utils/lazy-component";
 import { getOutputTypePromptLabel } from "@/utils/output-types";
 import { buildPublishedChatMessage } from "@/utils/social-publish";
 
@@ -243,24 +270,10 @@ function CompletedToolTimer({
   return children ?? null;
 }
 
-const CREATE_TOOL_TYPES = {
-  "tool-createBlogPost": "blog_post",
-  "tool-createChangelog": "changelog",
-  "tool-createInvestorUpdate": "investor_update",
-  "tool-createLinkedInPost": "linkedin_post",
-  "tool-createTwitterPost": "twitter_post",
-} satisfies Record<string, ContentType>;
-
 type RenderableToolPart = DynamicToolUIPart | ToolUIPart;
 
 function isCreateTool(type: string): boolean {
-  return type in CREATE_TOOL_TYPES;
-}
-
-function getCreateToolContentType(
-  type: keyof typeof CREATE_TOOL_TYPES
-): CreateToolContentType {
-  return CREATE_TOOL_TYPES[type];
+  return type in CHAT_CREATE_TOOL_TYPES;
 }
 
 function hasSendableParts(message: ChatUIMessage): boolean {
@@ -394,6 +407,27 @@ function UserImageGrid({ children }: UserImageGridProps) {
   );
 }
 
+function ChatContentPanelToggle({
+  count,
+  onOpen,
+}: {
+  count: number;
+  onOpen: () => void;
+}) {
+  const t = useTranslations("chat.contentPanel");
+  return (
+    <Button
+      className="absolute top-3 right-4 z-20 hidden lg:inline-flex"
+      onClick={onOpen}
+      size="sm"
+      variant="outline"
+    >
+      <HugeiconsIcon className="size-4" icon={File02Icon} strokeWidth={1.8} />
+      {t("toggle", { count })}
+    </Button>
+  );
+}
+
 function ProjectScopeLoadingInput() {
   const t = useTranslations("chat.page");
   return (
@@ -522,10 +556,16 @@ function StandaloneChatPageClient({
     () => false
   );
 
-  const [generatedChatId, setGeneratedChatId] = useState(() =>
+  const [generatedChatId, setGeneratedChatId] = useState<string>(() =>
     crypto.randomUUID()
   );
   const stableChatId = initialChatId ?? generatedChatId;
+  const [initialMessages] = useState(
+    () =>
+      queryClient.getQueryData(
+        chatHistoryQueryOptions(organizationId, initialChatId).queryKey
+      )?.messages ?? []
+  );
 
   const [context, setContext] = useState<ContextItem[]>([]);
   const [hasCustomizedContext, setHasCustomizedContext] = useState(false);
@@ -636,7 +676,13 @@ function StandaloneChatPageClient({
   });
   const steerAfterStopRef = useRef<QueuedMessage | null>(null);
   const queuedMessagesRef = useRef<QueuedMessage[]>([]);
+  const messagesRef = useRef<ChatUIMessage[]>([]);
+  const isSendingRef = useRef(false);
   const isDrainingRef = useRef(false);
+  const isStoppingResponseRef = useRef(false);
+  const isWaitingForActiveStreamRef = useRef(false);
+  const wasInterruptedForQueueRef = useRef(false);
+  const finishAfterStopRef = useRef<(() => void) | null>(null);
   // Moving a new chat to its own URL remounts this page, so it waits until no
   // response is streaming or queued.
   const hasPendingChatNavigationRef = useRef(false);
@@ -644,8 +690,29 @@ function StandaloneChatPageClient({
     // Populated after the queue refs are defined below.
   });
 
-  const handleFinish = useCallback(
-    ({ message }: { message: ChatUIMessage }) => {
+  const handleFinish = useCallback<ChatOnFinishCallback<ChatUIMessage>>(
+    ({
+      message,
+      messages: finishedMessages,
+      isAbort,
+      isError,
+      isDisconnect,
+    }) => {
+      messagesRef.current = finishedMessages;
+      if (!isError && !isDisconnect) {
+        queryClient.setQueryData(
+          chatHistoryQueryOptions(organizationId, stableChatId).queryKey,
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  messages: finishedMessages,
+                  lastResponseStopped: isAbort || wasStoppedByUserRef.current,
+                  activeStreamId: null,
+                }
+              : current
+        );
+      }
       const pinnedModel = getPinnedModelFromAutoMetadata(message.metadata);
       if (pinnedModel) {
         selectedModelRef.current = pinnedModel;
@@ -670,15 +737,39 @@ function StandaloneChatPageClient({
           });
         }
       }
-      isDrainingRef.current = false;
-      if (steerAfterStopRef.current) {
-        flushSteerAfterStopRef.current();
+      const finishQueue = () => {
+        const wasInterruptedForQueue = wasInterruptedForQueueRef.current;
+        wasInterruptedForQueueRef.current = false;
+        isSendingRef.current = false;
+        isDrainingRef.current = false;
+        if (steerAfterStopRef.current) {
+          flushSteerAfterStopRef.current();
+          return;
+        }
+        if (
+          shouldDrainQueueAfterFinish({
+            isAbort,
+            isError,
+            isDisconnect,
+            wasInterruptedForQueue,
+            wasStoppedByUser: wasStoppedByUserRef.current,
+          })
+        ) {
+          drainQueueRef.current();
+        }
+        if (!isError && !isDisconnect) {
+          navigateToNewChatRef.current(message);
+        } else if (!isWaitingForActiveStreamRef.current) {
+          hasPendingChatNavigationRef.current = false;
+        }
+      };
+      if (isStoppingResponseRef.current) {
+        finishAfterStopRef.current = finishQueue;
         return;
       }
-      drainQueueRef.current();
-      navigateToNewChatRef.current(message);
+      finishQueue();
     },
-    [organizationId, queryClient]
+    [organizationId, queryClient, stableChatId]
   );
 
   const {
@@ -690,6 +781,7 @@ function StandaloneChatPageClient({
     stop,
   } = useChat<ChatUIMessage>({
     id: stableChatId,
+    messages: initialMessages,
     resume: Boolean(
       initialChatId && historyStreamId && pendingMessageId === historyStreamId
     ),
@@ -699,7 +791,6 @@ function StandaloneChatPageClient({
     onFinish: handleFinish,
     onError: (err) => {
       if (steerAfterStopRef.current) {
-        flushSteerAfterStopRef.current();
         return;
       }
       const conflictedMessageId = activeStreamConflictRef.current;
@@ -731,10 +822,155 @@ function StandaloneChatPageClient({
     setMessages(next);
   });
 
+  const chatPosts = useMemo(() => getChatPosts(messages), [messages]);
+  // Rebuilt per streamed chunk; only a new id, title or type is a real
+  // change, so the composer does not re-render on every token.
+  const mentionsDraft = chatPosts.flatMap((post) =>
+    post.postId
+      ? [
+          {
+            postId: post.postId,
+            title: post.title || tCommon("labels.untitled"),
+            contentType: post.contentType,
+          },
+        ]
+      : []
+  );
+  const postMentions = useStableValue(
+    mentionsDraft,
+    mentionsDraft
+      .map(
+        (post) => `${post.postId}\u0000${post.title}\u0000${post.contentType}`
+      )
+      .join("\n")
+  );
+  const postTitlesById = useMemo(
+    () => new Map(postMentions.map((post) => [post.postId, post.title])),
+    [postMentions]
+  );
+  const { active: activeRightPanel, closePanel, openPanel } = useRightPanel();
+  const isPreviewOpen = activeRightPanel === "preview";
+  // Preview tabs: each post opens at most once, in the order it was opened.
+  const [storedPreviewTabIds, setPreviewTabIds] = useState<string[]>([]);
+  const [storedPreviewToolCallId, setPreviewToolCallId] = useState<
+    string | null
+  >(null);
+  // Retry, edit or a branch switch can drop posts; their tabs go with them.
+  const previewTabIds = useMemo(() => {
+    const postIds = new Set(chatPosts.map((post) => post.toolCallId));
+    return storedPreviewTabIds.filter((id) => postIds.has(id));
+  }, [chatPosts, storedPreviewTabIds]);
+  const previewToolCallId =
+    storedPreviewToolCallId && previewTabIds.includes(storedPreviewToolCallId)
+      ? storedPreviewToolCallId
+      : (previewTabIds.at(-1) ?? null);
+  const openPostPreview = useCallback(
+    (toolCallId: string) => {
+      setPreviewTabIds((tabs) =>
+        tabs.includes(toolCallId) ? tabs : [...tabs, toolCallId]
+      );
+      setPreviewToolCallId(toolCallId);
+      openPanel("preview");
+    },
+    [openPanel]
+  );
+  const closePostPreviewTab = useCallback(
+    (toolCallId: string) => {
+      const index = previewTabIds.indexOf(toolCallId);
+      const remaining = previewTabIds.filter((id) => id !== toolCallId);
+      setPreviewTabIds(remaining);
+      if (previewToolCallId === toolCallId) {
+        setPreviewToolCallId(
+          remaining[Math.min(index, remaining.length - 1)] ?? null
+        );
+      }
+      if (remaining.length === 0) {
+        closePanel("preview");
+      }
+    },
+    [closePanel, previewTabIds, previewToolCallId]
+  );
+  const openContentPanel = useCallback(() => {
+    const activeTab =
+      previewToolCallId && previewTabIds.includes(previewToolCallId)
+        ? previewToolCallId
+        : (previewTabIds.at(-1) ?? chatPosts.at(-1)?.toolCallId);
+    if (activeTab) {
+      openPostPreview(activeTab);
+    }
+  }, [chatPosts, openPostPreview, previewTabIds, previewToolCallId]);
+  const handleAskForPostChanges = useCallback(
+    (post: { postId: string; title: string }) => {
+      chatInputRef.current?.insertPostReference({
+        postId: post.postId,
+        title: post.title || tCommon("labels.untitled"),
+      });
+    },
+    [tCommon]
+  );
+
+  // Clicking an annotation opens its post and jumps to the passage.
+  const annotationFocus = useChatQuote()?.annotationFocus ?? null;
+  const openFocusedPost = useEffectEvent((postId: string) => {
+    const post = chatPosts.find((entry) => entry.postId === postId);
+    if (post) {
+      openPostPreview(post.toolCallId);
+    }
+  });
+  useEffect(() => {
+    if (annotationFocus) {
+      openFocusedPost(annotationFocus.postId);
+    }
+  }, [annotationFocus]);
+
+  // While the preview is open it follows the newest post the agent starts.
+  const latestPostToolCallId = chatPosts.at(-1)?.toolCallId ?? null;
+  const [followedPostToolCallId, setFollowedPostToolCallId] =
+    useState(latestPostToolCallId);
+  if (followedPostToolCallId !== latestPostToolCallId) {
+    setFollowedPostToolCallId(latestPostToolCallId);
+    if (isPreviewOpen && latestPostToolCallId) {
+      setPreviewTabIds((tabs) =>
+        tabs.includes(latestPostToolCallId)
+          ? tabs
+          : [...tabs, latestPostToolCallId]
+      );
+      setPreviewToolCallId(latestPostToolCallId);
+    }
+  }
+
+  // updatePost and editPost change a saved post mid-reply; refetch it as soon
+  // as each call lands so the preview tracks the agent's edits.
+  const refreshedPostEditsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const lastMessage = messages.at(-1);
+    if (lastMessage?.role !== "assistant") {
+      return;
+    }
+    for (const part of lastMessage.parts) {
+      if (
+        !isToolUIPart(part) ||
+        part.state !== "output-available" ||
+        !CHAT_POST_EDIT_TOOL_NAMES.has(getToolName(part)) ||
+        refreshedPostEditsRef.current.has(part.toolCallId)
+      ) {
+        continue;
+      }
+      refreshedPostEditsRef.current.add(part.toolCallId);
+      const edited = createdPostToolOutputSchema.safeParse(part.output);
+      if (edited.success) {
+        void queryClient.invalidateQueries({
+          queryKey: dashboardOrpc.content.get.queryKey({
+            input: { organizationId, contentId: edited.data.postId },
+          }),
+        });
+      }
+    }
+  }, [messages, organizationId, queryClient]);
+
   const [isStopping, setIsStopping] = useState(false);
   const [isWaitingForActiveStream, setIsWaitingForActiveStream] =
     useState(false);
-  const isWaitingForActiveStreamRef = useRef(false);
 
   const handleModelChange = useCallback((model: string) => {
     const nextModel = parseStoredChatModel(model);
@@ -811,6 +1047,10 @@ function StandaloneChatPageClient({
   }, [initialChatId, selectedModel, thinkingLevel]);
 
   const stopActiveResponse = useCallback(async () => {
+    if (isStoppingResponseRef.current) {
+      return;
+    }
+    isStoppingResponseRef.current = true;
     try {
       if (organizationId && stableChatId) {
         await fetch(
@@ -822,9 +1062,21 @@ function StandaloneChatPageClient({
       console.error("[Chat] Failed to notify server to stop:", stopError);
     }
     stop();
+    isStoppingResponseRef.current = false;
+    const finish = finishAfterStopRef.current;
+    finishAfterStopRef.current = null;
+    finish?.();
   }, [organizationId, stableChatId, stop]);
 
   const handleStop = useCallback(async () => {
+    wasInterruptedForQueueRef.current = false;
+    steerAfterStopRef.current = null;
+    const next = queuedMessagesRef.current.map((message) => ({
+      ...message,
+      steering: false,
+    }));
+    queuedMessagesRef.current = next;
+    setQueuedMessages(next);
     setIsStopping(true);
     updateWasStoppedByUser(true, wasStoppedByUserRef, setWasStoppedByUser);
     await stopActiveResponse();
@@ -834,43 +1086,7 @@ function StandaloneChatPageClient({
     data: chatHistoryData,
     isLoading: isChatHistoryLoading,
     isPending: isChatHistoryPending,
-  } = useQuery<{
-    messages: ChatUIMessage[] | null;
-    lastResponseStopped: boolean;
-    activeStreamId: string | null;
-    externalChannelId: ExternalChannelId | null;
-    slackThreadUrl: string | null;
-  } | null>({
-    queryKey: ["chat-history", organizationId, initialChatId],
-    queryFn: async () => {
-      if (!initialChatId) {
-        return null;
-      }
-      const res = await fetch(
-        `/api/organizations/${organizationId}/chat/${encodeURIComponent(initialChatId)}`
-      );
-      if (!res.ok) {
-        throw new Error("Failed to load chat history");
-      }
-      const data = await res.json();
-      const externalChannelId = externalChannelIdSchema.safeParse(
-        data?.externalChannelId
-      );
-      return {
-        messages: data?.messages ?? null,
-        lastResponseStopped: Boolean(data?.lastResponseStopped),
-        activeStreamId:
-          typeof data?.activeStreamId === "string" ? data.activeStreamId : null,
-        externalChannelId: externalChannelId.success
-          ? externalChannelId.data
-          : null,
-        slackThreadUrl:
-          typeof data?.slackThreadUrl === "string" ? data.slackThreadUrl : null,
-      };
-    },
-    enabled: Boolean(initialChatId) && Boolean(organizationId),
-    staleTime: 1000 * 60 * 5,
-  });
+  } = useQuery(chatHistoryQueryOptions(organizationId, initialChatId));
 
   const isSlackMirrored =
     chatHistoryData?.externalChannelId?.source === "slack";
@@ -1063,12 +1279,21 @@ function StandaloneChatPageClient({
 
   const hasUpdatedUrlRef = useRef(false);
   const pathname = usePathname();
+  const navigationKey = useLocation({
+    select: (location) => location.state.__TSR_key,
+  });
+  const previousNavigationKeyRef = useRef(navigationKey);
   const previousInitialChatIdRef = useRef(initialChatId);
 
   useEffect(() => {
+    const hasNavigated = previousNavigationKeyRef.current !== navigationKey;
+    previousNavigationKeyRef.current = navigationKey;
     const returnedToNewChat =
       !initialChatId &&
       hasUpdatedUrlRef.current &&
+      !isSendingRef.current &&
+      !isWaitingForActiveStreamRef.current &&
+      hasNavigated &&
       pathname === `/${organizationSlug}/chat`;
     if (
       previousInitialChatIdRef.current === initialChatId &&
@@ -1102,7 +1327,7 @@ function StandaloneChatPageClient({
       setWasStoppedByUser,
       wasStoppedByUserRef,
     });
-  }, [initialChatId, organizationSlug, pathname]);
+  }, [initialChatId, navigationKey, organizationSlug, pathname]);
 
   const draftStorageKey = localStorageKeys.chatDraft(
     initialChatId ?? `new:${organizationSlug}`
@@ -1162,6 +1387,11 @@ function StandaloneChatPageClient({
       isChatHistoryPending ||
       pendingHistoryMessages > 0);
   const isLoading = status === "streaming" || status === "submitted";
+  useLayoutEffect(() => {
+    if (isLoading) {
+      isSendingRef.current = true;
+    }
+  }, [isLoading]);
   const activitySeconds = useChatActivityTimer(
     isLoading || isMirrorWorking,
     stableChatId,
@@ -1273,8 +1503,6 @@ function StandaloneChatPageClient({
     );
   }, []);
 
-  const messagesRef = useRef(messages);
-
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -1302,15 +1530,21 @@ function StandaloneChatPageClient({
     [extractUserMessageContent]
   );
 
-  const toDisplayText = useCallback((serialized: string) => {
-    return serialized.replace(
-      INTEGRATION_REFERENCE_TOKEN_SPLIT_REGEX,
-      (match) => {
+  const toDisplayText = useCallback(
+    (serialized: string) => {
+      const annotated = parseChatAnnotations(serialized);
+      const text = annotated ? annotated.rest : serialized;
+      return text.replace(CHAT_REFERENCE_TOKEN_SPLIT_REGEX, (match) => {
+        const postId = parsePostReferenceValue(match);
+        if (postId) {
+          return `@${postTitlesById.get(postId) ?? tCommon("labels.untitled")}`;
+        }
         const item = parseReferenceValue(match);
         return item ? getReferenceDisplay(item) : match;
-      }
-    );
-  }, []);
+      });
+    },
+    [postTitlesById, tCommon]
+  );
 
   const handleStartEditMessage = useCallback((messageId: string) => {
     setEditingMessageId(messageId);
@@ -1369,6 +1603,10 @@ function StandaloneChatPageClient({
       setIsStopping(false);
       updateWasStoppedByUser(false, wasStoppedByUserRef, setWasStoppedByUser);
       setChatError(null);
+      isSendingRef.current = true;
+      if (!initialChatId) {
+        hasPendingChatNavigationRef.current = true;
+      }
       if (attachments.length > 0) {
         const parts: ChatMessagePart[] = [];
         if (text.length > 0) {
@@ -1389,7 +1627,7 @@ function StandaloneChatPageClient({
         });
       }
     },
-    [authorMetadata, isSlackMirrored, sendMessage, setMessages]
+    [authorMetadata, initialChatId, isSlackMirrored, sendMessage, setMessages]
   );
 
   const handleEditMessage = useCallback(
@@ -1398,12 +1636,23 @@ function StandaloneChatPageClient({
       trackEvent(POSTHOG_EVENTS.CHAT_MESSAGE_EDITED, { chat_id: stableChatId });
       const current = messagesRef.current;
       const message = current.find((m) => m.id === userMessageId);
-      const attachments = message
-        ? extractUserMessageContent(message).attachments
-        : [];
-      await resendFromUserMessage(userMessageId, newText, attachments);
+      const original = message
+        ? extractUserMessageContent(message)
+        : { text: "", attachments: [] };
+      // The editor shows display text only; keep the annotations and post
+      // tags the original message carried.
+      await resendFromUserMessage(
+        userMessageId,
+        restoreChatReferences(original.text, newText, postTitlesById),
+        original.attachments
+      );
     },
-    [extractUserMessageContent, resendFromUserMessage, stableChatId]
+    [
+      extractUserMessageContent,
+      postTitlesById,
+      resendFromUserMessage,
+      stableChatId,
+    ]
   );
 
   const handleRetryMessage = useCallback(
@@ -1484,6 +1733,10 @@ function StandaloneChatPageClient({
         return;
       }
 
+      isSendingRef.current = true;
+      if (!initialChatId) {
+        hasPendingChatNavigationRef.current = true;
+      }
       const isFirstMessage = !initialChatId && !hasUpdatedUrlRef.current;
       if (messagesRef.current.length === 0) {
         triggerFirstMessageTransition();
@@ -1510,12 +1763,6 @@ function StandaloneChatPageClient({
       }
       if (isFirstMessage) {
         hasUpdatedUrlRef.current = true;
-        hasPendingChatNavigationRef.current = true;
-        window.history.replaceState(
-          null,
-          "",
-          `/${organizationSlug}/chat/${stableChatId}`
-        );
         insertPendingChatSession(stableChatId);
       }
       if (attachments.length > 0) {
@@ -1543,7 +1790,6 @@ function StandaloneChatPageClient({
       insertPendingChatSession,
       isProjectScopePending,
       isSlackMirrored,
-      organizationSlug,
       sendMessage,
       stableChatId,
       triggerFirstMessageTransition,
@@ -1559,16 +1805,14 @@ function StandaloneChatPageClient({
         }
         return;
       }
-      if (isLoading || isWaitingForActiveStream) {
-        if (attachments.length > 0) {
-          return;
-        }
+      if (isSendingRef.current || isLoading || isWaitingForActiveStream) {
         const next = [
           ...queuedMessagesRef.current,
           {
             id: nanoid(10),
             text,
             authorUserId: currentAuthorUserId,
+            ...(attachments.length > 0 ? { attachments } : {}),
           },
         ];
         queuedMessagesRef.current = next;
@@ -1677,6 +1921,13 @@ function StandaloneChatPageClient({
   }, []);
 
   const handleEditQueued = useCallback((message: QueuedMessage) => {
+    // Restore files first: if they don't fit, the message stays queued.
+    if (
+      message.attachments?.length &&
+      !chatInputRef.current?.setAttachments(message.attachments)
+    ) {
+      return;
+    }
     if (steerAfterStopRef.current?.id === message.id) {
       steerAfterStopRef.current = null;
       updateWasStoppedByUser(true, wasStoppedByUserRef, setWasStoppedByUser);
@@ -1695,9 +1946,12 @@ function StandaloneChatPageClient({
       }
       queuedMessagesRef.current = taken.remaining;
       setQueuedMessages(taken.remaining);
+      isDrainingRef.current = true;
       updateWasStoppedByUser(false, wasStoppedByUserRef, setWasStoppedByUser);
-      dispatchMessage(message.text).catch((error) => {
+      dispatchMessage(message.text, message.attachments).catch((error) => {
         console.error("[Chat] Failed to steer queued message:", error);
+        isSendingRef.current = false;
+        isDrainingRef.current = false;
         const restored = [message, ...queuedMessagesRef.current];
         queuedMessagesRef.current = restored;
         setQueuedMessages(restored);
@@ -1725,7 +1979,7 @@ function StandaloneChatPageClient({
       ) {
         return;
       }
-      if (!(isLoading || isWaitingForActiveStream)) {
+      if (!(isSendingRef.current || isLoading || isWaitingForActiveStream)) {
         sendSteeredQueued(message);
         return;
       }
@@ -1803,7 +2057,11 @@ function StandaloneChatPageClient({
       if (isSlackMirrored) {
         return;
       }
-      if (isDrainingRef.current || isWaitingForActiveStreamRef.current) {
+      if (
+        isSendingRef.current ||
+        isDrainingRef.current ||
+        isWaitingForActiveStreamRef.current
+      ) {
         return;
       }
       if (wasStoppedByUserRef.current) {
@@ -1825,8 +2083,9 @@ function StandaloneChatPageClient({
       const remaining = queue.slice(1);
       queuedMessagesRef.current = remaining;
       setQueuedMessages(remaining);
-      dispatchMessage(next.text).catch((error) => {
+      dispatchMessage(next.text, next.attachments).catch((error) => {
         console.error("[Chat] Failed to drain queued message:", error);
+        isSendingRef.current = false;
         isDrainingRef.current = false;
         const restored = [next, ...queuedMessagesRef.current];
         queuedMessagesRef.current = restored;
@@ -1847,17 +2106,17 @@ function StandaloneChatPageClient({
   }, []);
 
   const checkActiveStream = useCallback(async () => {
-    const response = await fetch(
-      `/api/organizations/${organizationId}/chat/${encodeURIComponent(stableChatId)}`
-    );
-    if (!(response.ok && activeStreamPollRef.current)) {
-      return;
-    }
-    const data: {
-      messages?: ChatUIMessage[] | null;
-      activeStreamId?: string | null;
-    } = await response.json();
-    if (data.activeStreamId || !activeStreamPollRef.current) {
+    const data = await dashboardOrpcClient.chat.sessions
+      .get({ organizationId, chatId: stableChatId })
+      .catch((error: unknown) => {
+        // A failed response just waits for the next poll; network errors
+        // still surface through the poller's logging.
+        if (error instanceof ORPCError) {
+          return null;
+        }
+        throw error;
+      });
+    if (!data || data.activeStreamId || !activeStreamPollRef.current) {
       return;
     }
     stopActiveStreamPolling();
@@ -2003,6 +2262,7 @@ function StandaloneChatPageClient({
     }
 
     isDrainingRef.current = true;
+    wasInterruptedForQueueRef.current = true;
 
     stopActiveResponse().catch((error) => {
       console.error(
@@ -2073,9 +2333,12 @@ function StandaloneChatPageClient({
   const chatActivity = getChatActivity(messages, isLoading || isMirrorWorking, {
     isStandaloneTool: (part) =>
       isContentEditorStandaloneTool(part) ||
+      (isToolUIPart(part) && isChatSubagentName(getToolName(part))) ||
       (isToolUIPart(part) &&
         part.type !== "dynamic-tool" &&
-        (isCreateTool(part.type) || part.type === "tool-createImage")),
+        (isCreateTool(part.type) ||
+          part.type === "tool-createImage" ||
+          part.type === `tool-${UPDATE_TODOS_TOOL_NAME}`)),
   });
   // Between steps of an assistant reply the indicator would blink in and out
   // for a few frames, so it only appears once that gap actually lasts.
@@ -2087,21 +2350,89 @@ function StandaloneChatPageClient({
     }
   );
 
+  // A message shows one checklist, where the plan was first written, with
+  // the latest state of every later update.
+  function renderTodoPart(toolPart: RenderableToolPart, messageId: string) {
+    const message = messages.find((entry) => entry.id === messageId);
+    const todoParts =
+      message?.parts.filter(
+        (part) =>
+          isToolUIPart(part) && getToolName(part) === UPDATE_TODOS_TOOL_NAME
+      ) ?? [];
+    if (todoParts[0] !== toolPart) {
+      return null;
+    }
+    // Updates over the per-reply cap come back with accepted: false. A
+    // later update counts once its input is complete, so a half-streamed list
+    // never replaces the full one; the first plan may stream in.
+    const latest = todoParts.findLast((part, partIndex) => {
+      if (!isToolUIPart(part)) {
+        return false;
+      }
+      const output = part.output as { accepted?: boolean } | undefined;
+      const isComplete =
+        part.state === "input-available" || part.state === "output-available";
+      return (
+        (partIndex === 0 || isComplete) &&
+        output?.accepted !== false &&
+        chatTodoListSchema.safeParse(part.input).success
+      );
+    });
+    const todos = chatTodoListSchema.safeParse(
+      latest && isToolUIPart(latest) ? latest.input : undefined
+    );
+    if (!todos.success) {
+      return null;
+    }
+    const isActive = messageId === chatActivity.activeMessageId;
+    const isLastAssistant =
+      messages.findLast((entry) => entry.role === "assistant")?.id ===
+      messageId;
+    // The last reply knows whether the user stopped it. An older reply that
+    // ended with a step still running was cut off the same way.
+    const isStopped = isLastAssistant
+      ? wasStoppedByUser
+      : todos.data.todos.some((todo) => todo.status === "in_progress");
+    return (
+      <ChatTodoList
+        isActive={isActive}
+        isStopped={isStopped}
+        key={toolPart.toolCallId}
+        todos={todos.data.todos}
+      />
+    );
+  }
+
   function renderPart(
     part: ChatUIMessage["parts"][number],
     messageId: string,
     index: number
   ) {
     if (part.type === "text") {
-      const text = part.text as string;
-      if (!text.trim()) {
+      const rawText = part.text as string;
+      if (!rawText.trim()) {
         return null;
       }
+
+      // Annotations from the preview arrive as a block ahead of the text.
+      const annotated = parseChatAnnotations(rawText);
+      if (annotated) {
+        return (
+          <div className="size-full" key={`${messageId}-text-${index}`}>
+            <ChatMessageAnnotations annotations={annotated.annotations} />
+            {annotated.rest.trim()
+              ? renderPart({ ...part, text: annotated.rest }, messageId, index)
+              : null}
+          </div>
+        );
+      }
+      const text = rawText;
 
       const hasInlineReference =
         text.includes("integration/github/") ||
         text.includes("integration/linear/") ||
-        text.includes("integration/mcp/");
+        text.includes("integration/mcp/") ||
+        text.includes("@post/");
 
       if (hasInlineReference) {
         return (
@@ -2109,7 +2440,11 @@ function StandaloneChatPageClient({
             className="size-full wrap-break-word whitespace-pre-wrap"
             key={`${messageId}-text-${index}`}
           >
-            {renderTextWithIntegrationReferences(text, mcpLogosByConnectionId)}
+            {renderTextWithIntegrationReferences(
+              text,
+              mcpLogosByConnectionId,
+              postTitlesById
+            )}
           </div>
         );
       }
@@ -2152,17 +2487,12 @@ function StandaloneChatPageClient({
         );
       }
       return (
-        <a
-          className="border-border bg-muted/40 text-foreground hover:bg-accent my-1 inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs no-underline transition-colors"
-          href={url}
+        <ChatFileAttachment
+          filename={filename}
           key={fileKey}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <span className="truncate">
-            {filename ?? mediaType ?? tCommon("labels.attachment")}
-          </span>
-        </a>
+          mediaType={mediaType}
+          url={url}
+        />
       );
     }
 
@@ -2182,9 +2512,10 @@ function StandaloneChatPageClient({
         toolPart.type === "dynamic-tool" ? null : toolPart.type;
 
       if (staticToolType && isCreateTool(staticToolType)) {
-        const contentType = getCreateToolContentType(
-          staticToolType as keyof typeof CREATE_TOOL_TYPES
-        );
+        const contentType =
+          CHAT_CREATE_TOOL_TYPES[
+            staticToolType as keyof typeof CHAT_CREATE_TOOL_TYPES
+          ];
         const input = toolPart.input as
           | { title?: string; markdown?: string }
           | undefined;
@@ -2315,26 +2646,18 @@ function StandaloneChatPageClient({
                 trackDraftAction(
                   status === "published" ? "save_published" : "save_draft"
                 );
-                const response = await fetch(
-                  `/api/organizations/${organizationId}/chat/posts`,
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      ...payload,
-                      chatId: stableChatId,
-                      toolCallId: toolPart.toolCallId,
-                      contentType,
-                      status,
-                    }),
-                  }
-                );
-                if (!response.ok) {
-                  throw new Error(tCommon("errors.generic"));
-                }
-                const savedPost = createdPostToolOutputSchema.parse(
-                  await response.json()
-                );
+                const savedPost = await dashboardOrpcClient.chat.posts
+                  .create({
+                    ...payload,
+                    organizationId,
+                    chatId: stableChatId,
+                    toolCallId: toolPart.toolCallId,
+                    contentType,
+                    status,
+                  })
+                  .catch(() => {
+                    throw new Error(tCommon("errors.generic"));
+                  });
                 setMessages((current) =>
                   linkSavedChatPosts(current, [
                     {
@@ -2457,8 +2780,11 @@ function StandaloneChatPageClient({
               organizationId={organizationId}
               organizationSlug={organizationSlug}
               postId={savedPost?.postId}
+              onOpenPreview={() => openPostPreview(toolPart.toolCallId)}
               onRevise={() => {
-                if (isInputEmpty) {
+                if (savedPost?.postId) {
+                  handleAskForPostChanges({ postId: savedPost.postId, title });
+                } else if (isInputEmpty) {
                   chatInputRef.current?.setText(t("revisePrefill", { title }));
                 } else {
                   chatInputRef.current?.focus();
@@ -2473,6 +2799,20 @@ function StandaloneChatPageClient({
               title={title}
             />
           </CompletedToolTimer>
+        );
+      }
+
+      if (toolName === UPDATE_TODOS_TOOL_NAME) {
+        return renderTodoPart(toolPart, messageId);
+      }
+
+      if (isChatSubagentName(toolName)) {
+        return (
+          <ChatSubagentToolPart
+            isActive={messageId === chatActivity.activeMessageId}
+            key={toolPart.toolCallId}
+            part={toolPart}
+          />
         );
       }
 
@@ -2649,7 +2989,13 @@ function StandaloneChatPageClient({
   return (
     <>
       <LazyMotion features={loadMotionFeatures} strict>
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="@container/chat relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          {chatPosts.length > 0 && !isPreviewOpen ? (
+            <ChatContentPanelToggle
+              count={chatPosts.length}
+              onOpen={openContentPanel}
+            />
+          ) : null}
           <MessageScrollerProvider autoScroll>
             <ChatScrollOnSend
               lastUserMessageId={
@@ -2673,26 +3019,17 @@ function StandaloneChatPageClient({
                         : undefined;
                     return visibleMessages.map((message, messageIndex) => {
                       const isUser = message.role === "user";
+                      const isGenerating =
+                        (isLoading || isMirrorWorking) &&
+                        message.id === lastAssistantMessageId;
                       const isEditing =
                         isUser && editingMessageId === message.id;
                       const userContentParts = isUser
                         ? message.parts.filter((part) => part.type !== "file")
                         : message.parts;
-                      const userImageParts = isUser
-                        ? message.parts.filter(
-                            (part) =>
-                              part.type === "file" &&
-                              typeof part.mediaType === "string" &&
-                              isImageMimeType(part.mediaType)
-                          )
-                        : [];
-                      const userFileParts = isUser
-                        ? message.parts.filter(
-                            (part) =>
-                              part.type === "file" &&
-                              (typeof part.mediaType !== "string" ||
-                                !isImageMimeType(part.mediaType))
-                          )
+                      // Images and other files share one tile grid above the bubble.
+                      const userAttachmentParts = isUser
+                        ? message.parts.filter((part) => part.type === "file")
                         : [];
                       const branches = isUser
                         ? messageBranches[message.id]
@@ -2737,16 +3074,15 @@ function StandaloneChatPageClient({
                                 }}
                               >
                                 <div className="flex w-full min-w-0 flex-col items-end gap-2">
-                                  {userImageParts.length > 0 && (
+                                  {userAttachmentParts.length > 0 && (
                                     <UserImageGrid>
-                                      {userImageParts.map((part, index) =>
+                                      {userAttachmentParts.map((part, index) =>
                                         renderPart(part, message.id, index)
                                       )}
                                     </UserImageGrid>
                                   )}
                                   {(isEditing ||
-                                    userContentParts.length > 0 ||
-                                    userFileParts.length > 0) && (
+                                    userContentParts.length > 0) && (
                                     <UserMessageTextBubble
                                       initialText={toDisplayText(
                                         getUserMessageText(message)
@@ -2759,13 +3095,6 @@ function StandaloneChatPageClient({
                                     >
                                       {userContentParts.map((part, index) =>
                                         renderPart(part, message.id, index)
-                                      )}
-                                      {userFileParts.length > 0 && (
-                                        <div className="flex max-w-full flex-wrap justify-end gap-2">
-                                          {userFileParts.map((part, index) =>
-                                            renderPart(part, message.id, index)
-                                          )}
-                                        </div>
                                       )}
                                     </UserMessageTextBubble>
                                   )}
@@ -2788,16 +3117,17 @@ function StandaloneChatPageClient({
                                       ? activitySeconds
                                       : undefined
                                   }
-                                  isLoading={
-                                    (isLoading || isMirrorWorking) &&
-                                    message.id === lastAssistantMessageId
-                                  }
+                                  isLoading={isGenerating}
                                   isStandaloneTool={(part) =>
                                     isContentEditorStandaloneTool(part) ||
                                     (isToolUIPart(part) &&
+                                      isChatSubagentName(getToolName(part))) ||
+                                    (isToolUIPart(part) &&
                                       part.type !== "dynamic-tool" &&
                                       (isCreateTool(part.type) ||
-                                        part.type === "tool-createImage"))
+                                        part.type === "tool-createImage" ||
+                                        part.type ===
+                                          `tool-${UPDATE_TODOS_TOOL_NAME}`))
                                   }
                                   messageId={message.id}
                                   parts={message.parts}
@@ -2839,7 +3169,7 @@ function StandaloneChatPageClient({
                                 }
                               />
                             )}
-                            {message.role === "assistant" && (
+                            {message.role === "assistant" && !isGenerating && (
                               <AssistantMetadataHover
                                 metadata={message.metadata}
                               />
@@ -2938,6 +3268,7 @@ function StandaloneChatPageClient({
                   draftStorageKey={draftStorageKey}
                   error={null}
                   initialValue={initialQuery ?? undefined}
+                  postMentions={postMentions}
                   isLoading={isLoading}
                   isStopping={isStopping}
                   model={effectiveSelectedModel}
@@ -2972,6 +3303,21 @@ function StandaloneChatPageClient({
         }}
         open={previewAttachment !== null}
       />
+      {chatPosts.length > 0 ? (
+        <ChatContentPanel
+          activeToolCallId={previewToolCallId}
+          focus={annotationFocus}
+          onActivateTab={setPreviewToolCallId}
+          onAskForChanges={handleAskForPostChanges}
+          onCloseTab={closePostPreviewTab}
+          onOpenTab={openPostPreview}
+          onReorderTabs={setPreviewTabIds}
+          openToolCallIds={previewTabIds}
+          organizationId={organizationId}
+          organizationSlug={organizationSlug}
+          posts={chatPosts}
+        />
+      ) : null}
     </>
   );
 }

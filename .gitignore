@@ -21,8 +21,10 @@ coverage
 # Vercel
 .vercel
 
+# Railway saved plans may contain secrets
+/.railway-plans/
+
 # Build Outputs
-.next/
 out/
 build
 dist
@@ -47,7 +49,6 @@ yarn-error.log*
 
 # Typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # Opencode
 opencode.json
@@ -64,6 +65,8 @@ opencode.json
 .output
 apps/onboarding-agent/logs
 .workflow-data
+.swc/
+.tanstack/
 .env.staging
 .env*
 !.env.example

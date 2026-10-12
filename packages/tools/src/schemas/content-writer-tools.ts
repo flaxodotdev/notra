@@ -1,10 +1,12 @@
 import { contentTypeSchema } from "@notra/ai/schemas/content";
 import { POST_SLUG_MAX_LENGTH, POST_SLUG_REGEX } from "@notra/ai/schemas/post";
+import { generatedPostMetadataShape } from "@notra/ai/schemas/post-metadata";
 import { z } from "zod";
 
 const POST_TITLE_MAX_LENGTH = 120;
 
 export const writerCreatePostInputSchema = z.object({
+  ...generatedPostMetadataShape,
   title: z
     .string()
     .max(POST_TITLE_MAX_LENGTH)

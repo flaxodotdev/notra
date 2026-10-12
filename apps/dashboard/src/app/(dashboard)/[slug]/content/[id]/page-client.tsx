@@ -1,5 +1,7 @@
 "use client";
 
+import { supportsPostSlug } from "@notra/ai/schemas/post";
+
 import { ChatQuoteProvider } from "@/components/chat/chat-quote";
 import {
   ContentDetailChatPanel,
@@ -7,6 +9,7 @@ import {
 } from "@/components/content/content-detail-chat-shell";
 import { ContentDetailLoadedView } from "@/components/content/content-detail-loaded-view";
 import { ContentDetailNotFound } from "@/components/content/content-detail-not-found";
+import { ContentOverview } from "@/components/content/overview/content-overview";
 import { GeoProjectProvider } from "@/components/providers/geo-project-provider";
 import { useContentDetailChat } from "@/lib/hooks/use-content-detail-chat";
 import { useContentDetailDocument } from "@/lib/hooks/use-content-detail-document";
@@ -73,7 +76,18 @@ function ContentDetailPage({
       chatInputSection={
         <ChatQuoteProvider conversationId={chat.chatPanelProps.activeChatId}>
           {floatingChat}
-          <ContentDetailChatPanel {...chat.chatPanelProps} />
+          <ContentDetailChatPanel
+            {...chat.chatPanelProps}
+            overview={
+              supportsPostSlug(data.content.contentType) ? (
+                <ContentOverview
+                  content={data.content}
+                  contentId={contentId}
+                  organizationId={organizationId}
+                />
+              ) : undefined
+            }
+          />
         </ChatQuoteProvider>
       }
       contentId={contentId}

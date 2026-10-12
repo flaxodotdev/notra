@@ -60,6 +60,20 @@ export interface GitHubPublishRepositoryFieldProps {
   selectedRepository: GitHubRepository | undefined;
 }
 
+/** The repository field's props that come from the shared repository selection. */
+export type GitHubPublishRepositorySelectionFieldProps = Omit<
+  GitHubPublishRepositoryFieldProps,
+  "isPublishing" | "onRepositoryChange" | "organizationSlug"
+>;
+
+export interface GitHubPublishRepositorySelectionOptions {
+  organizationId: string;
+  contentType: string;
+  /** The preferred repository; falls back to the first publishable one. */
+  repositoryId: string;
+  enabled: boolean;
+}
+
 export interface GitHubPublishRepositoryStatusProps {
   connectedRepositoryCount: number;
   contentTypeLabel: string;
@@ -83,4 +97,14 @@ export interface GitHubPublishDialogFooterProps {
   publishRecovery: GitHubPublishRecovery | null;
   pullRequest: GitHubPublishPullRequestResult | undefined;
   selectedPublishingEnabled: boolean;
+}
+
+/** The generation inputs a post records, when they are complete. */
+export interface ParsedSourceMetadata {
+  brandVoiceId?: string | null;
+  brandVoiceName?: string | null;
+  lookbackRange: { end: string; start: string };
+  lookbackWindow: string;
+  repositories: Array<{ owner: string; repo: string }>;
+  triggerSourceType: string;
 }

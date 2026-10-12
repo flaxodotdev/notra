@@ -130,14 +130,14 @@ export class GeoProjectCreateFailedError extends Data.TaggedError(
 
 /**
  * A project exists and belongs to the organization, but deleting it is not
- * allowed — currently only when it is the organization's last project, which
- * every GEO scope resolution depends on.
+ * allowed when it has hosted Sites or is the organization's last project,
+ * which every GEO scope resolution depends on.
  */
 export class GeoProjectDeleteBlockedError extends Data.TaggedError(
   "GeoProjectDeleteBlockedError"
 )<{
   readonly projectId: string;
-  readonly reason: "last_project";
+  readonly reason: "last_project" | "has_sites";
 }> {}
 
 export class GeoBrandIdentityNotFoundError extends Data.TaggedError(

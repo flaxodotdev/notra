@@ -8,12 +8,16 @@ import {
   formatGeoSource,
   trafficVisitDelta,
 } from "@notra/geo-core/utils/ai-traffic";
-import { useTranslations } from "next-intl";
+import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
+import { useTranslations } from "use-intl";
 
 import { EngineIcon } from "@/components/geo/engine-icon";
-import { JourneyCountCell } from "@/components/geo/journey-count-cell";
+import { GeoCountCell } from "@/components/geo/geo-count-cell";
 import { JourneyStatCard } from "@/components/geo/journey-stat-card";
-import { Table, type TableColumn } from "@/components/motion/table";
+import { GEO_COUNT_COLUMN_WIDTH } from "@/constants/geo-table";
 import { TABLE_ROW_HEIGHT } from "@/constants/table";
 import type { JourneyOverviewCardProps } from "@/types/geo";
 import {
@@ -59,14 +63,14 @@ export function JourneyOverviewCard({
     {
       key: "journeys",
       header: tCommon("labels.journeys"),
-      width: "9.5rem",
+      width: GEO_COUNT_COLUMN_WIDTH,
       align: "right",
       sortable: true,
       cell: (row) => (
-        <JourneyCountCell
-          journeys={row.journeys}
+        <GeoCountCell
+          value={row.journeys}
           label={formatGeoSource(row.source)}
-          previousJourneys={row.previousJourneys}
+          previousValue={row.previousJourneys}
         />
       ),
     },
@@ -105,8 +109,7 @@ export function JourneyOverviewCard({
       ]}
       total={totals.journeys}
     >
-      <Table
-        className="rounded-2xl"
+      <DataTable
         columns={columns}
         data={sources.filter((row) => row.journeys > 0)}
         defaultSort={{ key: "journeys", direction: "desc" }}

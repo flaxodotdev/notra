@@ -1,3 +1,5 @@
+import type { SocialVideoAttachment } from "@notra/schemas/dashboard/content";
+
 import { getOptionalR2PublicUrl } from "@/lib/upload/r2";
 
 import { SocialConnectRequestError } from "./errors";
@@ -61,9 +63,25 @@ export function assertAllowedSocialMediaUrls(
       !url.pathname.startsWith(`/organization/${organizationId}/`)
     ) {
       throw new SocialConnectRequestError({
-        message: "Media URL host is not allowed",
+        message: "Media URL belongs to another organization",
         cause: null,
       });
     }
+  }
+}
+
+/** A video the organization uploaded itself, served from our storage. */
+export function isOwnSocialVideo(
+  video: SocialVideoAttachment,
+  organizationId: string
+): boolean {
+  if (!video.key.startsWith(`organization/${organizationId}/`)) {
+    return false;
+  }
+  try {
+    assertAllowedSocialMediaUrls([video.url], organizationId);
+    return true;
+  } catch {
+    return false;
   }
 }

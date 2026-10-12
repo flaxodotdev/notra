@@ -5,8 +5,14 @@ type ZrRect = InstanceType<typeof echarts.graphic.Rect>;
 type ZrCircle = InstanceType<typeof echarts.graphic.Circle>;
 
 const SCRUB_Z = 110;
+/**
+ * Canvas layer for scrubbed series and the overlay. Clipping repaints them every
+ * frame; on their own layer the axes and labels on layer 0 stay untouched.
+ */
+export const SCRUB_ZLEVEL = 1;
 const DOT_RADIUS = 4;
 const LINE_WIDTH = 1;
+const HALO_WIDTH = 6;
 
 /** Opacity of the unclipped trail while scrubbing — original color, faded. */
 export const SCRUB_MUTE_OPACITY = 0.3;
@@ -15,6 +21,8 @@ export type ScrubDot = {
   x: number;
   y: number;
   color: string;
+  /** Translucent ring drawn around the dot (a wide stroke centred on its edge). */
+  halo: string;
 };
 
 export type ScrubOverlayStore = {
@@ -144,7 +152,7 @@ export function pointOnSeriesAtX(
   x: number
 ): [number, number] | null {
   const views = internals(chart);
-  const model = (views.getModel?.().getSeries?.() ?? []).find(
+  const model = (views.getModel?.()?.getSeries?.() ?? []).find(
     (series) => String(series.id ?? "") === seriesId
   );
   if (!model) return null;
@@ -166,7 +174,7 @@ export function emptyScrubStore(): ScrubOverlayStore {
 }
 
 export function readScrubGrid(chart: EChartsInstance): ScrubGrid | null {
-  const series = internals(chart).getModel?.().getSeries?.() ?? [];
+  const series = internals(chart).getModel?.()?.getSeries?.() ?? [];
   for (const model of series) {
     const area = model.coordinateSystem?.getArea?.();
     if (area && area.width > 0 && area.height > 0) return area;
@@ -201,6 +209,7 @@ export function syncScrubOverlay(
     store.overlay = {
       line: new echarts.graphic.Rect({
         silent: true,
+        zlevel: SCRUB_ZLEVEL,
         z: SCRUB_Z,
         shape: { x: 0, y: 0, width: LINE_WIDTH, height: 0 },
       }),
@@ -226,6 +235,7 @@ export function syncScrubOverlay(
   while (dots.length < nextDots.length) {
     const circle = new echarts.graphic.Circle({
       silent: true,
+      zlevel: SCRUB_ZLEVEL,
       z: SCRUB_Z + 1,
       shape: { cx: 0, cy: 0, r: DOT_RADIUS },
     });
@@ -242,6 +252,8 @@ export function syncScrubOverlay(
     circle.setShape({ cx: dot.x, cy: dot.y, r: DOT_RADIUS });
     circle.setStyle({
       fill: dot.color,
+      stroke: dot.halo,
+      lineWidth: HALO_WIDTH,
       opacity: Math.min(opacity * 3, 1),
       shadowBlur: 0,
     });
@@ -256,7 +268,7 @@ export function clipSeriesToX(
   seriesKeys: readonly string[] = []
 ) {
   const views = internals(chart);
-  const series = views.getModel?.().getSeries?.() ?? [];
+  const series = views.getModel?.()?.getSeries?.() ?? [];
   const grid = readScrubGrid(chart);
   if (!grid || !views.getViewOfSeriesModel) return;
 

@@ -49,15 +49,19 @@ import type {
   PostToolsResult,
 } from "@notra/ai/types/post-tools";
 import type { RouteUsageSummary } from "@notra/ai/types/router";
+import { loadBrandGuidelineSourceInstructions } from "@notra/ai/utils/load-brand-guideline-source";
 import { updatePostRecord } from "@notra/ai/utils/post-service";
 import { summarizeRouteUsage } from "@notra/ai/utils/route-usage";
+import { logWarn } from "@notra/ai/utils/server-log";
 import { buildTelemetryOptions } from "@notra/ai/utils/tcc";
 import { toAgentTokenUsage } from "@notra/ai/utils/token-usage";
+import { withUsageContext } from "@notra/ai/utils/usage-attribution";
 import { db } from "@notra/db/drizzle";
 import { posts } from "@notra/db/schema";
 import {
   generateText,
   type FinishReason,
+  type GenerateTextOnStepEndCallback,
   isStepCount,
   type LanguageModelUsage,
   NoObjectGeneratedError,
@@ -75,9 +79,12 @@ const MARKDOWN_LINK_URL_REGEX = /\]\((\S+?)\)/g;
 const DASH_REGEX = /[–—]/g;
 
 export class GeoWriterError extends Error {
-  constructor(message: string) {
+  readonly usage?: AgentTokenUsage;
+
+  constructor(message: string, usage?: AgentTokenUsage) {
     super(message);
     this.name = "GeoWriterError";
+    this.usage = usage;
   }
 }
 
@@ -196,6 +203,16 @@ function describePlannerFailure(error: unknown): PlannerFailure {
 export async function generateGeoContentBrief(
   options: GenerateGeoContentBriefOptions
 ): Promise<GenerateGeoContentBriefResult> {
+  return await withUsageContext(
+    options.organizationId,
+    options.telemetryMetadata,
+    () => generateGeoContentBriefWithContext(options)
+  );
+}
+
+async function generateGeoContentBriefWithContext(
+  options: GenerateGeoContentBriefOptions
+): Promise<GenerateGeoContentBriefResult> {
   const { organizationId, input, log } = options;
 
   await assertRouteHasCredits({
@@ -218,6 +235,23 @@ export async function generateGeoContentBrief(
     GEO_WRITER_PLANNER_MODEL
   );
   let lastError = "The planner produced no output";
+  // The SDK parses structured output after this callback. Count rejected
+  // output too, without counting a returned result a second time.
+  const recordPlannerStep: GenerateTextOnStepEndCallback = async (step) => {
+    const routeUsage = await summarizeRouteUsage(
+      [step],
+      GEO_WRITER_PLANNER_MODEL
+    ).catch((error: unknown) => {
+      logWarn("[GEO planner] Failed to enrich usage", {
+        error: describeError(error),
+      });
+      return undefined;
+    });
+    usage = mergeTokenUsage(
+      usage,
+      toTokenUsage(step.usage, GEO_WRITER_PLANNER_MODEL, routeUsage)
+    );
+  };
 
   for (
     let attempt = 0;
@@ -232,20 +266,13 @@ export async function generateGeoContentBrief(
         prompt,
         maxOutputTokens: GEO_WRITER_PLANNER_MAX_TOKENS,
         providerOptions: withRouterDefaults(
-          { gateway: { tags: ["geo-writer"] } },
+          { gateway: { tags: ["geo-writer", "feature:geo-writer-planner"] } },
           {
             modelId: GEO_WRITER_PLANNER_MODEL,
           }
         ),
+        onStepEnd: recordPlannerStep,
       });
-      const routeUsage = await summarizeRouteUsage(
-        result.steps,
-        GEO_WRITER_PLANNER_MODEL
-      );
-      usage = mergeTokenUsage(
-        usage,
-        toTokenUsage(result.usage, GEO_WRITER_PLANNER_MODEL, routeUsage)
-      );
       if (result.finishReason !== "stop") {
         const failure = describeUnfinishedPlan(
           result.finishReason,
@@ -253,6 +280,9 @@ export async function generateGeoContentBrief(
           result.usage
         );
         lastError = failure.errors.join("; ");
+        if (result.finishReason !== "length") {
+          break;
+        }
         prompt = `${basePrompt}\n\n${buildGeoPlannerRepairPrompt({
           errors: failure.errors,
           previousOutput: failure.previousOutput,
@@ -267,6 +297,15 @@ export async function generateGeoContentBrief(
         .map((issue) => `${issue.path.join(".") || "brief"}: ${issue.message}`)
         .join("; ");
     } catch (error) {
+      if (
+        !NoObjectGeneratedError.isInstance(error) ||
+        (error.finishReason !== undefined &&
+          error.finishReason !== "stop" &&
+          error.finishReason !== "length")
+      ) {
+        lastError = describeError(error);
+        break;
+      }
       const failure = describePlannerFailure(error);
       lastError = failure.errors.join("; ");
       prompt = `${basePrompt}\n\n${buildGeoPlannerRepairPrompt({
@@ -281,7 +320,7 @@ export async function generateGeoContentBrief(
     })}`;
   }
 
-  throw new GeoWriterError(`Failed to plan the article: ${lastError}`);
+  throw new GeoWriterError(`Failed to plan the article: ${lastError}`, usage);
 }
 
 function stripDashesFromText(value: string): string {
@@ -389,7 +428,7 @@ async function humanizeMarkdown(
     prompt: buildGeoHumanizerPrompt(markdown),
     maxOutputTokens: GEO_WRITER_HUMANIZER_MAX_TOKENS,
     providerOptions: withRouterDefaults(
-      { gateway: { tags: ["geo-writer"] } },
+      { gateway: { tags: ["geo-writer", "feature:geo-writer-humanizer"] } },
       {
         modelId: GEO_WRITER_MODEL,
       }
@@ -516,6 +555,16 @@ function formatMonthYear(date: Date): string {
 export async function runGeoWriter(
   options: RunGeoWriterOptions
 ): Promise<GeoWriterResult> {
+  return await withUsageContext(
+    options.organizationId,
+    options.telemetryMetadata,
+    () => runGeoWriterWithContext(options)
+  );
+}
+
+async function runGeoWriterWithContext(
+  options: RunGeoWriterOptions
+): Promise<GeoWriterResult> {
   const {
     organizationId,
     projectId,
@@ -545,6 +594,8 @@ export async function runGeoWriter(
     log
   );
 
+  const guidelineDocument =
+    await loadBrandGuidelineSourceInstructions(brandSettingsId);
   const instructions = buildGeoWriterInstructions({
     brief,
     brandName,
@@ -554,6 +605,7 @@ export async function runGeoWriter(
     today: now.toISOString().slice(0, 10),
     monthYear: formatMonthYear(now),
     language,
+    guidelineDocument,
   });
 
   const postToolsResult: PostToolsResult = {};
@@ -601,7 +653,11 @@ export async function runGeoWriter(
     ),
     tools,
     instructions,
-    stopWhen: isStepCount(GEO_WRITER_MAX_STEPS),
+    stopWhen: [
+      isStepCount(GEO_WRITER_MAX_STEPS),
+      () =>
+        Boolean(postToolsResult.posts?.length || postToolsResult.failReason),
+    ],
     ...buildTelemetryOptions({
       ...telemetryMetadata,
       stage: "geo_writer_draft",
@@ -637,13 +693,13 @@ export async function runGeoWriter(
           });
           humanized = update.status === "updated";
         } else {
-          console.warn(
+          logWarn(
             "[GEO writer] humanizer output failed invariants, keeping raw draft",
             { postId: primaryPost.postId }
           );
         }
       } catch (error) {
-        console.warn("[GEO writer] humanizer pass failed, keeping raw draft", {
+        logWarn("[GEO writer] humanizer pass failed, keeping raw draft", {
           postId: primaryPost.postId,
           error: describeError(error),
         });

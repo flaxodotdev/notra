@@ -7,6 +7,7 @@ export const localStorageKeys = {
   chatDraft: (draftId: string) => `chat-draft:${draftId}`,
   imageExportTarget: "notra:image-export-target",
   contentView: "notra:content-view",
+  contentPanelClosed: "notra:content-panel-closed",
   sidebarMode: "notra:sidebar-mode:v1",
   sidebarOnboardingCollapsed: (organizationId?: string) =>
     organizationId
@@ -21,6 +22,8 @@ export const localStorageKeys = {
   chatSuggestionsDismissed: "notra:chat-suggestions-dismissed:v1",
   dashboardAgentSuggestionsDismissed:
     "notra:dashboard-agent-suggestions-dismissed:v2",
+  commandPaletteRecents: (organizationId: string) =>
+    `notra:command-palette-recents:v1:${organizationId}`,
   githubPublishRepository: (organizationId: string) =>
     `notra:github-publish-repository:v1:${organizationId}`,
 } as const;

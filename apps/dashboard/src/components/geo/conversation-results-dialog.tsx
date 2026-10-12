@@ -11,16 +11,16 @@ import {
   SheetTitle,
 } from "@notra/ui/components/ui/sheet";
 import { Skeleton } from "@notra/ui/components/ui/skeleton";
+import { useRetainedValue } from "@notra/ui/hooks/use-retained-value";
 import { useReducedMotion } from "motion/react";
-import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { ConversationReplayThread } from "@/components/geo/conversation-replay-thread";
 import { PromptEngineSwitcher } from "@/components/geo/prompt-engine-switcher";
 import { useAnswerReplay } from "@/lib/hooks/use-answer-replay";
 import { useGeoSequenceResults } from "@/lib/hooks/use-geo";
-import { useRetainedValue } from "@/lib/hooks/use-retained-value";
 import type {
   ConversationResultsDialogProps,
   GeoSequenceEngineThread,

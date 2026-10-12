@@ -166,6 +166,10 @@ export interface StoredBrandGuideline {
   contextDevMeta: unknown;
   lastGeneratedAt: Date | null;
   lastGenerationError: string | null;
+  sourcePdfFilename: string | null;
+  sourcePdfUrl: string | null;
+  sourcePdfText: string | null;
+  sourcePdfUploadedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   assets: StoredBrandGuidelineAsset[];
@@ -183,3 +187,26 @@ export interface BrandGuidelineGenerationStepInput {
 export type BrandGuidelineWorkflowStepResult =
   | { success: true }
   | { success: false; error: string };
+
+export interface AttachBrandGuidelineSourcePdfInput {
+  brandSettingsId: string;
+  filename: string;
+  key: string;
+  organizationId: string;
+}
+
+export type BrandGuidelinePdfErrorKey =
+  | "generateFirst"
+  | "invalidFile"
+  | "noText"
+  | "readFailed"
+  | "unavailable";
+
+export interface GuidelineContentSummary {
+  lastGeneratedAt: Date | string | null;
+  assets: readonly unknown[];
+  colors: readonly unknown[];
+  fonts: readonly unknown[];
+  tokens: readonly unknown[];
+  screenshots: readonly unknown[];
+}

@@ -1,6 +1,8 @@
+import "@/workflows/runtime";
 import { getGitHubToolRepositoryContextByIntegrationId } from "@notra/ai/integrations/github";
 import { getLinearToolContextByIntegrationId } from "@notra/ai/integrations/linear";
 import { getValidToneProfile } from "@notra/ai/schemas/tone";
+import { loadBrandGuidelineSourceInstructions } from "@notra/ai/utils/load-brand-guideline-source";
 import type { PostSourceMetadata } from "@notra/db/schema";
 import { flushPostHogServer } from "@notra/posthog/server";
 import { createRequestLogger } from "evlog";
@@ -56,8 +58,12 @@ export async function runScheduledGeneration(
   const scheduleInstructions = buildScheduleInstructions(
     parseTriggerOutputConfig(trigger.outputConfig)?.instructions
   );
+  const guidelineInstructions = await loadBrandGuidelineSourceInstructions(
+    brand?.id
+  );
   const customInstructions = [
     brand?.customInstructions?.trim() ?? "",
+    guidelineInstructions,
     scheduleInstructions ?? "",
     restrictionInstructions ?? "",
   ]

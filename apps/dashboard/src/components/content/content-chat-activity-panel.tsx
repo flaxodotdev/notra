@@ -38,20 +38,23 @@ import {
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
 import { getToolName, isToolUIPart } from "ai";
-import { useTranslations } from "next-intl";
 import { Fragment, type ReactNode, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { ChatActivityStatus } from "@/components/ai/chat-activity-status";
 import { ChatAssistantParts } from "@/components/ai/chat-assistant-parts";
 import { ChatEmptyDither } from "@/components/ai/chat-empty-dither";
+import { ChatSubagentToolPart } from "@/components/ai/chat-subagent-tool-part";
 import { ChatToolBlock } from "@/components/ai/chat-tool-block";
 import { isMcpToolName } from "@/components/ai/chat-tool-block/mcp/utils";
 import { AssistantMetadataHover } from "@/components/chat/assistant-metadata-hover";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview";
+import { ChatFileAttachment } from "@/components/chat/chat-file-attachment";
 import { ChatImageAttachment } from "@/components/chat/chat-image-attachment";
 import { ChatInputContextRow } from "@/components/chat/chat-input-context-row";
 import { ChatQuoteMessage as Message } from "@/components/chat/chat-quote";
 import { ChatScrollOnSend } from "@/components/chat/chat-scroll-on-send";
+import { ContentPanelHeaderButton } from "@/components/content/content-panel-header-button";
 import { useRightPanel } from "@/components/dashboard/right-panel-context";
 import { useChatActivityTimer } from "@/lib/hooks/use-chat-activity-timer";
 import { isImageMimeType } from "@/lib/upload/mime";
@@ -64,6 +67,7 @@ import type {
 import { getChatActivity, hasVisibleChatContent } from "@/utils/chat-activity";
 import { displayChatTitle } from "@/utils/chat-history-groups";
 import { getChatFilePartFields } from "@/utils/chat-message-parts";
+import { isChatSubagentName } from "@/utils/chat-subagents";
 import { parseCreatedPostId } from "@/utils/chat-tool-draft";
 import {
   getContentChatAttachments,
@@ -97,6 +101,17 @@ function ContentChatActivityFeed({
         <MessageScrollerButton />
       </MessageScroller>
     </MessageScrollerProvider>
+  );
+}
+
+// Subagents get their own row with nested steps instead of hiding inside the
+// collapsed activity group.
+function isAgentPanelStandaloneTool(
+  part: Parameters<typeof isContentEditorStandaloneTool>[0]
+): boolean {
+  return (
+    isContentEditorStandaloneTool(part) ||
+    (isToolUIPart(part) && isChatSubagentName(getToolName(part)))
   );
 }
 
@@ -191,17 +206,15 @@ function ContentChatActivityMessage({
               !isImageMimeType(part.mediaType))
         )
       : [];
-  const hasBubbleContent =
-    fileParts.length > 0 ||
-    message.parts.some((part) => {
-      if (part.type === "reasoning") {
-        return true;
-      }
-      if (part.type === "text") {
-        return Boolean(part.text.trim());
-      }
-      return isToolUIPart(part);
-    });
+  const hasBubbleContent = message.parts.some((part) => {
+    if (part.type === "reasoning") {
+      return true;
+    }
+    if (part.type === "text") {
+      return Boolean(part.text.trim());
+    }
+    return isToolUIPart(part);
+  });
 
   return (
     <div className={ACTIVITY_MESSAGE_CLASSNAME}>
@@ -242,6 +255,25 @@ function ContentChatActivityMessage({
             })}
           </div>
         ) : null}
+        {fileParts.length > 0 ? (
+          <div className="ml-auto flex max-w-full flex-wrap justify-end gap-1.5">
+            {fileParts.map((part, index) => {
+              const { url, mediaType, filename } = getChatFilePartFields(part);
+              if (!isTrustedChatFileUrl(url)) {
+                return null;
+              }
+              return (
+                <div className="size-28" key={`${message.id}-file-${index}`}>
+                  <ChatFileAttachment
+                    filename={filename}
+                    mediaType={mediaType}
+                    url={url}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         {hasBubbleContent ? (
           <MessageContent>
             {message.role === "assistant" ? (
@@ -250,7 +282,7 @@ function ContentChatActivityMessage({
                 durationMs={assistantMetadata?.generationDurationMs}
                 elapsedSeconds={elapsedSeconds}
                 isLoading={isLoading}
-                isStandaloneTool={isContentEditorStandaloneTool}
+                isStandaloneTool={isAgentPanelStandaloneTool}
                 messageId={message.id}
                 parts={message.parts}
                 renderStandalone={(part, index) => {
@@ -266,17 +298,27 @@ function ContentChatActivityMessage({
                     </MessageResponse>
                   );
                 }}
-                renderTool={(part) =>
-                  isToolUIPart(part)
-                    ? renderContentChatToolPart({
-                        part,
-                        isActive: isLoading,
-                        organizationSlug,
-                        onApproveTool,
-                        onDenyTool,
-                      })
-                    : null
-                }
+                renderTool={(part) => {
+                  if (!isToolUIPart(part)) {
+                    return null;
+                  }
+                  if (isChatSubagentName(getToolName(part))) {
+                    return (
+                      <ChatSubagentToolPart
+                        isActive={isLoading}
+                        key={part.toolCallId}
+                        part={part}
+                      />
+                    );
+                  }
+                  return renderContentChatToolPart({
+                    part,
+                    isActive: isLoading,
+                    organizationSlug,
+                    onApproveTool,
+                    onDenyTool,
+                  });
+                }}
               />
             ) : (
               <>
@@ -290,37 +332,11 @@ function ContentChatActivityMessage({
                     </MessageResponse>
                   );
                 })}
-                {fileParts.length > 0 ? (
-                  <div className="flex max-w-full flex-wrap justify-end gap-2">
-                    {fileParts.map((part, index) => {
-                      const { url, mediaType, filename } =
-                        getChatFilePartFields(part);
-                      if (!isTrustedChatFileUrl(url)) {
-                        return null;
-                      }
-                      return (
-                        <a
-                          className="border-border bg-muted/40 text-foreground hover:bg-accent my-1 inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs no-underline transition-colors"
-                          href={url}
-                          key={`${message.id}-file-${index}`}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          <span className="truncate">
-                            {filename ??
-                              mediaType ??
-                              tCommon("labels.attachment")}
-                          </span>
-                        </a>
-                      );
-                    })}
-                  </div>
-                ) : null}
               </>
             )}
           </MessageContent>
         ) : null}
-        {message.role === "assistant" ? (
+        {message.role === "assistant" && !isLoading ? (
           <AssistantMetadataHover compact metadata={assistantMetadata} />
         ) : null}
       </Message>
@@ -400,6 +416,7 @@ function ContentChatActivityHeader({
   onOpenChat,
   showHistory = true,
   title: titleProp,
+  titleSlot,
 }: ContentChatActivityHeaderProps) {
   const t = useTranslations("content.chatActivity");
   const tCommon = useTranslations("common");
@@ -409,9 +426,11 @@ function ContentChatActivityHeader({
   const isAgentBusy = status === "streaming" || status === "submitted";
   return (
     <header className="bg-muted flex h-12 shrink-0 items-center justify-between gap-2 rounded-t-[calc(0.75rem-1px)] px-4">
-      <h2 className="text-foreground flex h-full min-w-0 items-center truncate text-sm leading-5">
-        <span className="truncate">{title}</span>
-      </h2>
+      {titleSlot ?? (
+        <h2 className="text-foreground flex h-full min-w-0 items-center truncate text-sm leading-5">
+          <span className="truncate">{title}</span>
+        </h2>
+      )}
       <TooltipProvider>
         <div className="-mr-1.5 flex h-full items-center gap-0.5">
           <Tooltip>
@@ -483,61 +502,31 @@ function ContentChatActivityHeader({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-pressed={opensInChat ? undefined : expanded}
-                  className="cursor-pointer"
-                  onClick={onOpenChat ?? toggleExpanded}
-                  size="icon-sm"
-                  variant="ghost"
-                />
-              }
-            >
-              <span className="sr-only">
-                {opensInChat
-                  ? t("openInChat")
-                  : expanded
-                    ? t("exitFullscreenTitle", { title })
-                    : t("openFullscreenTitle", { title })}
-              </span>
-              <HugeiconsIcon
-                className="size-4"
-                icon={
-                  opensInChat || !expanded ? FullScreenIcon : ArrowShrink01Icon
-                }
-                strokeWidth={1.8}
-              />
-            </TooltipTrigger>
-            <TooltipContent>
-              {opensInChat
+          <ContentPanelHeaderButton
+            icon={opensInChat || !expanded ? FullScreenIcon : ArrowShrink01Icon}
+            label={
+              opensInChat
+                ? t("openInChat")
+                : expanded
+                  ? t("exitFullscreenTitle", { title })
+                  : t("openFullscreenTitle", { title })
+            }
+            onClick={onOpenChat ?? toggleExpanded}
+            pressed={opensInChat ? undefined : expanded}
+            tooltip={
+              opensInChat
                 ? t("openInChat")
                 : expanded
                   ? t("exitFullscreen")
-                  : t("expandAgent")}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  className="cursor-pointer"
-                  onClick={onClose}
-                  size="icon-sm"
-                  variant="ghost"
-                />
-              }
-            >
-              <span className="sr-only">{t("closeTitle", { title })}</span>
-              <HugeiconsIcon
-                className="size-4"
-                icon={Cancel01Icon}
-                strokeWidth={1.8}
-              />
-            </TooltipTrigger>
-            <TooltipContent>{t("closeTitle", { title })}</TooltipContent>
-          </Tooltip>
+                  : t("expandAgent")
+            }
+          />
+          <ContentPanelHeaderButton
+            icon={Cancel01Icon}
+            label={t("closeTitle", { title })}
+            onClick={onClose}
+            tooltip={t("closeTitle", { title })}
+          />
         </div>
       </TooltipProvider>
     </header>
@@ -562,7 +551,7 @@ export function ContentChatActivityPanel(props: ContentChatActivityPanelProps) {
     lastMessage?.role === "assistant" ? lastMessage.id : undefined
   );
   const { showThinkingIndicator } = getChatActivity(messages, isAgentBusy, {
-    isStandaloneTool: isContentEditorStandaloneTool,
+    isStandaloneTool: isAgentPanelStandaloneTool,
     includeFileParts: false,
   });
   const visibleMessages = messages.filter((message) =>

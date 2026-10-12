@@ -757,6 +757,76 @@
       "when": 1790880594298,
       "tag": "0107_geo_content_gaps_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1791129447857,
+      "tag": "0108_marketing_opt_in",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1791244800000,
+      "tag": "0109_webhook_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1791301957805,
+      "tag": "0110_scheduled_publications",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1791372497523,
+      "tag": "0111_scheduled_publication_attempt_outcome",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1791459297113,
+      "tag": "0112_sites",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1791486349850,
+      "tag": "0113_site_preview_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1791532800000,
+      "tag": "0114_site_smart_deployments",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1791784257718,
+      "tag": "0115_sites_required_project",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1791800218256,
+      "tag": "0116_brand_guidelines_source_pdf",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1791804537449,
+      "tag": "0117_blog_post_metadata",
+      "breakpoints": true
     }
   ]
 }

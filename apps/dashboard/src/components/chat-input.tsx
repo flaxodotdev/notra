@@ -4,6 +4,7 @@ import {
   Alert02Icon,
   ArrowUp02Icon,
   AtIcon,
+  File02Icon,
   StopIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -17,6 +18,7 @@ import {
   CommandItem,
   CommandList,
 } from "@notra/ui/components/ui/command";
+import { Composer } from "@notra/ui/components/ui/composer";
 import {
   Popover,
   PopoverContent,
@@ -28,9 +30,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
 import { useId } from "react";
+import { useTranslations } from "use-intl";
 
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview";
 import {
@@ -45,7 +46,7 @@ import { ChatQueue } from "@/components/chat/chat-queue";
 import { ChatQuotePreview, useChatQuote } from "@/components/chat/chat-quote";
 import { ChatSkillSlashMenu } from "@/components/chat/chat-skill-slash-menu";
 import { ChatSkillTagChips } from "@/components/chat/chat-skill-tag-chips";
-import { Composer } from "@/components/composer/composer-shell";
+import Link from "@/components/framework/link";
 import { useContentChatInput } from "@/lib/hooks/use-content-chat-input";
 import type {
   ChatInputComposerNudgeProps,
@@ -62,6 +63,7 @@ function ContentChatInputComposer(props: ChatInputProps) {
   const tChatShared = useTranslations("chat.shared");
   const quoteContext = useChatQuote();
   const slashListId = useId();
+  const editingTargetId = useId();
   const {
     acceptedFileTypesLabel,
     allowedChatMimeTypes,
@@ -152,10 +154,11 @@ function ContentChatInputComposer(props: ChatInputProps) {
         <Composer.Frame
           connectedTop={connectedTop}
           nudge={
-            showComposerNudge ? (
+            showComposerNudge || props.editingTarget ? (
               <ChatInputComposerNudge
                 attachments={attachments}
                 context={context}
+                editingTarget={props.editingTarget}
                 hasAttachmentChips={hasAttachmentChips}
                 hasContextChips={hasContextChips}
                 onClearSelection={onClearSelection}
@@ -179,9 +182,14 @@ function ContentChatInputComposer(props: ChatInputProps) {
           }
         >
           <section aria-label={tChatShared("chatInputDropArea")}>
+            {props.editingTarget ? (
+              <span className="sr-only" id={editingTargetId}>
+                {props.editingTarget.description}
+              </span>
+            ) : null}
             <ChatQuotePreview />
             <input
-              accept={allowedChatMimeTypes.join(",")}
+              accept={`${allowedChatMimeTypes.join(",")},image/heic,.heic`}
               className="hidden"
               multiple
               onChange={onFileInputChange}
@@ -196,6 +204,9 @@ function ContentChatInputComposer(props: ChatInputProps) {
               }
               aria-autocomplete={isSlashMenuOpen ? "list" : undefined}
               aria-controls={isSlashMenuOpen ? slashListId : undefined}
+              aria-describedby={
+                props.editingTarget ? editingTargetId : undefined
+              }
               aria-expanded={isSlashMenuOpen}
               aria-haspopup={isSlashMenuOpen ? "listbox" : undefined}
               aria-label={tChatShared("sendAMessage")}
@@ -231,35 +242,37 @@ function ContentChatInputComposer(props: ChatInputProps) {
               value={value}
             />
             <Composer.Toolbar>
-              <ChatComposerAttachButton
-                attachmentCount={attachments.length}
-                disabled={isInputLocked || isLoading}
-                onAttach={onAttach}
-                pendingUploadCount={pendingUploads.length}
-                tooltip={attachmentTooltipText}
-              />
-              <ChatInputContextPicker
-                contextOptions={contextOptions}
-                contextPickerId={contextPickerId}
-                disabledReason={contextPickerDisabledReason}
-                isInContext={isInContext}
-                isOpen={isContextPickerOpen}
-                onOpenChange={setIsContextPickerOpen}
-                organizationSlug={organizationSlug}
-                toggleContextItem={toggleContextItem}
-              />
-              <Composer.Send
-                disabled={sendDisabled}
-                label={sendLabel}
-                onClick={showStop ? onStop : handleSend}
-                tooltip={sendTooltip}
-              >
-                <HugeiconsIcon
-                  className="size-4"
-                  icon={showStop ? StopIcon : ArrowUp02Icon}
-                  strokeWidth={2}
+              <div className="ml-auto flex items-center gap-1">
+                <ChatInputContextPicker
+                  contextOptions={contextOptions}
+                  contextPickerId={contextPickerId}
+                  disabledReason={contextPickerDisabledReason}
+                  isInContext={isInContext}
+                  isOpen={isContextPickerOpen}
+                  onOpenChange={setIsContextPickerOpen}
+                  organizationSlug={organizationSlug}
+                  toggleContextItem={toggleContextItem}
                 />
-              </Composer.Send>
+                <ChatComposerAttachButton
+                  attachmentCount={attachments.length}
+                  disabled={isInputLocked}
+                  onAttach={onAttach}
+                  pendingUploadCount={pendingUploads.length}
+                  tooltip={attachmentTooltipText}
+                />
+                <Composer.Send
+                  disabled={sendDisabled}
+                  label={sendLabel}
+                  onClick={showStop ? onStop : handleSend}
+                  tooltip={sendTooltip}
+                >
+                  <HugeiconsIcon
+                    className="size-4"
+                    icon={showStop ? StopIcon : ArrowUp02Icon}
+                    strokeWidth={2}
+                  />
+                </Composer.Send>
+              </div>
             </Composer.Toolbar>
           </section>
         </Composer.Frame>
@@ -280,6 +293,7 @@ function ContentChatInputComposer(props: ChatInputProps) {
 function ChatInputComposerNudge({
   attachments,
   context,
+  editingTarget,
   hasAttachmentChips,
   hasContextChips,
   onClearSelection,
@@ -301,6 +315,8 @@ function ChatInputComposerNudge({
 }: ChatInputComposerNudgeProps) {
   const tCommon = useTranslations("common");
   const tChatShared = useTranslations("chat.shared");
+  const hasChips =
+    hasContextChips || hasAttachmentChips || Boolean(editingTarget);
   return (
     <Composer.Nudge
       action={
@@ -316,18 +332,27 @@ function ChatInputComposerNudge({
         ) : null
       }
       title={
-        shouldShowLowCredits &&
-        !hasContextChips &&
-        !hasAttachmentChips &&
-        !usageLimitError
+        shouldShowLowCredits && !hasChips && !usageLimitError
           ? tChatShared("countPluralOneChatMessage", {
               count: remainingChatCredits ?? 0,
             })
           : undefined
       }
     >
-      {hasContextChips || hasAttachmentChips ? (
+      {hasChips ? (
         <>
+          {editingTarget ? (
+            <Composer.Chip
+              icon={
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  className="text-muted-foreground size-3.5"
+                  icon={File02Icon}
+                />
+              }
+              label={editingTarget.title}
+            />
+          ) : null}
           <ChatQueue
             messages={queuedMessages}
             onEdit={onEditQueued}

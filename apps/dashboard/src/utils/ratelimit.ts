@@ -1,12 +1,15 @@
+import { getRequestHeaders as headers } from "@tanstack/react-start/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
-import { headers } from "next/headers";
-import type { NextRequest } from "next/server";
 
 import { COMPANY_LOGO_RATE_LIMIT_PER_USER_PER_MINUTE } from "@/constants/company-logo";
 import {
   DEMO_SANDBOX_CREATE_LIMIT,
   DEMO_SANDBOX_CREATE_WINDOW,
+  DEMO_SANDBOX_RESET_LIMIT,
+  DEMO_SANDBOX_RESET_WINDOW,
+  DEMO_SANDBOX_TIME_ZONE_LIMIT,
+  DEMO_SANDBOX_TIME_ZONE_WINDOW,
 } from "@/constants/demo";
 
 const redis = Redis.fromEnv();
@@ -61,6 +64,11 @@ export const ratelimit = {
     redis,
     prefix: "ratelimit:onboarding-brand-analysis",
     limiter: Ratelimit.slidingWindow(2, "10m"),
+  }),
+  onboardingWebsiteCheck: new Ratelimit({
+    redis,
+    prefix: "ratelimit:onboarding-website-check",
+    limiter: Ratelimit.slidingWindow(30, "1m"),
   }),
   companyLogo: new Ratelimit({
     redis,
@@ -184,6 +192,22 @@ export const ratelimit = {
       DEMO_SANDBOX_CREATE_WINDOW
     ),
   }),
+  demoSandboxReset: new Ratelimit({
+    redis,
+    prefix: "ratelimit:demo-sandbox-reset",
+    limiter: Ratelimit.slidingWindow(
+      DEMO_SANDBOX_RESET_LIMIT,
+      DEMO_SANDBOX_RESET_WINDOW
+    ),
+  }),
+  demoSandboxTimeZone: new Ratelimit({
+    redis,
+    prefix: "ratelimit:demo-sandbox-time-zone",
+    limiter: Ratelimit.slidingWindow(
+      DEMO_SANDBOX_TIME_ZONE_LIMIT,
+      DEMO_SANDBOX_TIME_ZONE_WINDOW
+    ),
+  }),
   backupCode: new Ratelimit({
     redis,
     analytics: true,
@@ -203,7 +227,7 @@ export function getClientIpFromHeaders(headersList: Headers): string {
   );
 }
 
-export function getClientIp(request: NextRequest): string {
+export function getClientIp(request: Request): string {
   if (process.env.VERCEL !== "1") {
     return "unknown";
   }

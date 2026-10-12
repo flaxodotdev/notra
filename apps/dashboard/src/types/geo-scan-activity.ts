@@ -3,10 +3,9 @@ import type {
   GeoScanResultSummary,
   GeoScanRunSummary,
 } from "@notra/geo-core/types/geo-scan-history";
-import type { useTranslations } from "next-intl";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { useTranslations } from "use-intl";
 
-import type { useFormatRelative } from "@/lib/hooks/use-format-relative";
 import type { useGeoScanRun } from "@/lib/hooks/use-geo-scan-history";
 
 export interface GeoScanActivityStatusProps {
@@ -47,6 +46,9 @@ export interface GeoScanModelMenuProps {
   compact?: boolean;
   label?: string;
   primary?: boolean;
+  /** Controlled open state, e.g. for a hotkey. Uncontrolled when omitted. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onContinue: (engines: string[]) => void;
 }
 
@@ -121,13 +123,6 @@ export interface GeoScanPromptCellProps {
   turn: number | null;
 }
 
-export interface GeoScanTablePaginationProps {
-  offset: number;
-  total: number;
-  itemLabel: string;
-  onOffsetChange: (offset: number) => void;
-}
-
 export interface GeoScanRunEmptyStateInput {
   running: boolean;
   isError: boolean;
@@ -140,7 +135,6 @@ export interface GeoScanRunPendingTableProps {
   pending: GeoScanPendingAnswer[];
   showLanguage: boolean;
   emptyState: ReactNode;
-  running: boolean;
   offset: number;
   onOffsetChange: (offset: number) => void;
   total: number;
@@ -158,6 +152,10 @@ export interface GeoScanRunAnswersTableProps {
   height: number;
   loading: boolean;
   onRowClick: (row: GeoScanResultSummary) => void;
+  /** Saved vs planned answers while the scan runs, otherwise null. */
+  progress: { checks: number; total: number } | null;
+  /** Names scan, page and model so a page change is not an arrival. */
+  viewKey: string;
 }
 
 export interface ScanRunDetailViewInput {
@@ -185,14 +183,6 @@ export interface ScanRunDetailView {
   answerCount: number;
 }
 
-export type ScanActivityStatusTranslator = ReturnType<
-  typeof useTranslations<"geo.scanActivityStatus">
->;
-
 export type ScanRunDetailTranslator = ReturnType<
   typeof useTranslations<"geo.scanRunDetail">
->;
-
-export type ScanActivityRelativeFormatter = ReturnType<
-  typeof useFormatRelative
 >;

@@ -1,4 +1,5 @@
 import { redis } from "@notra/ai/utils/redis";
+import { logError } from "@notra/ai/utils/server-log";
 import {
   DEMO_ORG_SLUG_PREFIX,
   DEMO_SEEDING_GRACE_MINUTES,
@@ -24,16 +25,18 @@ import {
   lt,
   notExists,
   notLike,
+  sql,
   type SQL,
   TransactionRollbackError,
 } from "drizzle-orm";
-import { after } from "next/server";
 
 import {
   DEMO_ANONYMOUS_ID_LENGTH,
   DEMO_CLEANUP_BATCH_SIZE,
   DEMO_ANONYMOUS_ID_PREFIX,
   DEMO_COMPANY_NAME,
+  DEMO_EVICTION_IDLE_MS,
+  DEMO_MAX_ACTIVE_SANDBOXES,
   DEMO_POOL_FRESH_MS,
   DEMO_POOL_ID_PREFIX,
   DEMO_POOL_REFILL_LOCK_KEY,
@@ -41,6 +44,10 @@ import {
   DEMO_POOL_REFILL_RELEASE_SCRIPT,
   DEMO_ORG_SLUG_SUFFIX_LENGTH,
   DEMO_SANDBOX_MAX_AGE_MS,
+  DEMO_SANDBOX_RESET_LOCK_PREFIX,
+  DEMO_SANDBOX_RESET_LOCK_SECONDS,
+  DEMO_SEED_ID_PREFIX,
+  DEMO_STORAGE_LOCK_KEY,
   DEMO_TOUCH_INTERVAL_MS,
   DEMO_USER_EMAIL_DOMAIN,
   DEMO_VISITOR_EMAIL_LOCAL,
@@ -54,6 +61,7 @@ import {
 import { assertDedicatedDemoDatabase } from "@/lib/demo/database-guard";
 import { rebaseDemoSandbox, shouldRebaseDemoSandbox } from "@/lib/demo/rebase";
 import { seedDemoWorkspace } from "@/lib/demo/seed/workspace";
+import { afterResponse } from "@/lib/framework/after-response";
 import type {
   CreateDemoSandboxInput,
   DemoOrganizationInput,
@@ -61,7 +69,7 @@ import type {
   DemoSandbox,
   DemoTransaction,
 } from "@/types/demo";
-import { demoMaxActiveSandboxes, demoPoolSize } from "@/utils/demo-limits";
+import { demoPoolSize } from "@/utils/demo-limits";
 
 const ID_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -92,8 +100,11 @@ function sandboxExpiry(createdAt: Date): Date {
 
 const POOLED_ID_PATTERN = `${DEMO_POOL_ID_PREFIX}%`;
 
-async function countDemoSandboxes(where?: SQL): Promise<number> {
-  const [{ value } = { value: 0 }] = await db
+async function countDemoSandboxes(
+  where?: SQL,
+  executor: typeof db | DemoTransaction = db
+): Promise<number> {
+  const [{ value } = { value: 0 }] = await executor
     .select({ value: count() })
     .from(demoSandboxes)
     .where(where);
@@ -167,7 +178,22 @@ async function createDemoOrganization(input: DemoOrganizationInput) {
   // can create the new workspace before the old one is deleted.
   const slug = `${DEMO_ORG_SLUG_PREFIX}${randomToken(DEMO_ORG_SLUG_SUFFIX_LENGTH).toLowerCase()}`;
 
-  await db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
+    if (input.reservation) {
+      // A short transaction reserves capacity before any expensive seeding.
+      // Try-lock avoids tying up the pool with waiting creation requests.
+      const { rows } = await tx.execute<{ locked: boolean }>(sql`
+        select pg_try_advisory_xact_lock(
+          hashtextextended(${DEMO_STORAGE_LOCK_KEY}, 0)
+        ) as locked
+      `);
+      if (
+        !rows[0]?.locked ||
+        (await countDemoSandboxes(undefined, tx)) >= DEMO_MAX_ACTIVE_SANDBOXES
+      ) {
+        return false;
+      }
+    }
     await tx.insert(users).values({
       id: userId,
       name: visitorName,
@@ -194,7 +220,26 @@ async function createDemoOrganization(input: DemoOrganizationInput) {
       role: "owner",
       createdAt: input.now,
     });
+    if (input.reservation) {
+      await tx.insert(demoSandboxes).values({
+        anonymousId: input.reservation.anonymousId,
+        organizationId,
+        userId,
+        timeZone: input.timeZone,
+        anchorAt: input.now,
+        ipHash: input.reservation.ipHash,
+        createdAt: input.now,
+        lastSeenAt: input.now,
+        expiresAt: new Date(
+          input.now.getTime() + DEMO_SEEDING_GRACE_MINUTES * 60_000
+        ),
+      });
+    }
+    return true;
   });
+  if (!created) {
+    return null;
+  }
 
   await withOrganizationRollback({ organizationId }, () =>
     seedDemoWorkspace({
@@ -211,42 +256,104 @@ async function createDemoOrganization(input: DemoOrganizationInput) {
 
 /**
  * Bounds the demo database: at the cap, expired sandboxes go first, then the
- * least recently used ones, so a traffic spike can't fill the disk.
+ * least recently used idle ones, so a traffic spike can't fill the disk.
+ * Recently active visitors are never evicted; when only they are left, the
+ * reservation in createDemoOrganization turns new sandboxes away instead.
  */
-async function enforceDemoSandboxCap() {
-  const cap = demoMaxActiveSandboxes();
-  if ((await countDemoSandboxes()) < cap) {
+async function enforceDemoSandboxCap(reservedSlots = 1) {
+  const cap = DEMO_MAX_ACTIVE_SANDBOXES - reservedSlots;
+  if ((await countDemoSandboxes()) <= cap) {
     return;
   }
   await cleanupExpiredDemoSandboxes(DEMO_CLEANUP_BATCH_SIZE);
-  const overflow = (await countDemoSandboxes()) - cap + 1;
+  let overflow = (await countDemoSandboxes()) - cap;
   if (overflow <= 0) {
     return;
   }
-  // Visitors' sandboxes go first: the few waiting in the pool look idle but
-  // are what keeps the next visitor from waiting.
-  const oldest = await db.query.demoSandboxes.findMany({
-    where: notLike(demoSandboxes.anonymousId, POOLED_ID_PATTERN),
-    orderBy: [asc(demoSandboxes.lastSeenAt)],
-    limit: overflow,
+  // Shrink a pool left by an older configuration before evicting visitors.
+  // Otherwise a newly claimed workspace could be the only eviction candidate.
+  const excessPoolSize = Math.min(
+    overflow,
+    Math.max(
+      0,
+      (await countDemoSandboxes(
+        like(demoSandboxes.anonymousId, POOLED_ID_PATTERN)
+      )) - demoPoolSize()
+    )
+  );
+  if (excessPoolSize > 0) {
+    const excessPool = await db.transaction(async (tx) => {
+      const excessPool = await tx
+        .select()
+        .from(demoSandboxes)
+        .where(like(demoSandboxes.anonymousId, POOLED_ID_PATTERN))
+        .orderBy(asc(demoSandboxes.createdAt))
+        .limit(excessPoolSize)
+        .for("update", { of: demoSandboxes, skipLocked: true });
+      for (const sandbox of excessPool) {
+        await deleteDemoOrganization(sandbox.organizationId, tx);
+      }
+      return excessPool;
+    });
+    // Unkey is external: release database locks before touching any key.
+    await Promise.all(excessPool.map(deleteDemoSandboxApiKey));
+    overflow = (await countDemoSandboxes()) - cap;
+    // A claim or another cleanup holds the remaining ready rows. Retry on
+    // the next maintenance pass instead of evicting visitors in their place.
+    if (overflow <= 0 || excessPool.length < excessPoolSize) {
+      return;
+    }
+  }
+  // Keep the configured reserve: it looks idle but prevents the next visitor
+  // from waiting for a seed. Only idle visitor workspaces are evicted from
+  // here; this may free fewer slots than the overflow.
+  // Select and delete under row locks: a visitor touching lastSeenAt in
+  // between waits for this transaction, so an active sandbox is never evicted.
+  const evicted = await db.transaction(async (tx) => {
+    const idle = await tx
+      .select()
+      .from(demoSandboxes)
+      .where(
+        and(
+          notLike(demoSandboxes.anonymousId, POOLED_ID_PATTERN),
+          notLike(demoSandboxes.anonymousId, `${DEMO_SEED_ID_PREFIX}%`),
+          lt(
+            demoSandboxes.lastSeenAt,
+            new Date(Date.now() - DEMO_EVICTION_IDLE_MS)
+          )
+        )
+      )
+      .orderBy(asc(demoSandboxes.lastSeenAt))
+      .limit(overflow)
+      .for("update", { of: demoSandboxes, skipLocked: true });
+    for (const sandbox of idle) {
+      await deleteDemoOrganization(sandbox.organizationId, tx);
+    }
+    return idle;
   });
-  await Promise.all(oldest.map(deleteDemoSandbox));
+  // Unkey is external: release database locks before touching any key.
+  await Promise.all(evicted.map(deleteDemoSandboxApiKey));
 }
 
 async function seedDemoSandbox(
   anonymousId: string,
   input: CreateDemoSandboxInput
-): Promise<CreatedDemoSandbox> {
+): Promise<CreatedDemoSandbox | null> {
   const timeZone = normalizeTimeZone(input.timeZone);
   const now = new Date();
   const expiresAt = sandboxExpiry(now);
+  const reservedId = `${DEMO_SEED_ID_PREFIX}${anonymousId}`;
 
   const organization = await createDemoOrganization({
     timeZone,
     now,
     personalization: null,
+    reservation: { anonymousId: reservedId, ipHash: input.ipHash },
   });
-  const { organizationId, userId, slug } = organization;
+  if (!organization) {
+    return null;
+  }
+  const { organizationId, slug } = organization;
   // The key is optional (the dashboard works without it), the sandbox row is
   // not: without it the organization would look like a real customer.
   const apiKey = await createDemoApiKey({
@@ -254,25 +361,55 @@ async function seedDemoSandbox(
     anonymousId,
     expiresAt,
   }).catch((error: unknown) => {
-    console.error("[demo] Failed to create sandbox API key", error);
+    logError("[demo] Failed to create sandbox API key", error);
     return null;
   });
 
-  await withOrganizationRollback(organization, () =>
-    db.insert(demoSandboxes).values({
-      anonymousId,
-      organizationId,
-      userId,
-      apiKey: apiKey?.key ?? null,
-      apiKeyId: apiKey?.keyId ?? null,
-      timeZone,
-      anchorAt: now,
-      ipHash: input.ipHash,
-      createdAt: now,
-      lastSeenAt: now,
-      expiresAt,
+  const ready = await withOrganizationRollback(organization, () =>
+    db.transaction(async (tx) => {
+      const [reservation] = await tx
+        .select({ expiresAt: demoSandboxes.expiresAt })
+        .from(demoSandboxes)
+        .where(
+          and(
+            eq(demoSandboxes.anonymousId, reservedId),
+            eq(demoSandboxes.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+        .for("update", { of: demoSandboxes });
+      // Recheck after taking the lock, not before waiting for cleanup.
+      if (!reservation || reservation.expiresAt.getTime() <= Date.now()) {
+        return [];
+      }
+      return tx
+        .update(demoSandboxes)
+        .set({
+          anonymousId,
+          apiKey: apiKey?.key ?? null,
+          apiKeyId: apiKey?.keyId ?? null,
+          expiresAt,
+        })
+        .where(
+          and(
+            eq(demoSandboxes.anonymousId, reservedId),
+            eq(demoSandboxes.organizationId, organizationId),
+            gt(demoSandboxes.expiresAt, new Date())
+          )
+        )
+        .returning({ anonymousId: demoSandboxes.anonymousId });
     })
-  );
+  ).catch(async (error: unknown) => {
+    await deleteDemoSandboxApiKey({ apiKeyId: apiKey?.keyId ?? null });
+    throw error;
+  });
+  if (ready.length === 0) {
+    await Promise.all([
+      deleteDemoOrganization(organizationId),
+      deleteDemoSandboxApiKey({ apiKeyId: apiKey?.keyId ?? null }),
+    ]);
+    return null;
+  }
 
   return { anonymousId, organizationId, slug };
 }
@@ -324,10 +461,10 @@ export async function claimPooledSandbox(
   }
   const keyId = claimed.row.apiKeyId;
   if (keyId) {
-    after(() =>
+    afterResponse(() =>
       updateDemoApiKey({ keyId, expiresAt: sandboxExpiry(now) }).catch(
         (error: unknown) => {
-          console.error("[demo] Failed to extend claimed sandbox key", error);
+          logError("[demo] Failed to extend claimed sandbox key", error);
         }
       )
     );
@@ -342,7 +479,7 @@ export async function claimPooledSandbox(
 /** A sandbox for a new visitor: from the pool when one is ready. */
 export async function createDemoSandbox(
   input: CreateDemoSandboxInput
-): Promise<CreatedDemoSandbox> {
+): Promise<CreatedDemoSandbox | null> {
   await assertDedicatedDemoDatabase();
   const pooled = await claimPooledSandbox(input);
   if (pooled) {
@@ -360,26 +497,34 @@ export async function createDemoSandbox(
 async function refillDemoSandboxPool(): Promise<void> {
   // Refills run after every visit; serialize them so the pool doesn't
   // overshoot. Without Redis, concurrent refills only waste a seed or two.
-  // The token keeps a refill that outlived its lock from releasing the next
-  // holder's.
+  await withDemoLock(
+    DEMO_POOL_REFILL_LOCK_KEY,
+    DEMO_POOL_REFILL_LOCK_SECONDS,
+    refillPool
+  );
+}
+
+/**
+ * Runs `work` unless another holder has `key`; returns null then. Without
+ * Redis it always runs. The token keeps a holder that outlived its lock from
+ * releasing the next holder's.
+ */
+async function withDemoLock<T>(
+  key: string,
+  seconds: number,
+  work: () => Promise<T>
+): Promise<T | null> {
   const token = crypto.randomUUID();
   const locked = redis
-    ? await redis.set(DEMO_POOL_REFILL_LOCK_KEY, token, {
-        nx: true,
-        ex: DEMO_POOL_REFILL_LOCK_SECONDS,
-      })
+    ? await redis.set(key, token, { nx: true, ex: seconds })
     : "OK";
   if (!locked) {
-    return;
+    return null;
   }
   try {
-    await refillPool();
+    return await work();
   } finally {
-    await redis?.eval(
-      DEMO_POOL_REFILL_RELEASE_SCRIPT,
-      [DEMO_POOL_REFILL_LOCK_KEY],
-      [token]
-    );
+    await redis?.eval(DEMO_POOL_REFILL_RELEASE_SCRIPT, [key], [token]);
   }
 }
 
@@ -389,8 +534,9 @@ async function refillDemoSandboxPool(): Promise<void> {
  * vercel.json with production, where a demo cron would only 404.
  */
 export function maintainDemoSandboxPool(): void {
-  after(async () => {
+  afterResponse(async () => {
     await cleanupExpiredDemoSandboxes(DEMO_CLEANUP_BATCH_SIZE);
+    await enforceDemoSandboxCap(0);
     await refillDemoSandboxPool();
   });
 }
@@ -417,10 +563,13 @@ async function refillPool(): Promise<void> {
     )) < target
   ) {
     await enforceDemoSandboxCap();
-    await seedDemoSandbox(
+    const seeded = await seedDemoSandbox(
       `${DEMO_POOL_ID_PREFIX}${randomToken(DEMO_ANONYMOUS_ID_LENGTH)}`,
       { timeZone: null, ipHash: null }
     );
+    if (!seeded) {
+      break;
+    }
   }
 }
 
@@ -466,7 +615,7 @@ export async function touchDemoSandbox(
  * keeping the anonymousId and API key so snippets keep working. The
  * visitor's personalization (name, company) is reapplied unless replaced.
  */
-export async function resetDemoSandbox(
+async function resetDemoSandbox(
   sandbox: DemoSandbox,
   personalization: DemoPersonalization | null = sandbox.personalization
 ): Promise<{ slug: string }> {
@@ -495,6 +644,23 @@ export async function resetDemoSandbox(
   await deleteDemoOrganization(sandbox.organizationId);
 
   return { slug: next.slug };
+}
+
+/**
+ * `resetDemoSandbox`, but "busy" while another reset of the same sandbox is
+ * still running: each one seeds a whole workspace next to the old one, so
+ * parallel resets would multiply storage beyond what the cap accounts for.
+ */
+export async function resetDemoSandboxExclusive(
+  sandbox: DemoSandbox,
+  personalization?: DemoPersonalization | null
+): Promise<{ slug: string } | "busy"> {
+  const result = await withDemoLock(
+    `${DEMO_SANDBOX_RESET_LOCK_PREFIX}${sandbox.anonymousId}`,
+    DEMO_SANDBOX_RESET_LOCK_SECONDS,
+    () => resetDemoSandbox(sandbox, personalization)
+  );
+  return result ?? "busy";
 }
 
 /**
@@ -553,9 +719,9 @@ async function swapInPooledWorkspace(
   }
   const pooledKeyId = result.apiKeyId;
   if (pooledKeyId) {
-    after(() =>
+    afterResponse(() =>
       deleteDemoApiKey(pooledKeyId).catch((error: unknown) => {
-        console.error("[demo] Failed to delete pooled sandbox key", error);
+        logError("[demo] Failed to delete pooled sandbox key", error);
       })
     );
   }
@@ -576,6 +742,9 @@ async function seedReplacementWorkspace(
     now,
     personalization,
   });
+  if (!next) {
+    return null;
+  }
   const claimed = await withOrganizationRollback(next, () =>
     db
       .update(demoSandboxes)
@@ -629,7 +798,7 @@ async function moveDemoApiKey(
     }).then(
       () => true,
       (error: unknown) => {
-        console.error("[demo] Failed to move sandbox API key", error);
+        logError("[demo] Failed to move sandbox API key", error);
         return false;
       }
     );
@@ -643,7 +812,7 @@ async function moveDemoApiKey(
     anonymousId: sandbox.anonymousId,
     expiresAt: sandboxExpiry(sandbox.createdAt),
   }).catch((error: unknown) => {
-    console.error("[demo] Failed to replace sandbox API key", error);
+    logError("[demo] Failed to replace sandbox API key", error);
     return null;
   });
   await db
@@ -661,26 +830,30 @@ async function moveDemoApiKey(
  * but in the demo database each one (owner and seeded teammates) belongs to
  * exactly one sandbox.
  */
-async function deleteDemoOrganization(organizationId: string) {
-  const memberRows = await db
+async function deleteDemoOrganization(
+  organizationId: string,
+  executor: typeof db | DemoTransaction = db
+) {
+  const memberRows = await executor
     .select({ userId: members.userId })
     .from(members)
     .where(eq(members.organizationId, organizationId));
   // Organization cascades every org-scoped row, memberships included.
-  await db.delete(organizations).where(eq(organizations.id, organizationId));
+  await executor
+    .delete(organizations)
+    .where(eq(organizations.id, organizationId));
   const userIds = memberRows.map((row) => row.userId);
   if (userIds.length > 0) {
-    await db.delete(users).where(inArray(users.id, userIds));
+    await executor.delete(users).where(inArray(users.id, userIds));
   }
 }
 
-async function deleteDemoSandbox(sandbox: DemoSandbox) {
+async function deleteDemoSandboxApiKey(sandbox: Pick<DemoSandbox, "apiKeyId">) {
   if (sandbox.apiKeyId) {
     await deleteDemoApiKey(sandbox.apiKeyId).catch((error: unknown) => {
-      console.error("[demo] Failed to delete sandbox API key", error);
+      logError("[demo] Failed to delete sandbox API key", error);
     });
   }
-  await deleteDemoOrganization(sandbox.organizationId);
 }
 
 /**
@@ -715,13 +888,21 @@ async function cleanupOrphanedDemoOrganizations(limit: number, now: Date) {
 /** Deletes expired sandboxes. Returns how many were removed. */
 async function cleanupExpiredDemoSandboxes(limit: number): Promise<number> {
   const now = new Date();
-  const expired = await db.query.demoSandboxes.findMany({
-    where: lt(demoSandboxes.expiresAt, now),
-    limit,
+  const expired = await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(demoSandboxes)
+      .where(lt(demoSandboxes.expiresAt, now))
+      .limit(limit)
+      .for("update", { of: demoSandboxes, skipLocked: true });
+    for (const sandbox of rows) {
+      await deleteDemoOrganization(sandbox.organizationId, tx);
+    }
+    return rows;
   });
 
   const [, orphaned] = await Promise.all([
-    Promise.all(expired.map(deleteDemoSandbox)),
+    Promise.all(expired.map(deleteDemoSandboxApiKey)),
     cleanupOrphanedDemoOrganizations(limit, now),
   ]);
 

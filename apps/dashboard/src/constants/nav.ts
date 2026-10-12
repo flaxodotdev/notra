@@ -22,6 +22,7 @@ import {
   SearchList01Icon,
   Settings01Icon,
   UserGroupIcon,
+  WebDesign01Icon,
 } from "@hugeicons/core-free-icons";
 import {
   GEO_AGENT_READINESS_NAV_LINK,
@@ -35,6 +36,7 @@ import { DURATION } from "@notra/ui/lib/motion";
 
 import { AGENT_FEEDBACK_NAV_LINK } from "@/constants/agent-feedback";
 import { IRIS_NAV_LINK } from "@/constants/iris";
+import { SITES_NAV_LINK } from "@/constants/sites";
 import type {
   NavMainItem,
   NavPrimaryActionConfig,
@@ -86,10 +88,7 @@ export const SIDEBAR_MODE_HOME_LINKS: Record<SidebarMode, string> = {
   studio: HOME_NAV_LINK,
 };
 
-export const GEO_ROUTE_SECTIONS: ReadonlySet<string> = new Set([
-  "geo",
-  "feedback",
-]);
+export const GEO_ROUTE_SECTIONS: ReadonlySet<string> = new Set(["geo"]);
 
 export const SHARED_ROUTE_PREFIXES: readonly string[] = [
   "content",
@@ -102,13 +101,16 @@ export const STUDIO_ROUTE_SECTIONS: ReadonlySet<string> = new Set([
   "analytics",
   "brand",
   "automation",
+  "feedback",
   "iris",
+  "sites",
 ]);
 
 export const NAV_MAIN_ITEMS: NavMainItem[] = [
   { link: HOME_NAV_LINK, icon: Home01Icon, labelKey: "home" },
   { link: CHAT_NAV_LINK, icon: Message01Icon, labelKey: "chat", badge: "beta" },
   { link: CONTENT_NAV_LINK, icon: NoteIcon, labelKey: "content" },
+  { link: SITES_NAV_LINK, icon: WebDesign01Icon, labelKey: "sites" },
   { link: ANALYTICS_NAV_LINK, icon: Analytics01Icon, labelKey: "analytics" },
   {
     link: AGENT_FEEDBACK_NAV_LINK,
@@ -166,7 +168,6 @@ export const NAV_GEO_VISIBILITY_LINKS: readonly string[] = [
   GEO_PROMPTS_NAV_LINK,
   GEO_COMPETITORS_NAV_LINK,
   GEO_PERSONAS_NAV_LINK,
-  AGENT_FEEDBACK_NAV_LINK,
 ];
 
 export const NAV_GEO_IMPROVE_LINKS: readonly string[] = [
@@ -187,7 +188,9 @@ export const NAV_STUDIO_LINKS: readonly string[] = [
   HOME_NAV_LINK,
   CHAT_NAV_LINK,
   CONTENT_NAV_LINK,
+  SITES_NAV_LINK,
   ANALYTICS_NAV_LINK,
+  AGENT_FEEDBACK_NAV_LINK,
   BRAND_IDENTITY_NAV_LINK,
 ];
 
@@ -211,6 +214,7 @@ export const NAV_UTILITY_LINKS: readonly string[] = [
 export const DEFAULT_NAV_VISIBILITY: NavVisibility = {
   iris: true,
   analytics: true,
+  sites: false,
 };
 
 export const NAV_PRIMARY_ACTIONS: Record<SidebarMode, NavPrimaryActionConfig> =
@@ -276,3 +280,12 @@ export const POST_STATUS_DOT_CLASS: Record<PostStatus, string> = {
   draft: "bg-muted-foreground/50",
   published: "bg-success",
 };
+
+// Second-level segments under these are static pages (geo/prompts,
+// automation/schedules); under any other section they are record ids that
+// belong to the workspace being left.
+export const ORG_SWITCH_STATIC_PAGE_SECTIONS: ReadonlySet<string> = new Set([
+  "geo",
+  "automation",
+  "brand",
+]);

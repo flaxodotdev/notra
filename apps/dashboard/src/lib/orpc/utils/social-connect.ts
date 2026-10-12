@@ -1,10 +1,11 @@
+import { logError } from "@notra/ai/utils/server-log";
 import { Effect } from "effect";
-import { getTranslations } from "next-intl/server";
 
 import {
   SOCIAL_DUPLICATE_CONTENT_CODE,
   SOCIAL_DUPLICATE_CONTENT_REGEX,
 } from "@/constants/social-connect";
+import { getTranslations } from "@/lib/i18n/server";
 import {
   assertNotDemo,
   badRequest,
@@ -14,11 +15,13 @@ import {
 import {
   getSocialConnectStatusCode,
   type SocialConnectConfigError,
+  type SocialConnectDeliveryUnknownError,
   type SocialConnectRequestError,
 } from "@/lib/social-connect/errors";
 
 type SocialConnectFailure =
   | SocialConnectConfigError
+  | SocialConnectDeliveryUnknownError
   | SocialConnectRequestError;
 
 interface RunSocialConnectOptions {
@@ -49,31 +52,24 @@ export async function runSocialConnect<A>(
     throw serviceUnavailable(tCommonErrors("generic"));
   }
 
-  console.error(`${options.logLabel}:`, error);
+  logError(options.logLabel, error);
   const tErrors = await getTranslations("errors.socialAccounts");
-  // Duplicate content can surface as raw provider text (unsuccessful
-  // provider results carry no status cause) — map it before the
-  // validation early-return below so it never leaks through verbatim.
-  const providerMessage =
-    error.cause instanceof Error ? error.cause.message : error.message;
-  if (SOCIAL_DUPLICATE_CONTENT_REGEX.test(providerMessage)) {
-    throw badRequest(tErrors("duplicateContent"), {
-      code: SOCIAL_DUPLICATE_CONTENT_CODE,
-    });
-  }
-  // Own validation failures carry no provider cause — surface the specific
-  // message instead of a generic rejection (e.g. past schedule time,
-  // invalid external id, disallowed media host). Unsuccessful provider
-  // results retain the result as cause, so they fall through to the
-  // duplicate/status mapping below and internals never leak.
-  if (error.cause === null) {
-    throw badRequest(error.message);
+  if (error._tag === "SocialConnectDeliveryUnknownError") {
+    // "Try again" here could post twice.
+    throw serviceUnavailable(tErrors("deliveryUnknown"));
   }
   const statusCode = getSocialConnectStatusCode(error.cause);
 
   if (options.reconnectHint && (statusCode === 401 || statusCode === 403)) {
     throw badRequest(tErrors("notAuthorizedToPost"), {
       code: "reconnect_required",
+    });
+  }
+  const providerMessage =
+    error.cause instanceof Error ? error.cause.message : error.message;
+  if (SOCIAL_DUPLICATE_CONTENT_REGEX.test(providerMessage)) {
+    throw badRequest(tErrors("duplicateContent"), {
+      code: SOCIAL_DUPLICATE_CONTENT_CODE,
     });
   }
   if (statusCode === 402) {

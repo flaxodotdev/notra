@@ -1,11 +1,14 @@
 import type {
   ChatAttachment,
+  ChatInputHandle,
   ChatModel,
   ContextItem,
   TextSelection,
 } from "@notra/ai/types/chat";
+import type { Ref } from "react";
 
 import type { QueuedMessage } from "@/components/chat/chat-queue";
+import type { ChatPostMention } from "@/types/chat-posts";
 import type { PendingChatUpload } from "@/types/hooks/chat-composer-attachments";
 import type { GitHubRepository } from "@/types/integrations";
 import type { SkillSlashOption } from "@/types/skills/slash";
@@ -38,7 +41,18 @@ export interface ChatModelOption {
   beta?: boolean;
 }
 
+export type ContentChatInputHandle = Pick<ChatInputHandle, "setAttachments"> & {
+  /** The content page mounts a floating and a panel composer; only one shows. */
+  isVisible: () => boolean;
+};
+
+export interface ChatInputEditingTarget {
+  title: string;
+  description: string;
+}
+
 export interface ChatInputProps {
+  ref?: Ref<ContentChatInputHandle>;
   onSend?: (value: string, attachments: ChatAttachment[]) => void;
   onStop?: () => void;
   isLoading?: boolean;
@@ -56,6 +70,7 @@ export interface ChatInputProps {
   onClearError?: () => void;
   connectedTop?: boolean;
   placeholder?: string;
+  editingTarget?: ChatInputEditingTarget;
   queuedMessages?: QueuedMessage[];
   onEditQueued?: (message: QueuedMessage) => void;
   onRemoveQueued?: (id: string) => void;
@@ -91,6 +106,16 @@ export interface ChatContextOption {
   logoDarkUrl?: string | null;
 }
 
+export interface ChatPostMentionOption {
+  id: string;
+  kind: "post";
+  label: string;
+  searchText: string;
+  post: ChatPostMention;
+}
+
+export type ChatMentionOption = ChatContextOption | ChatPostMentionOption;
+
 export interface ChatInputContextPickerProps {
   contextOptions: ChatContextOption[];
   contextPickerId: string;
@@ -105,6 +130,7 @@ export interface ChatInputContextPickerProps {
 export interface ChatInputComposerNudgeProps {
   attachments: ChatAttachment[];
   context: ContextItem[];
+  editingTarget?: ChatInputEditingTarget;
   hasAttachmentChips: boolean;
   hasContextChips: boolean;
   onClearSelection?: () => void;
@@ -141,4 +167,10 @@ export interface ChatContextSuggestedIntegration {
 export interface ChatContextConnectSuggestionsProps {
   organizationSlug: string;
   onSelect: () => void;
+}
+
+export interface ChatFileAttachmentProps {
+  url: string;
+  filename?: string;
+  mediaType?: string;
 }

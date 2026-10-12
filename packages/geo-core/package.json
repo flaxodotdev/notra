@@ -27,10 +27,11 @@
     "@notra/analytics": "workspace:*",
     "@notra/db": "workspace:*",
     "@notra/posthog": "workspace:*",
+    "@notra/sites-core": "workspace:*",
     "@notra/utils": "workspace:*",
     "@upstash/ratelimit": "^2.1.0",
     "@upstash/redis": "^1.38.4",
-    "@usenotra/geo": "npm:@usenotra/geo@^0.5.0",
+    "@usenotra/geo": "npm:@usenotra/geo@^0.6.1",
     "ai": "7.0.105",
     "drizzle-orm": "^0.45.2",
     "effect": "4.0.0",
@@ -42,6 +43,6 @@
     "@notra/typescript-config": "workspace:*",
     "@types/node": "^20",
     "drizzle-kit": "0.31.10",
-    "typescript": "5.9.2"
+    "typescript": "7.0.2"
   }
 }

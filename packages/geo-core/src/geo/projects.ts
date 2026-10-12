@@ -1,6 +1,7 @@
 import { db } from "@notra/db/drizzle";
-import { brandSettings, geoSettings, projects } from "@notra/db/schema";
+import { brandSettings, geoSettings, projects, sites } from "@notra/db/schema";
 import type { GeoCheckScope } from "@notra/db/types/geo-checks";
+import { bumpGeoCheckGeneration } from "@notra/db/utils/geo-check-cache";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
@@ -195,6 +196,8 @@ export const updateGeoProject = Effect.fn("geo.projectUpdate")(function* (
  *   organization independently of any project.
  * - The scan schedule needs no teardown: the cron sweep reads `geo_settings`
  *   live, and the settings row cascades away with the project.
+ * - Hosted Sites block deletion. They are never orphaned or removed here;
+ *   the project FK also restricts deletion if a concurrent Site is created.
  * - The organization's last project cannot be deleted: `resolveGeoScope` falls
  *   back to the oldest project, so removing the final one leaves every GEO
  *   read unresolvable. The count is re-taken inside the deleting transaction
@@ -271,6 +274,19 @@ export const deleteGeoProject = Effect.fn("geo.projectDelete")(function* (
         return "last_project" as const;
       }
 
+      const currentSites = await tx
+        .select({ id: sites.id })
+        .from(sites)
+        .where(
+          and(
+            eq(sites.organizationId, organizationId),
+            eq(sites.projectId, projectId)
+          )
+        )
+        .limit(1);
+      if (currentSites.length) {
+        return "has_sites" as const;
+      }
       const deleted = await tx
         .delete(projects)
         .where(
@@ -284,13 +300,16 @@ export const deleteGeoProject = Effect.fn("geo.projectDelete")(function* (
     })
   );
 
-  if (outcome === "last_project") {
+  if (outcome === "last_project" || outcome === "has_sites") {
     return yield* Effect.fail(
-      new GeoProjectDeleteBlockedError({ projectId, reason: "last_project" })
+      new GeoProjectDeleteBlockedError({ projectId, reason: outcome })
     );
   }
 
   if (outcome === "deleted") {
+    // The project's checks went with it (cascade); org-wide aggregates must
+    // stop counting them now, not when their cache entries expire.
+    yield* Effect.promise(() => bumpGeoCheckGeneration([organizationId]));
     if (URL.canParse(existing.websiteUrl)) {
       const onboardingUrl = normalizeWebsiteUrl(existing.websiteUrl);
       const urls = [existing.websiteUrl];

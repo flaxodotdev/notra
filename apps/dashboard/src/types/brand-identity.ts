@@ -7,6 +7,7 @@ import type { Dispatch } from "react";
 import type { useBrandForm } from "@/lib/hooks/use-brand-form";
 import type { BrandSettings, ProgressData } from "@/types/hooks/brand-analysis";
 import type {
+  BrandGuideline,
   BrandGuidelineAsset,
   BrandGuidelineAssetKind,
   BrandGuidelineAssetVariant,
@@ -41,6 +42,10 @@ export type BrandIdentityUiAction =
 export interface GuidelinesPanelProps {
   organizationId: string;
   voiceId: string;
+}
+
+export interface GuidelinesSourcePdfSectionProps extends GuidelinesPanelProps {
+  guideline: BrandGuideline | null;
 }
 
 export interface GuidelinesSectionContext {
@@ -109,6 +114,8 @@ export interface BrandIdentityHeaderProps {
   onAddSitemap: () => void;
   onRefreshGuidelines: () => void;
   isRefreshingGuidelines: boolean;
+  organizationId: string;
+  voiceId: string;
 }
 
 export interface BrandIdentityTabsProps {

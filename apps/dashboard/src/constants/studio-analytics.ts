@@ -60,7 +60,12 @@ export const CHAT_TOOL_APPROVAL_DECISIONS = ["approved", "denied"] as const;
 
 export const COMMAND_PALETTE_OPEN_SOURCES = ["hotkey", "button"] as const;
 
-export const COMMAND_PALETTE_RESULT_KINDS = ["route", "entity", "ai"] as const;
+export const COMMAND_PALETTE_RESULT_KINDS = [
+  "route",
+  "entity",
+  "ai",
+  "action",
+] as const;
 
 export const COMMAND_PALETTE_AI_ERROR_ACTION = "error";
 

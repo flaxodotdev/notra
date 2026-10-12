@@ -10,10 +10,10 @@ import {
 import { ORPCError } from "@orpc/server";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { getTranslations } from "next-intl/server";
 
 import { GITHUB_CONTENT_MAX_SINGLE_ASSET_BYTES } from "@/constants/github";
 import { assertAuthenticated } from "@/lib/auth/organization";
+import { getTranslations } from "@/lib/i18n/server";
 import type {
   UploadPresignedResponse,
   UploadType,
@@ -21,6 +21,7 @@ import type {
 import { compressContentImage } from "@/utils/compress-content-image";
 import { contentImageKeyBelongsToOrganization } from "@/utils/content-image-key";
 import { contentImageCompressedTooLargeMessage } from "@/utils/content-image-size";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 import { validateContentVideo } from "@/utils/validate-content-video";
 
 import { readContentImage, saveContentImage } from "./content-image-store";
@@ -51,6 +52,7 @@ async function assertUploadAccess({
   const requiresOrganization =
     type === "logo" ||
     type === "brand_asset" ||
+    type === "brand_guideline_pdf" ||
     type === "content" ||
     type === "chat";
 
@@ -76,6 +78,7 @@ async function assertUploadAccess({
         ),
       });
     }
+    recordAuthorizedOrganization(headers, organizationId, user.id);
   }
 
   return {
@@ -120,6 +123,9 @@ async function resolveUploadTarget({
       break;
     case "brand_asset":
       key = `organization/${organizationId}/brand-assets/${id}.${extension}`;
+      break;
+    case "brand_guideline_pdf":
+      key = `organization/${organizationId}/brand-guidelines/${id}.${extension}`;
       break;
     case "content":
       key = `organization/${organizationId}/content/${id}.${extension}`;

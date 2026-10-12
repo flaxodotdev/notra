@@ -21,9 +21,9 @@ import {
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
 import { Effect } from "effect";
-import { useTranslations } from "next-intl";
 import { useEffect, useReducer } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { PostSocialButton } from "@/components/content/post-social-button";
@@ -232,6 +232,12 @@ export function LinkedInPreview({
                     })
                   }
                   onKeyDown={(event) => {
+                    if (
+                      event.nativeEvent.isComposing ||
+                      event.nativeEvent.keyCode === 229
+                    ) {
+                      return;
+                    }
                     if (event.key === "Enter") {
                       handleRegenerate();
                     }

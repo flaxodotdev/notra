@@ -22,12 +22,16 @@ import {
 } from "../../constants/dashboard/github";
 import { createPostFieldsSchema, postSlugSchema } from "../shared/post";
 import {
+  contentAuthorFieldsSchema,
+  postMetadataPatchSchema,
+  postMetadataSchema,
+} from "../shared/post-metadata";
+import {
   LOOKBACK_WINDOWS,
   repositoryContentFilePathSchema,
   repositoryRelativePathSchema,
   SUPPORTED_AUTOMATION_OUTPUT_TYPES,
 } from "./integrations";
-import { socialConnectPlatformSchema } from "./social-accounts";
 
 export const postStatusSchema = z.enum(["draft", "published"]);
 export type PostStatus = z.infer<typeof postStatusSchema>;
@@ -40,16 +44,6 @@ export const socialVideoAttachmentSchema = z.object({
 });
 
 export type SocialVideoAttachment = z.infer<typeof socialVideoAttachmentSchema>;
-
-export const socialScheduleRefSchema = z.object({
-  postId: z.string().min(1),
-  accountId: z.string().min(1),
-  platform: socialConnectPlatformSchema,
-  scheduledAt: z.iso.datetime(),
-  status: z.string().min(1).optional(),
-});
-
-export type SocialScheduleRef = z.infer<typeof socialScheduleRefSchema>;
 
 export const sourceMetadataSchema = z
   .looseObject({
@@ -79,10 +73,8 @@ export const sourceMetadataSchema = z
     chatId: z.string().nullable().optional(),
     briefId: z.string().optional(),
     projectId: z.string().optional(),
-    /** Attached social video draft (X/LinkedIn), persisted across reopen. */
+    /** Video posted with the X/LinkedIn post, now or from the calendar. */
     socialVideo: socialVideoAttachmentSchema.nullable().optional(),
-    /** Scheduled social delivery ref (PostForMe post id + status). */
-    socialSchedule: socialScheduleRefSchema.nullable().optional(),
     sandbox: z
       .object({
         boxId: z.string().optional(),
@@ -129,6 +121,7 @@ export const contentSchema = z.object({
   date: z.string(),
   sourceMetadata: sourceMetadataSchema,
   githubPublish: postGitHubPublishSchema.nullable(),
+  metadata: postMetadataSchema,
 });
 
 export type ContentResponse = z.infer<typeof contentSchema>;
@@ -391,7 +384,8 @@ export const updateContentSchema = z
     slug: postSlugSchema.nullable().optional(),
     markdown: z.string().max(POST_MARKDOWN_MAX_LENGTH).optional(),
     status: postStatusSchema.optional(),
-    sourceMetadata: sourceMetadataSchema.optional(),
+    /** Sets or clears the video posted with an X/LinkedIn post. */
+    socialVideo: socialVideoAttachmentSchema.nullable().optional(),
   })
   .refine(
     (data) =>
@@ -399,15 +393,38 @@ export const updateContentSchema = z
       data.slug !== undefined ||
       data.markdown !== undefined ||
       data.status !== undefined ||
-      (data.sourceMetadata !== undefined &&
-        data.sourceMetadata !== null &&
-        Object.keys(data.sourceMetadata).length > 0),
+      data.socialVideo !== undefined,
     {
       message: "At least one field must be provided",
     }
   );
 
 export type UpdateContentInput = z.infer<typeof updateContentSchema>;
+
+export const updateContentMetadataInputSchema = contentInputSchema.extend({
+  metadata: postMetadataPatchSchema,
+});
+
+export const createContentAuthorInputSchema =
+  contentOrganizationIdInputSchema.extend({
+    author: contentAuthorFieldsSchema,
+  });
+
+export const updateContentAuthorInputSchema =
+  contentOrganizationIdInputSchema.extend({
+    authorId: z.string().min(1),
+    author: contentAuthorFieldsSchema
+      .partial()
+      .refine(
+        (author) => Object.values(author).some((value) => value !== undefined),
+        { message: "At least one field must be provided" }
+      ),
+  });
+
+export const deleteContentAuthorInputSchema =
+  contentOrganizationIdInputSchema.extend({
+    authorId: z.string().min(1),
+  });
 
 export const createPostInputSchema = contentOrganizationIdInputSchema
   .extend(contentProjectIdInputSchema.shape)

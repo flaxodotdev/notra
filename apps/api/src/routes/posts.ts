@@ -14,6 +14,7 @@ import {
   getPostsOpenApiQuerySchema,
   getPostsParamsSchema,
   getPostsResponseSchema,
+  listPostAuthorsResponseSchema,
   patchPostRequestSchema,
   patchPostResponseSchema,
 } from "@notra/schemas/api/content";
@@ -31,6 +32,7 @@ import {
   deletePost,
   getPost,
   getPostGeneration,
+  listPostAuthors,
   listPosts,
   preparePatchPost,
 } from "../programs/posts";
@@ -71,7 +73,7 @@ const getPostsRoute = createRoute({
   operationId: "listPosts",
   summary: "List posts",
   description:
-    "Returns posts for the organization the API key belongs to, newest first by default. Only published posts are included unless you pass status=draft,published.",
+    "Returns posts for the organization the API key belongs to, newest first by default. Only published posts are included unless you pass status=draft,published. Blog posts and changelogs include a metadata object with cover image, tags, excerpt, authors, featured, noindex and displayDate; it is null for other content types.",
   request: {
     params: getPostsParamsSchema,
     query: getPostsOpenApiQuerySchema,
@@ -100,7 +102,7 @@ const getPostRoute = createRoute({
   operationId: "getPost",
   summary: "Get a single post",
   description:
-    "Returns the post. When no post with this ID exists in your organization, the response is still 200 with post set to null.",
+    "Returns the post. When no post with this ID exists in your organization, the response is still 200 with post set to null. Blog posts and changelogs include a metadata object with cover image, tags, excerpt, authors, featured, noindex and displayDate; it is null for other content types.",
   request: {
     params: getPostParamsSchema,
   },
@@ -114,6 +116,30 @@ const getPostRoute = createRoute({
       },
     },
     400: errorResponse("Invalid path params"),
+    401: errorResponse("Missing or invalid API key"),
+    403: errorResponse("Forbidden"),
+    404: errorResponse("Organization not found"),
+    503: errorResponse("Authentication service unavailable"),
+  },
+});
+
+const listPostAuthorsRoute = createRoute({
+  method: "get",
+  path: "/posts/authors",
+  tags: ["Content"],
+  operationId: "listPostAuthors",
+  summary: "List post authors",
+  description:
+    "Returns the organization's authors, sorted by name. Authors are created in the dashboard; pass their IDs in metadata.authorIds when updating a blog post or changelog.",
+  responses: {
+    200: {
+      description: "Authors fetched successfully",
+      content: {
+        "application/json": {
+          schema: listPostAuthorsResponseSchema,
+        },
+      },
+    },
     401: errorResponse("Missing or invalid API key"),
     403: errorResponse("Forbidden"),
     404: errorResponse("Organization not found"),
@@ -154,7 +180,7 @@ const patchPostRoute = createRoute({
   operationId: "updatePost",
   summary: "Update a single post",
   description:
-    "Updates any combination of title, slug, markdown, and status. Sending markdown re-renders the stored HTML, and when title is omitted it is taken from the first heading in the markdown, keeping the existing title when the markdown has no heading. Slugs are only accepted for blog posts and changelogs. Title, slug, or markdown updates also sync an existing linked GitHub pull request; no new pull request is created. GitHub sync errors occur after saving the post: 429 includes Retry-After, 502 indicates a sync error, and 504 indicates an unknown sync outcome. Check the PR before retrying an unconfirmed sync.",
+    "Updates any combination of title, slug, markdown, status, and metadata. Sending markdown re-renders the stored HTML, and when title is omitted it is taken from the first heading in the markdown, keeping the existing title when the markdown has no heading. Slugs and metadata are only accepted for blog posts and changelogs. Inside metadata, send only the fields you want to change; tags and authorIds replace the stored list, and authorIds must come from GET /v1/posts/authors. Title, slug, markdown, or metadata updates also sync an existing linked GitHub pull request; no new pull request is created. GitHub sync errors occur after saving the post: 429 includes Retry-After, 502 indicates a sync error, and 504 indicates an unknown sync outcome. Check the PR before retrying an unconfirmed sync.",
   request: {
     params: getPostParamsSchema,
     body: {
@@ -175,7 +201,9 @@ const patchPostRoute = createRoute({
         },
       },
     },
-    400: errorResponse("Invalid path params or request body"),
+    400: errorResponse(
+      "Invalid path params or request body, slug or metadata sent for an unsupported content type, or an unknown author ID"
+    ),
     401: errorResponse("Missing or invalid API key"),
     403: errorResponse("Forbidden"),
     404: errorResponse("Post not found"),
@@ -351,14 +379,42 @@ postsRoutes.openapi(getPostsRoute, async (c) => {
     throw result.failure;
   }
 
+  const { authors } = result.success;
+
   return c.json(
     {
-      posts: result.success.posts.map(serializePost),
+      posts: result.success.posts.map((post) => serializePost(post, authors)),
       pagination: result.success.pagination,
       organization,
     },
     200
   );
+});
+
+// Registered before GET /posts/{postId} so "authors" is not read as a post ID.
+postsRoutes.openapi(listPostAuthorsRoute, async (c) => {
+  const orgId = getOrganizationId(c);
+  if (!orgId) {
+    return c.json(
+      { error: "Forbidden: API key must be scoped to an organization" },
+      403
+    );
+  }
+
+  const organization = await requireOrganization(c, orgId);
+  if (!organization) {
+    return c.json({ error: "Organization not found" }, 404);
+  }
+
+  const result = await runPostProgram(
+    listPostAuthors({ db: c.get("db"), organizationId: orgId })
+  );
+
+  if (result._tag === "Failure") {
+    throw result.failure;
+  }
+
+  return c.json({ authors: result.success.authors, organization }, 200);
 });
 
 postsRoutes.openapi(getPostRoute, async (c) => {
@@ -389,7 +445,9 @@ postsRoutes.openapi(getPostRoute, async (c) => {
 
   return c.json(
     {
-      post: result.success.post ? serializePost(result.success.post) : null,
+      post: result.success.post
+        ? serializePost(result.success.post, result.success.authors)
+        : null,
       organization,
     },
     200
@@ -486,7 +544,7 @@ postsRoutes.openapi(patchPostRoute, async (c) => {
     throw result.failure;
   }
 
-  const { post, previousStatus } = result.success;
+  const { post, authors, previousStatus } = result.success;
 
   if (post.status === "published" && previousStatus !== "published") {
     void runGeoEffect(
@@ -500,7 +558,8 @@ postsRoutes.openapi(patchPostRoute, async (c) => {
     (post.contentType === "blog_post" || post.contentType === "changelog") &&
     (body.title !== undefined ||
       body.slug !== undefined ||
-      body.markdown !== undefined)
+      body.markdown !== undefined ||
+      body.metadata !== undefined)
   ) {
     try {
       const auth = c.get("auth");
@@ -511,9 +570,9 @@ postsRoutes.openapi(patchPostRoute, async (c) => {
         isOAuthAuth(auth) ? auth.userId : `api-key:${auth.keyId}`
       );
     } catch (error) {
-      console.error("Failed to sync saved post to GitHub", {
+      c.get("log").error(error instanceof Error ? error : String(error), {
+        errorCode: "post_github_sync_failed",
         postId: post.id,
-        error,
       });
       if (
         error instanceof InternalDashboardTimeoutError ||
@@ -553,7 +612,7 @@ postsRoutes.openapi(patchPostRoute, async (c) => {
     }
   }
 
-  return c.json({ post: serializePost(post), organization }, 200);
+  return c.json({ post: serializePost(post, authors), organization }, 200);
 });
 
 postsRoutes.openapi(createPostRoute, async (c) => {

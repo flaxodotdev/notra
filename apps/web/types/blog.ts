@@ -52,6 +52,7 @@ export interface NotraBlogPost {
   updatedAt: string;
   slug: string;
   excerpt: string;
+  image: string | null;
   authors: NotraBlogAuthor[];
 }
 

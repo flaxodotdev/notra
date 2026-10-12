@@ -17,12 +17,28 @@ the pipeline; typed failures are mapped to HTTP responses with `Effect.match`.
   Shared Redis keys preserve cache invalidation and the per-organization limit
   across replicas and during the migration.
 
-Events receive `202` only after Tinybird accepts the write, or when the pipeline
-deliberately drops them. Analytics run in the background. SIGTERM stops accepting
-requests and waits for active requests and background work before exiting.
+Tracked events receive `202` once queued in the bounded in-memory batcher, or
+after Tinybird accepts a direct write when batching is disabled or full. Dropped
+traffic also receives `202`. The batcher retries transient write failures; queued
+events are not durable across a forced process exit. Analytics run in the
+background. SIGTERM stops accepting requests and waits for active requests,
+background work and the batcher before closing the database pool and exiting.
 Rate-limit hits return `429`; Redis transport failures and limiter timeouts return
 `502` without writing an event. Redis availability is required for tracked ingestion.
 Token generation is still checked against Postgres and fails closed on an outage.
+
+Before identity and host lookups, tracked AI envelopes and malformed signed payloads
+pass a separate 1,000-request-per-minute admission limit keyed by organization,
+project and token generation. Token rotation gets a fresh admission budget, and
+revoked tokens cannot consume the existing organization-wide accepted-traffic quota.
+Human/unknown traffic keeps its zero-I/O drop path.
+
+The worker disables pg's default 10-second idle connection eviction. Sparse AI
+traffic therefore reuses connections instead of paying a new TLS/database
+handshake after every idle gap. The existing pool maximum (10 connections per
+replica), 10-second acquisition timeout and idle-client error handler are
+unchanged. No keepalive queries run; a connection dropped by the database is
+removed by pg and recreated on demand. Dashboard/API pool defaults are unchanged.
 
 ## Local development
 
@@ -40,8 +56,17 @@ See `.env.example` in this directory for the service-specific variables.
 
 ## Railway configuration
 
-Create an `ai-traffic-ingest` service in the `notra` project. Keep the build root
-at `/`, since the app imports workspace packages. Configure the service with:
+The existing `notra-prod` / `production` service is described in
+[`../../.railway/ai-traffic.ts`](../../.railway/ai-traffic.ts). Reuse that service,
+its two Virginia replicas, and the existing shared database, Upstash, and Tinybird
+configuration; do not provision replacements. See the
+[Railway IaC guide](../../.railway/README.md) for read-only plans and adoption.
+The repository's scheduled release owns deployments and keeps watch patterns
+unset; the manual setup below is for a new standalone installation.
+
+For a new installation, create an `ai-traffic-ingest` service in your own Railway
+project. Keep the build root at `/`, since the app imports workspace packages.
+Configure the service with:
 
 | Setting | Value |
 | --- | --- |
@@ -49,6 +74,7 @@ at `/`, since the app imports workspace packages. Configure the service with:
 | Dockerfile path | `apps/ai-traffic-ingest/Dockerfile` |
 | Healthcheck | `/readyz` |
 | Region | US East (Virginia), next to Postgres and Upstash |
+| Replicas | 2 in the same region |
 | Healthcheck timeout | 60 seconds |
 | Public target port | 3000 |
 | Restart policy | On failure, maximum 5 retries |
@@ -61,11 +87,11 @@ with missing credentials is never promoted. Every tracked hit reads Postgres and
 Upstash before the SDK's 2 second timeout, so run the service in one region next
 to them rather than in several distant ones.
 
-Watch `/apps/ai-traffic-ingest/**`, `/packages/**`, `/bun.lock`, `/package.json`,
-`/bunfig.toml`, `/patches/**`, and `/.dockerignore`. Deploy from the repository
-root with `railway up --service ai-traffic-ingest --environment production --ci`
-after linking the project. A CLI upload does not configure GitHub auto-deploys;
-connect the repository and branch in Railway after merging the code.
+Keep watch patterns unset and the GitHub repository connected without main-branch
+deployment triggers. The scheduled production release builds the checked commit
+after Vercel succeeds; see [CONTRIBUTING.md](../../CONTRIBUTING.md). IaC changes
+need a separately reviewed `railway config apply`; deployments do not read the
+TypeScript configuration automatically.
 
 The Docker image contains only Bun and the built bundle. No Next.js server,
 build-time credentials, or database migration is required. Build locally with:
@@ -136,6 +162,20 @@ origin. The SDK has no automatic dashboard fallback. Direct clients continue
 using the dedicated service until their endpoint is changed and redeployed.
 
 ## Monitoring in Axiom
+
+The standalone worker also emits `geo.ingest.runtime` once per minute with
+process RSS, JS heap and external memory (bytes), active requests, background
+tasks, buffered events, and total/idle/waiting database connections. Use these
+counters to distinguish retained process memory from growing queues; RSS alone
+does not establish a JS memory leak. Railway replica and deployment IDs separate
+the processes and restarts. These events contain no request payloads.
+
+```kusto
+['notra-geo-scan'] | where event == 'geo.ingest.runtime'
+| summarize rss = max(todouble(rssBytes)), heap = max(todouble(heapUsedBytes)),
+    pending = max(todouble(pendingTasks)), buffered = max(todouble(bufferedEvents))
+    by bin(_time, 1m), tostring(replicaId), tostring(deploymentId)
+```
 
 Every ingest request, on Railway and on the dashboard fallback, emits one
 `geo.ingest` event to the `notra-geo-scan` dataset with `outcome`

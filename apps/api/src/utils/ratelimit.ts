@@ -7,6 +7,8 @@ import {
   AGENT_FEEDBACK_RATE_LIMIT_PER_IP,
   AGENT_FEEDBACK_RATE_LIMIT_PER_ORGANIZATION,
 } from "@notra/db/constants/agent-feedback";
+import { getRailwayClientIp, ipNetworkKey } from "@notra/utils/client-ip";
+import { isDemoMode } from "@notra/utils/demo-mode";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import type { Context } from "hono";
@@ -167,6 +169,12 @@ export const ratelimit = {
 type RatelimitScope = "credential" | "organization" | "ip";
 
 function getClientIp(c: Context): string {
+  // demo-api runs on Railway, where the first X-Forwarded-For entry is
+  // whatever the client sent.
+  if (isDemoMode()) {
+    const ip = getRailwayClientIp(c.req.raw.headers);
+    return ip ? ipNetworkKey(ip) : "unknown";
+  }
   const forwardedFor = c.req.header("x-forwarded-for");
   const ip = forwardedFor?.split(",")[0]?.trim() || c.req.header("x-real-ip");
   return ip || "unknown";

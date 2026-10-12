@@ -1,27 +1,26 @@
 import { createHmac } from "node:crypto";
 
+import {
+  getRailwayClientIp,
+  ipNetworkKey,
+  parseIp,
+} from "@notra/utils/client-ip";
+
 /**
- * The visitor's IP for demo rate limits. The demo is self-hosted behind
+ * The visitor's network for demo rate limits. The demo is self-hosted behind
  * Cloudflare and Railway, where the shared ratelimit helper (Vercel only)
  * would hand every request a fresh random key. `x-vercel-forwarded-for` is
  * only trusted on Vercel: elsewhere any client could send it through
- * Cloudflare to dodge the per-network limit. A client that bypasses
- * Cloudflare can still spoof the other headers, but that only buys it more
- * sandboxes, which the sandbox cap still bounds.
+ * Cloudflare to dodge the per-network limit. IPv6 visitors are grouped by
+ * their /64, which a single subscriber controls entirely.
  */
 export function getDemoClientIp(headersList: Headers): string {
   const vercelIp =
     process.env.VERCEL === "1"
-      ? headersList.get("x-vercel-forwarded-for")?.trim()
-      : undefined;
-  const forwarded = headersList.get("x-forwarded-for")?.split(",")[0];
-  return (
-    vercelIp ||
-    headersList.get("cf-connecting-ip")?.trim() ||
-    headersList.get("x-real-ip")?.trim() ||
-    forwarded?.trim() ||
-    "unknown"
-  );
+      ? parseIp(headersList.get("x-vercel-forwarded-for") ?? "")
+      : null;
+  const ip = vercelIp ?? getRailwayClientIp(headersList);
+  return ip ? ipNetworkKey(ip) : "unknown";
 }
 
 /** Rate-limit key for sandbox creation; the raw IP is never stored. */
@@ -30,5 +29,10 @@ export function hashDemoClientIp(ip: string): string {
   if (!secret) {
     throw new Error("WORKOS_COOKIE_PASSWORD must be defined");
   }
-  return createHmac("sha256", secret).update(ip).digest("hex").slice(0, 32);
+  // Domain-separated so this MAC over visitor-chosen input can never collide
+  // with another use of the same secret.
+  return createHmac("sha256", secret)
+    .update(`demo-ip:${ip}`)
+    .digest("hex")
+    .slice(0, 32);
 }

@@ -19,7 +19,7 @@ import type {
   PlannedTaskRecord,
 } from "@notra/ai/types/autonomy";
 import type { autonomyMandates } from "@notra/db/schema";
-import type { useTranslations } from "next-intl";
+import type { useTranslations } from "use-intl";
 
 import type { MessageLeafKey } from "@/types/i18n";
 
@@ -107,6 +107,7 @@ export interface IrisPlanResult {
   output: PlannerOutput | null;
   violations: string[];
   costCents: number;
+  inputHash?: string;
 }
 
 export interface IrisTaskOutcome {

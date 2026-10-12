@@ -5,12 +5,16 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { GeoJourneyPageStats } from "@notra/geo-core/types/geo";
 import { trafficVisitDelta } from "@notra/geo-core/utils/ai-traffic";
 import { TruncateWithTooltip } from "@notra/ui/components/shared/truncate-with-tooltip";
-import { useTranslations } from "next-intl";
+import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
 import { useMemo } from "react";
+import { useTranslations } from "use-intl";
 
-import { JourneyCountCell } from "@/components/geo/journey-count-cell";
+import { GeoCountCell } from "@/components/geo/geo-count-cell";
 import { JourneyStatCard } from "@/components/geo/journey-stat-card";
-import { Table, type TableColumn } from "@/components/motion/table";
+import { GEO_COUNT_COLUMN_WIDTH } from "@/constants/geo-table";
 import { TABLE_ROW_HEIGHT } from "@/constants/table";
 import type { JourneyPageKindStat, JourneyPathsCardProps } from "@/types/geo";
 import {
@@ -55,14 +59,14 @@ export function JourneyPathsCard({
     {
       key: "journeys",
       header: tCommon("labels.journeys"),
-      width: "9.5rem",
+      width: GEO_COUNT_COLUMN_WIDTH,
       align: "right",
       sortable: true,
       cell: (row) => (
-        <JourneyCountCell
-          journeys={row.journeys}
+        <GeoCountCell
+          value={row.journeys}
           label={row.path}
-          previousJourneys={row.previousJourneys}
+          previousValue={row.previousJourneys}
         />
       ),
     },
@@ -91,8 +95,7 @@ export function JourneyPathsCard({
       }))}
       total={totalPages}
     >
-      <Table
-        className="rounded-2xl"
+      <DataTable
         columns={columns}
         data={pages}
         defaultSort={{ key: "journeys", direction: "desc" }}

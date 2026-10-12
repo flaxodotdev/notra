@@ -5,11 +5,13 @@
     "remotion.config.ts",
     "src/router.tsx",
     "src/start.ts",
+    "src/**/*.test.{ts,tsx}",
     "src/routes/**/*.{ts,tsx}"
   ],
   "ignoreIssues": {
     "source.config.ts": ["files", "exports"],
     "src/schemas/content.ts": ["files", "exports"],
-    "src/constants/content.ts": ["exports"]
+    "src/constants/content.ts": ["exports"],
+    "src/types/state-of-ai-search.ts": ["types"]
   }
 }

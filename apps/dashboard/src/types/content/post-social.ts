@@ -21,9 +21,9 @@ export interface PostSocialButtonProps {
   onContentChange?: (value: string) => void;
   onPublished?: (published: PublishedSocialPost) => void;
   from?: SocialPublishSurface;
-  /** Persisted draft id. Enables attachment + schedule persistence. */
+  /** Saved post id; the attached video is stored on it. */
   contentId?: string;
-  /** Video attachment restored from the saved draft. */
+  /** Video already saved on the post. */
   initialVideo?: SocialVideoAttachment | null;
 }
 

@@ -27,6 +27,10 @@ export class GeoIngestUnparseableUrlError extends Data.TaggedError(
   readonly url: string;
 }> {}
 
+export class GeoIngestPayloadTooLargeError extends Data.TaggedError(
+  "GeoIngestPayloadTooLarge"
+)<Record<string, never>> {}
+
 export class GeoIngestFailedError extends Data.TaggedError("GeoIngestFailed")<{
   readonly cause: unknown;
 }> {}
@@ -37,4 +41,5 @@ export type GeoIngestError =
   | GeoIngestRateLimitedError
   | GeoIngestInvalidPayloadError
   | GeoIngestUnparseableUrlError
+  | GeoIngestPayloadTooLargeError
   | GeoIngestFailedError;

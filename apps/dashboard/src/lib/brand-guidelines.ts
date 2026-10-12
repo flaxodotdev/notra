@@ -132,7 +132,7 @@ async function captureDesktopScreenshots(sourceUrl: string) {
   return responses;
 }
 
-async function getGuidelineByBrandSettingsId(brandSettingsId: string) {
+export async function getGuidelineByBrandSettingsId(brandSettingsId: string) {
   return db.query.brandGuidelines.findFirst({
     where: eq(brandGuidelines.brandSettingsId, brandSettingsId),
     with: {

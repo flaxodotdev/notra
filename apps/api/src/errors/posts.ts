@@ -10,6 +10,17 @@ export class PostSlugNotSupportedError extends Schema.TaggedError<PostSlugNotSup
   {}
 ) {}
 
+export class PostMetadataNotSupportedError extends Schema.TaggedError<PostMetadataNotSupportedError>()(
+  "PostMetadataNotSupportedError",
+  {}
+) {}
+
+/** metadata.authorIds names an author that is not in this organization. */
+export class PostUnknownAuthorError extends Schema.TaggedError<PostUnknownAuthorError>()(
+  "PostUnknownAuthorError",
+  {}
+) {}
+
 export class PostInvalidMarkdownError extends Schema.TaggedError<PostInvalidMarkdownError>()(
   "PostInvalidMarkdownError",
   {}

@@ -9,6 +9,7 @@ export const ROUTED_MODEL_PROVIDER = "notra-router";
 export const DEFAULT_PLAN_CACHE_TTL_MS = 60_000;
 export const DEFAULT_CREDIT_CHECK_TTL_MS = 30_000;
 export const DEFAULT_UNAVAILABLE_TTL_MS = 5 * 60_000;
+export const ROUTE_USAGE_LOOKUP_CONCURRENCY = 4;
 
 export const DEFAULT_OPENROUTER_ACCOUNT_BASE_URL =
   "https://openrouter.ai/api/v1";
@@ -19,6 +20,21 @@ export const OPENROUTER_PRIVACY_PROVIDER_ROUTING = {
 } as const;
 
 export const VERCEL_NAMESPACE_PREFIX = "vercel/";
+
+// Vendor response IDs with reviewed, unambiguous canonical identities.
+export const VERCEL_SERVED_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "gpt-5.4": "openai/gpt-5.4",
+  "gpt-5.4-mini": "openai/gpt-5.4-mini",
+  "gpt-5.4-nano": "openai/gpt-5.4-nano",
+  "gpt-5.6-sol": "openai/gpt-5.6-sol",
+  "gpt-6-luna": "openai/gpt-6-luna",
+  "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+  "claude-opus-4-6": "anthropic/claude-opus-4.6",
+  "claude-haiku-4-5": "anthropic/claude-haiku-4.5",
+  "claude-sonnet-5": "anthropic/claude-sonnet-5",
+  "claude-opus-5-5": "anthropic/claude-opus-5.5",
+  "claude-opus-5.5": "anthropic/claude-opus-5.5",
+};
 
 export const OPENROUTER_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "google/gemini-3-flash": "google/gemini-3-flash-preview",

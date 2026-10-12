@@ -9,6 +9,7 @@ import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 
 import * as sourceConfig from "./source.config";
+import { DOCS_PROXY_ORIGIN } from "./src/constants/proxy";
 import { buildSecurityHeaders } from "./src/utils/security-headers";
 
 const SERVER_ONLY_PACKAGES = [
@@ -48,6 +49,7 @@ export default defineConfig(({ command }) => ({
   },
   server: {
     port: 3001,
+    allowedHosts: [".trycloudflare.com"],
   },
   optimizeDeps: {
     exclude: SERVER_ONLY_PACKAGES,
@@ -93,6 +95,18 @@ export default defineConfig(({ command }) => ({
       },
       routeRules: {
         "/**": { headers: buildSecurityHeaders(command === "serve") },
+      },
+      devProxy: {
+        "/docs": { target: DOCS_PROXY_ORIGIN, changeOrigin: true },
+        "/docs/**": { target: DOCS_PROXY_ORIGIN, changeOrigin: true },
+      },
+      vercel: {
+        config: {
+          version: 3,
+          routes: [
+            { src: "^/docs(/.*)?$", dest: `${DOCS_PROXY_ORIGIN}/docs$1` },
+          ],
+        },
       },
     }),
   ],

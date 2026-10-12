@@ -31,6 +31,7 @@ import type {
 } from "@notra/ai/types/router";
 import { createModelCallTelemetry } from "@notra/ai/utils/model-call-telemetry";
 import { observeModelStream } from "@notra/ai/utils/observe-model-stream";
+import { withUsageAttribution } from "@notra/ai/utils/usage-attribution";
 
 import { GatewayUnavailableError } from "./errors";
 import { otherGateway } from "./policy";
@@ -153,11 +154,18 @@ export function classifyUpstreamFailure(
 export function buildRouteMetadata(
   decision: RouteDecision,
   adapter: GatewayAdapter,
-  providerMetadata: SharedV4ProviderMetadata | undefined
+  providerMetadata: SharedV4ProviderMetadata | undefined,
+  servedModelId?: string
 ): RouteMetadata {
-  const extracted = adapter.extractRouteMetadata(providerMetadata);
+  const extracted = adapter.extractRouteMetadata(
+    providerMetadata,
+    servedModelId
+  );
   return {
     gateway: decision.gateway,
+    ...(decision.organizationId
+      ? { organizationId: decision.organizationId }
+      : {}),
     requestedModel: decision.requestedModelId,
     model: extracted.model ?? decision.modelId,
     reason: decision.reason,
@@ -166,6 +174,20 @@ export function buildRouteMetadata(
     ...(extracted.upstreamProvider
       ? { upstreamProvider: extracted.upstreamProvider }
       : {}),
+    ...(extracted.costUsd === undefined ? {} : { costUsd: extracted.costUsd }),
+    ...(extracted.gatewayCostUsd === undefined
+      ? {}
+      : { gatewayCostUsd: extracted.gatewayCostUsd }),
+    ...(extracted.upstreamInferenceCostUsd === undefined
+      ? {}
+      : { upstreamInferenceCostUsd: extracted.upstreamInferenceCostUsd }),
+    ...(extracted.isByok === undefined ? {} : { isByok: extracted.isByok }),
+    ...(extracted.costSource === undefined
+      ? {}
+      : { costSource: extracted.costSource }),
+    ...(extracted.byokInferenceCostUsd === undefined
+      ? {}
+      : { byokInferenceCostUsd: extracted.byokInferenceCostUsd }),
     ...(decision.fallbackFrom ? { fallbackFrom: decision.fallbackFrom } : {}),
     ...(decision.fallbackReason
       ? { fallbackReason: decision.fallbackReason }
@@ -176,12 +198,14 @@ export function buildRouteMetadata(
 
 function annotateProviderMetadata(
   providerMetadata: SharedV4ProviderMetadata | undefined,
-  route: ResolvedRoute
+  route: ResolvedRoute,
+  servedModelId?: string
 ): SharedV4ProviderMetadata {
   const metadata = buildRouteMetadata(
     route.decision,
     route.adapter,
-    providerMetadata
+    providerMetadata,
+    servedModelId
   );
   return {
     ...providerMetadata,
@@ -194,9 +218,13 @@ function annotateStream(
   route: ResolvedRoute
 ): ReadableStream<LanguageModelV4StreamPart> {
   let observedProviderMetadata: SharedV4ProviderMetadata | undefined;
+  let servedModelId: string | undefined;
   return stream.pipeThrough(
     new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       transform(part, controller) {
+        if (part.type === "response-metadata" && part.modelId) {
+          servedModelId = part.modelId;
+        }
         if ("providerMetadata" in part && part.providerMetadata) {
           observedProviderMetadata = {
             ...observedProviderMetadata,
@@ -208,7 +236,8 @@ function annotateStream(
             ...part,
             providerMetadata: annotateProviderMetadata(
               observedProviderMetadata,
-              route
+              route,
+              servedModelId
             ),
           });
           return;
@@ -268,13 +297,15 @@ export class RoutedLanguageModel implements LanguageModelV4 {
   }
 
   async doGenerate(
-    options: LanguageModelV4CallOptions
+    inputOptions: LanguageModelV4CallOptions
   ): Promise<LanguageModelV4GenerateResult> {
+    const options = this.withAttribution(inputOptions);
     const telemetry = createModelCallTelemetry({
       logger: this.context.logger,
       request: this.context.request,
       operation: "generate",
       signal: options.abortSignal,
+      providerOptions: options.providerOptions,
     });
     try {
       const result = await this.execute(options, async (route, params) => {
@@ -284,7 +315,8 @@ export class RoutedLanguageModel implements LanguageModelV4 {
           ...generated,
           providerMetadata: annotateProviderMetadata(
             generated.providerMetadata,
-            route
+            route,
+            generated.response?.modelId
           ),
         };
       });
@@ -297,13 +329,15 @@ export class RoutedLanguageModel implements LanguageModelV4 {
   }
 
   async doStream(
-    options: LanguageModelV4CallOptions
+    inputOptions: LanguageModelV4CallOptions
   ): Promise<LanguageModelV4StreamResult> {
+    const options = this.withAttribution(inputOptions);
     const telemetry = createModelCallTelemetry({
       logger: this.context.logger,
       request: this.context.request,
       operation: "stream",
       signal: options.abortSignal,
+      providerOptions: options.providerOptions,
     });
     try {
       return await this.execute(options, async (route, params) => {
@@ -358,12 +392,25 @@ export class RoutedLanguageModel implements LanguageModelV4 {
     };
   }
 
+  private withAttribution(options: LanguageModelV4CallOptions) {
+    return {
+      ...options,
+      providerOptions: withUsageAttribution(options.providerOptions, {
+        ...this.context.request.logContext,
+        ...(this.context.request.organizationId
+          ? { organizationId: this.context.request.organizationId }
+          : {}),
+      }),
+    };
+  }
+
   private buildParams(
     route: ResolvedRoute,
     options: LanguageModelV4CallOptions
   ): LanguageModelV4CallOptions {
     const { router, rest } = splitRouterOptions(options.providerOptions);
     const providerOptions = route.adapter.buildProviderOptions({
+      organizationId: this.context.request.organizationId,
       providerOptions: stripForeignGatewayOptions(route.decision.gateway, rest),
       router,
       allowNonZdr: this.context.policy.allowNonZdr,

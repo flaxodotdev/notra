@@ -1,8 +1,23 @@
+import type { LanguageModelV4CallOptions } from "@ai-sdk/provider";
+import { ROUTER_METADATA_KEY } from "@notra/ai/constants/router";
+import { log } from "@notra/ai/evlog";
+import { createVercelAdapter } from "@notra/ai/router/adapters/vercel";
 import type {
   ModelCallTelemetry,
   ModelCallTelemetryOptions,
 } from "@notra/ai/types/model-call-telemetry";
-import type { ResolvedRoute, RouterLogFields } from "@notra/ai/types/router";
+import type {
+  ResolvedRoute,
+  RouterLogFields,
+  VercelAdapterConfig,
+} from "@notra/ai/types/router";
+import { getEvlogRuntime } from "@notra/ai/utils/evlog-runtime";
+import { getOperationalContext } from "@notra/ai/utils/operational-context";
+import {
+  recordRequestAICost,
+  recordRequestAIUsage,
+} from "@notra/ai/utils/request-ai-usage";
+import { getUsageAttribution } from "@notra/ai/utils/usage-attribution";
 
 /** One lifecycle per SDK model invocation, including any router fallback. */
 export function createModelCallTelemetry({
@@ -10,13 +25,24 @@ export function createModelCallTelemetry({
   request,
   operation,
   signal,
+  providerOptions,
+  lookupRouteMetadata,
 }: ModelCallTelemetryOptions): ModelCallTelemetry {
   const callId = crypto.randomUUID();
+  const attribution = getUsageAttribution(providerOptions);
+  const context = {
+    ...attribution,
+    ...getOperationalContext(),
+    ...request.logContext,
+  };
+  const tags = providerOptions?.gateway?.tags;
   const startedAt = performance.now();
   let route: ResolvedRoute | undefined;
+  let servedModelId: string | undefined;
   let attemptCount = 0;
   let msToFirstChunk: number | undefined;
   let finished = false;
+  let completionRecorded = false;
 
   function emit(
     level: "info" | "warn" | "error",
@@ -25,11 +51,20 @@ export function createModelCallTelemetry({
   ) {
     try {
       logger[level](event, {
+        ...context,
+        requestId: context.requestId ?? callId,
+        ...(Array.isArray(tags)
+          ? { tags: tags.filter((tag) => typeof tag === "string") }
+          : {}),
         callId,
         operation,
-        organizationId: request.organizationId,
+        organizationId: request.organizationId ?? context.organizationId,
+        attribution:
+          Array.isArray(tags) && tags.includes("attribution:complete")
+            ? "complete"
+            : "partial",
         requestedModel: request.modelId,
-        model: route?.decision.modelId ?? request.modelId,
+        model: servedModelId ?? route?.decision.modelId ?? request.modelId,
         gateway: route?.decision.gateway ?? request.gateway,
         attemptCount,
         fallbackFrom: route?.decision.fallbackFrom,
@@ -58,7 +93,7 @@ export function createModelCallTelemetry({
     emit(level, event, {
       durationMs,
       ai: {
-        model: route?.decision.modelId ?? request.modelId,
+        model: servedModelId ?? route?.decision.modelId ?? request.modelId,
         msToFinish: durationMs,
         msToFirstChunk,
         ...ai,
@@ -71,6 +106,29 @@ export function createModelCallTelemetry({
     finish("warn", "ai.call.aborted");
   }
 
+  async function enrichCost(generationId: string) {
+    try {
+      const enriched = await lookupRouteMetadata?.(generationId);
+      if (!enriched) {
+        return;
+      }
+      if (enriched.costUsd !== undefined) {
+        recordRequestAICost(generationId, enriched.costUsd);
+      }
+      emit("info", "ai.call.cost_enriched", {
+        ...enriched,
+        generationId,
+        costSource: enriched.costSource ?? "unknown",
+      });
+    } catch (error) {
+      emit("warn", "ai.call.cost_lookup_failed", {
+        generationId,
+        costSource: "unknown",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   emit("info", "ai.call.started");
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) {
@@ -79,19 +137,75 @@ export function createModelCallTelemetry({
 
   return {
     attempt(nextRoute) {
-      route = nextRoute;
+      if (nextRoute) {
+        route = nextRoute;
+      }
       attemptCount += 1;
     },
     firstChunk() {
       msToFirstChunk ??= Math.round(performance.now() - startedAt);
     },
     complete(result) {
-      if (finished) {
+      // A streamed error may precede the provider's final usage/charge report.
+      // Terminal events and accounting have independent once-only boundaries.
+      if (completionRecorded) {
         return;
       }
+      completionRecorded = true;
       const inputTokens = result.usage.inputTokens.total;
       const outputTokens = result.usage.outputTokens.total;
+      const serviceTier =
+        result.providerMetadata?.gateway?.serviceTier ??
+        result.providerMetadata?.openai?.serviceTier;
       const failed = result.finishReason.unified === "error";
+      const generationId =
+        result.providerMetadata?.[ROUTER_METADATA_KEY]?.generationId ??
+        result.providerMetadata?.gateway?.generationId;
+      const routeMetadata = result.providerMetadata?.[ROUTER_METADATA_KEY];
+      servedModelId =
+        typeof routeMetadata?.model === "string" &&
+        routeMetadata.model.trim().length > 0
+          ? routeMetadata.model
+          : undefined;
+      // OpenRouter returns charges with usage; Vercel enriches them separately.
+      if (
+        route?.decision.gateway === "openrouter" &&
+        typeof routeMetadata?.gatewayCostUsd === "number" &&
+        Number.isFinite(routeMetadata.gatewayCostUsd) &&
+        routeMetadata.gatewayCostUsd >= 0
+      ) {
+        const byokInferenceCostUsd =
+          typeof routeMetadata.byokInferenceCostUsd === "number" &&
+          Number.isFinite(routeMetadata.byokInferenceCostUsd) &&
+          routeMetadata.byokInferenceCostUsd >= 0
+            ? routeMetadata.byokInferenceCostUsd
+            : undefined;
+        emit("info", "ai.cost.reported", {
+          costId: `openrouter:${result.responseId ?? callId}`,
+          gatewayCostUsd: routeMetadata.gatewayCostUsd,
+          byokInferenceCostUsd,
+          costUsd:
+            byokInferenceCostUsd !== undefined &&
+            typeof routeMetadata.costUsd === "number" &&
+            Number.isFinite(routeMetadata.costUsd) &&
+            routeMetadata.costUsd >= 0
+              ? routeMetadata.costUsd
+              : undefined,
+          upstreamProvider:
+            typeof routeMetadata.upstreamProvider === "string"
+              ? routeMetadata.upstreamProvider
+              : undefined,
+        });
+      }
+      recordRequestAIUsage({
+        model: servedModelId ?? route?.decision.modelId ?? request.modelId,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens: result.usage.inputTokens.cacheRead,
+        cacheWriteTokens: result.usage.inputTokens.cacheWrite,
+        reasoningTokens: result.usage.outputTokens.reasoning,
+        providerMetadata: result.providerMetadata,
+      });
       finish(
         failed ? "error" : "info",
         failed ? "ai.call.failed" : "ai.call.completed",
@@ -103,12 +217,60 @@ export function createModelCallTelemetry({
               ? inputTokens + outputTokens
               : undefined,
           cacheReadTokens: result.usage.inputTokens.cacheRead,
+          cacheWriteTokens: result.usage.inputTokens.cacheWrite,
+          serviceTier:
+            typeof serviceTier === "string" ? serviceTier : undefined,
           reasoningTokens: result.usage.outputTokens.reasoning,
           finishReason: result.finishReason.unified,
-          responseId: result.responseId,
+          ...(typeof routeMetadata?.costUsd === "number"
+            ? { costUsd: routeMetadata.costUsd }
+            : {}),
+          responseId:
+            result.responseId ??
+            (typeof generationId === "string" ? generationId : undefined),
         },
-        failed ? { error: "Provider returned an error finish reason" } : {}
+        {
+          ...(typeof generationId === "string" ? { generationId } : {}),
+          upstreamProvider:
+            typeof routeMetadata?.upstreamProvider === "string"
+              ? routeMetadata.upstreamProvider
+              : undefined,
+          gatewayCostUsd:
+            typeof routeMetadata?.gatewayCostUsd === "number"
+              ? routeMetadata.gatewayCostUsd
+              : undefined,
+          upstreamInferenceCostUsd:
+            typeof routeMetadata?.upstreamInferenceCostUsd === "number"
+              ? routeMetadata.upstreamInferenceCostUsd
+              : undefined,
+          isByok:
+            typeof routeMetadata?.isByok === "boolean"
+              ? routeMetadata.isByok
+              : undefined,
+          costSource:
+            typeof routeMetadata?.costSource === "string"
+              ? routeMetadata.costSource
+              : "unknown",
+          ...(failed
+            ? { error: "Provider returned an error finish reason" }
+            : {}),
+        }
       );
+      // Do not hold a successful answer/stream finish past its SDK deadline.
+      // Request teardown waits for the bounded lookup through flushLogs().
+      if (
+        lookupRouteMetadata &&
+        typeof generationId === "string" &&
+        generationId.length > 0 &&
+        routeMetadata?.costSource !== "reported"
+      ) {
+        const runtime = getEvlogRuntime();
+        runtime.pendingAIUsage ??= new Set();
+        const pending = runtime.pendingAIUsage;
+        const enrichment = enrichCost(generationId);
+        pending.add(enrichment);
+        void enrichment.finally(() => pending.delete(enrichment));
+      }
     },
     fail(error) {
       if (
@@ -140,4 +302,27 @@ export function createModelCallTelemetry({
       );
     },
   };
+}
+
+/** Direct Eve models share the router's lifecycle logs without changing routes. */
+export function createGatewayCallTelemetry(
+  modelId: string,
+  params: Pick<LanguageModelV4CallOptions, "providerOptions" | "abortSignal">,
+  operation: "generate" | "stream" | "evaluate",
+  gatewayConfig: VercelAdapterConfig = {
+    apiKey: process.env.AI_GATEWAY_API_KEY,
+  }
+) {
+  return createModelCallTelemetry({
+    logger: {
+      info: (event, fields) => log.info({ event, ...fields }),
+      warn: (event, fields) => log.warn({ event, ...fields }),
+      error: (event, fields) => log.error({ event, ...fields }),
+    },
+    request: { modelId, gateway: "vercel" },
+    providerOptions: params.providerOptions,
+    signal: params.abortSignal,
+    operation,
+    lookupRouteMetadata: createVercelAdapter(gatewayConfig).lookupRouteMetadata,
+  });
 }

@@ -1,4 +1,4 @@
-import { useTranslations } from "next-intl";
+import { useTranslations } from "use-intl";
 
 import type { BreadcrumbLabels } from "@/types/dashboard/breadcrumbs";
 
@@ -26,6 +26,7 @@ export function useBreadcrumbLabels(): BreadcrumbLabels {
       leaderboard: tLabels("leaderboard"),
       schedules: tLabels("schedules"),
       settings: tActions("settings"),
+      sites: tLabels("sites"),
       skills: tLabels("skills"),
       usage: tLabels("usage"),
     },

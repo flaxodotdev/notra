@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react";
-import type { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
+import type { useTranslations } from "use-intl";
 
 import type { NavVisibility } from "@/types/components/nav";
 import type { SettingsSectionId } from "@/types/settings/modal";
@@ -28,6 +29,7 @@ export type CommandRouteId =
   | "geo-settings-languages"
   | "geo-settings-models"
   | "content"
+  | "sites"
   | "brand-company-info"
   | "brand-references"
   | "automation-schedules"
@@ -61,8 +63,83 @@ export type AiResult =
   | { action: "navigate"; path: string; reason: string }
   | { action: "chat"; path: null; reason: string };
 
+export interface CommandPaletteNavigationTarget {
+  label: string;
+  path: string;
+}
+
+export interface CommandPaletteNavigationEntity extends CommandPaletteNavigationTarget {
+  type: CommandPaletteEntityKind;
+}
+
+export interface ResolveNavigationWithJevParams {
+  query: string;
+  routes: readonly (CommandPaletteNavigationTarget & {
+    section: CommandSection;
+    keywords: readonly string[];
+  })[];
+  entities: readonly CommandPaletteNavigationEntity[];
+  organizationId: string;
+  abortSignal?: AbortSignal;
+}
+
+export type CommandPaletteEntityKind =
+  | "post"
+  | "voice"
+  | "reference"
+  | "github"
+  | "linear"
+  | "social"
+  | "prompt"
+  | "competitor"
+  | "persona"
+  | "site"
+  | "chat";
+
+export interface CommandPaletteEntityTarget {
+  kind: CommandPaletteEntityKind;
+  id: string;
+  name: string;
+}
+
+export type CommandPaletteMode = "geo" | "studio";
+
+export type CommandPalettePage = "projects" | "workspaces";
+
+export type CommandPaletteRecent =
+  | { kind: "route"; id: CommandRouteId }
+  | {
+      kind: "entity";
+      key: string;
+      entityKind: CommandPaletteEntityKind;
+      label: string;
+      sublabel?: string;
+      path: string;
+    };
+
+export interface CommandPaletteItemProps {
+  icon: IconSvgElement;
+  label: ReactNode;
+  value: string;
+  onSelect: () => void;
+  keywords?: string[];
+  /** Muted text on the right, e.g. the section or entity details. */
+  meta?: ReactNode;
+  /** Replaces the hover arrow, e.g. a shortcut or a check mark. */
+  trailing?: ReactNode;
+  disabled?: boolean;
+  iconClassName?: string;
+  leading?: ReactNode;
+}
+
+export interface CommandPaletteGroupProps {
+  heading: string;
+  children: ReactNode;
+}
+
 export interface EntityHit {
   key: string;
+  kind: CommandPaletteEntityKind;
   label: string;
   sublabel?: string;
   icon: IconSvgElement;
@@ -107,10 +184,30 @@ export interface CommandPaletteSearchData {
     provider: string;
     username: string;
   }[];
+  prompts: readonly {
+    id: string;
+    prompt: string;
+    title: string | null;
+    enabled: boolean;
+  }[];
+  competitors: readonly { id: string; name: string; domain: string | null }[];
+  personas: readonly {
+    id: string;
+    name: string;
+    role: string;
+    company: string;
+  }[];
+  sites: readonly { id: string; name: string; publicOrigin: string }[];
+  chats: readonly { id: string; title: string }[];
 }
 
 export type EntityHitSection =
+  | "prompts"
+  | "competitors"
+  | "personas"
   | "posts"
+  | "chats"
+  | "sites"
   | "brandVoices"
   | "references"
   | "integrations";
@@ -123,49 +220,56 @@ export type CommandPaletteNavigatingLabelKey = "opening" | "openingChat";
 
 export type EntityHitsBySection = Record<EntityHitSection, EntityHit[]>;
 
-export interface CommandPaletteDialogProps {
-  abortRef: { current: AbortController | null };
-  aiState:
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "navigating"; labelKey: CommandPaletteNavigatingLabelKey }
-    | { status: "error" };
-  entityHitsBySection: EntityHitsBySection;
-  handleOpenChange: (open: boolean) => void;
-  hasAiCredits: boolean;
-  isApplePlatform: boolean;
-  navigate: (path: string) => void;
-  open: boolean;
-  openChatWithQuery: (text: string) => void;
-  openFeedback: () => void;
-  openSettings: (section?: SettingsSectionId) => void;
-  query: string;
-  runAiSearch: () => Promise<void>;
-  setAiState: (
-    state:
-      | { status: "idle" }
-      | { status: "loading" }
-      | { status: "navigating"; labelKey: CommandPaletteNavigatingLabelKey }
-      | { status: "error" }
-  ) => void;
-  setQuery: (value: string) => void;
+export type CommandPaletteAiState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "navigating"; labelKey: CommandPaletteNavigatingLabelKey }
+  | { status: "error" };
+
+/** State and handlers the palette container hands to its sections. */
+export interface CommandPaletteController {
   slug: string;
+  organizationId: string;
+  mode: CommandPaletteMode;
+  pathname: string;
+  query: string;
+  trimmedQuery: string;
+  page: CommandPalettePage | null;
+  aiState: CommandPaletteAiState;
+  aiModifierLabel: string;
+  hasAiCredits: boolean;
+  entityHitsBySection: EntityHitsBySection;
+  recents: readonly CommandPaletteRecent[];
+  close: () => void;
+  navigate: (path: string) => void;
+  selectRoute: (route: CommandRoute) => void;
+  selectEntity: (hit: EntityHit) => void;
+  selectRecent: (recent: CommandPaletteRecent) => void;
+  trackAction: (id: string) => void;
+  openFeedback: () => void;
+  openPage: (page: CommandPalettePage) => void;
+  closePage: () => void;
+  runAiSearch: () => Promise<void>;
+  changeQuery: (value: string) => void;
 }
 
-export interface CommandPalettePanelProps {
-  aiModifierLabel: string;
-  aiState: CommandPaletteDialogProps["aiState"];
-  entityHitsBySection: EntityHitsBySection;
-  handleOpenChange: (open: boolean) => void;
-  hasAiCredits: boolean;
-  isLoading: boolean;
-  isNavigatingAi: boolean;
-  navigate: (path: string) => void;
-  openChatWithQuery: (text: string) => void;
-  openFeedback: () => void;
-  openSettings: (section?: SettingsSectionId) => void;
-  query: string;
-  runAiSearch: () => Promise<void>;
+export interface UseCommandPaletteEntitySearchParams {
+  open: boolean;
+  /** False on sub pages and while AI navigation runs. */
+  enabled: boolean;
+  organizationId: string;
+  projectId: string | null;
+  isProjectResolved: boolean;
   slug: string;
-  trimmedQuery: string;
+  query: string;
+}
+
+export interface UseCommandPaletteAiParams {
+  query: string;
+  slug: string;
+  projectId: string | null;
+  close: () => void;
+  openSettings: (section: SettingsSectionId) => void;
+  /** Pushes a dashboard path, scoped to the active GEO project. */
+  pushPath: (path: string) => void;
 }

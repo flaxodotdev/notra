@@ -12,7 +12,6 @@ import {
 } from "@notra/schemas/dashboard/upload";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { getTranslations } from "next-intl/server";
 
 import {
   COMPANY_LOGO_FETCH_TIMEOUT_MS,
@@ -20,6 +19,7 @@ import {
 } from "@/constants/company-logo";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
 import { getChatAttachmentSizeBucket } from "@/lib/analytics/studio-events";
+import { getTranslations } from "@/lib/i18n/server";
 import { authorizedProcedure } from "@/lib/orpc/base";
 import { getFileExtension } from "@/lib/upload/mime";
 import { getR2Config } from "@/lib/upload/r2";
@@ -30,6 +30,7 @@ import {
   recordChatAttachment,
 } from "@/lib/upload/server";
 import { validateUpload } from "@/lib/upload/validate";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 
 import {
   assertNotDemo,
@@ -55,6 +56,7 @@ export const uploadRouter = {
   deleteChatUpload: authorizedProcedure
     .input(deleteChatUploadSchema)
     .handler(async ({ context, input }) => {
+      assertNotDemo();
       return deleteChatUpload({
         headers: context.headers,
         key: input.key,
@@ -63,6 +65,7 @@ export const uploadRouter = {
   recordChatAttachment: authorizedProcedure
     .input(recordChatAttachmentSchema)
     .handler(async ({ context, input }) => {
+      assertNotDemo();
       const result = await recordChatAttachment({
         headers: context.headers,
         key: input.key,
@@ -108,6 +111,7 @@ export const uploadRouter = {
         const tErrors = await getTranslations("errors.upload");
         throw forbidden(tErrors("noOrganizationAccess"));
       }
+      recordAuthorizedOrganization(context.headers, orgId, context.user.id);
 
       const sourceUrl = new URL(input.sourceUrl);
       const isAllowedSource =
@@ -188,6 +192,7 @@ export const uploadRouter = {
         const tErrors = await getTranslations("errors.upload");
         throw forbidden(tErrors("noOrganizationAccess"));
       }
+      recordAuthorizedOrganization(context.headers, orgId, context.user.id);
 
       let sanitized: string;
       try {

@@ -3,10 +3,9 @@ import { members } from "@notra/db/schema";
 import { organizationIdSchema } from "@notra/schemas/dashboard/auth/organization";
 import { ORPCError } from "@orpc/server";
 import { and, eq } from "drizzle-orm";
-import { getTranslations } from "next-intl/server";
-import { type NextRequest, NextResponse } from "next/server";
 
 import { retryTransientDbError } from "@/lib/db/retry";
+import { getTranslations } from "@/lib/i18n/server";
 import { getORPCRequestMemo } from "@/lib/orpc/context";
 import type {
   AuthenticatedUser,
@@ -14,6 +13,7 @@ import type {
   OrganizationAuth,
   OrganizationAuthDependencies,
 } from "@/types/auth/organization";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 
 import { getServerSession } from "./session";
 
@@ -62,6 +62,9 @@ export async function assertAuthenticatedWithDeps(
     });
   }
 
+  if (memo) {
+    memo.authenticatedUserId = user.id;
+  }
   return { session, user };
 }
 
@@ -137,6 +140,11 @@ export async function assertOrganizationAccessWithDeps(
     });
   }
 
+  recordAuthorizedOrganization(
+    headers,
+    safeOrganizationId.data,
+    authenticatedUser.id
+  );
   return {
     user: authenticatedUser,
     organizationId: safeOrganizationId.data,
@@ -161,7 +169,7 @@ export async function assertOrganizationAccess({
 }
 
 export async function withOrganizationAuth(
-  request: NextRequest,
+  request: Request,
   organizationId: string
 ): Promise<OrganizationAuth> {
   try {
@@ -178,7 +186,7 @@ export async function withOrganizationAuth(
     if (error instanceof ORPCError) {
       return {
         success: false,
-        response: NextResponse.json(
+        response: Response.json(
           {
             error: error.message,
             ...(error.data ? { details: error.data } : {}),

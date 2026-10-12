@@ -5,8 +5,8 @@ import type {
   SocialPublishSurface,
 } from "@notra/schemas/dashboard/social-accounts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { SOCIAL_PLATFORM_LABELS } from "@/constants/social-connect";
 import type { ConnectedAccount } from "@/types/hooks/connected-accounts";
@@ -65,15 +65,6 @@ export function useRefreshConnectedAccount(organizationId: string) {
   });
 }
 
-export interface PublishSocialPostInput {
-  accountId: string;
-  content: string;
-  from?: SocialPublishSurface;
-  mediaUrls?: string[];
-  scheduledAt?: string;
-  externalId?: string;
-}
-
 export function usePublishSocialPost(
   organizationId: string,
   platform: SocialConnectPlatform
@@ -82,113 +73,31 @@ export function usePublishSocialPost(
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: PublishSocialPostInput) =>
+    mutationFn: async (input: {
+      accountId: string;
+      content: string;
+      from?: SocialPublishSurface;
+      mediaUrls?: string[];
+    }) =>
       dashboardOrpc.socialAccounts.publish.call({
         organizationId,
         accountId: input.accountId,
         content: input.content,
         from: input.from,
         mediaUrls: input.mediaUrls,
-        scheduledAt: input.scheduledAt,
-        externalId: input.externalId,
       }),
-    onSuccess: (result, input) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({
         queryKey: dashboardOrpc.socialAccounts.list.queryKey({
           input: { organizationId },
         }),
       });
       toast.success(
-        input.scheduledAt
-          ? t("scheduled", {
-              platform: SOCIAL_PLATFORM_LABELS[platform],
-              username: result.username,
-            })
-          : t("posted", {
-              platform: SOCIAL_PLATFORM_LABELS[platform],
-              username: result.username,
-            })
+        t("posted", {
+          platform: SOCIAL_PLATFORM_LABELS[platform],
+          username: result.username,
+        })
       );
-    },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : tCommon("labels.failedToPublishPost")
-      );
-    },
-  });
-}
-
-export function useScheduledSocialPosts(
-  organizationId: string,
-  accountId: string | null,
-  externalId: string | null,
-  enabled: boolean
-) {
-  return useQuery(
-    dashboardOrpc.socialAccounts.scheduledList.queryOptions({
-      input: {
-        organizationId,
-        accountId: accountId ?? "",
-        externalId: externalId ?? "",
-      },
-      enabled: enabled && !!accountId && !!externalId,
-    })
-  );
-}
-
-export function useUpdateScheduledSocialPost(organizationId: string) {
-  const t = useTranslations("integrations.socialConnect");
-  const tCommon = useTranslations("common");
-  return useMutation({
-    mutationFn: async (input: {
-      accountId: string;
-      postId: string;
-      externalId: string;
-      content?: string;
-      mediaUrls?: string[];
-      scheduledAt?: string;
-    }) =>
-      dashboardOrpc.socialAccounts.scheduledUpdate.call({
-        organizationId,
-        accountId: input.accountId,
-        postId: input.postId,
-        externalId: input.externalId,
-        content: input.content,
-        mediaUrls: input.mediaUrls,
-        scheduledAt: input.scheduledAt,
-      }),
-    onSuccess: () => {
-      toast.success(t("scheduleUpdated"));
-    },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : tCommon("labels.failedToPublishPost")
-      );
-    },
-  });
-}
-
-export function useCancelScheduledSocialPost(organizationId: string) {
-  const t = useTranslations("integrations.socialConnect");
-  const tCommon = useTranslations("common");
-  return useMutation({
-    mutationFn: async (input: {
-      accountId: string;
-      postId: string;
-      externalId: string;
-    }) =>
-      dashboardOrpc.socialAccounts.scheduledCancel.call({
-        organizationId,
-        accountId: input.accountId,
-        postId: input.postId,
-        externalId: input.externalId,
-      }),
-    onSuccess: () => {
-      toast.success(t("scheduleCancelled"));
     },
     onError: (error) => {
       toast.error(

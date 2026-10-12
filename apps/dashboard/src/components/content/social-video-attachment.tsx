@@ -1,14 +1,14 @@
 "use client";
 
 import type { SocialVideoAttachment as SocialVideoDraft } from "@notra/schemas/dashboard/content";
-import { Loader2Icon, VideoIcon, XIcon } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { VideoIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslations } from "use-intl";
 
+import { Button } from "@/components/button";
 import type { ContentVideoMimeType } from "@/constants/content-video";
 import { SOCIAL_VIDEO } from "@/constants/social-video";
 import { uploadFile } from "@/lib/upload/client";
-import { cn } from "@/lib/utils";
 import { sniffContentVideoMime } from "@/utils/validate-content-video";
 
 interface SocialVideoAttachmentProps {
@@ -81,30 +81,20 @@ export function SocialVideoAttachment({
 
   if (value) {
     return (
-      <div className="space-y-1.5">
-        <div className="relative overflow-hidden rounded-lg border">
-          {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- uploads do not include a caption file */}
-          <video
-            className="max-h-56 w-full bg-black"
-            controls
-            preload="metadata"
-            src={value.url}
-          />
-          {!disabled && (
-            <button
-              aria-label={t("removeVideo")}
-              className={cn(
-                "absolute top-2 right-2 rounded-full bg-black/60 p-1.5",
-                "text-white hover:bg-black/80"
-              )}
-              onClick={() => onChange(null)}
-              type="button"
-            >
-              <XIcon className="size-4" />
-            </button>
-          )}
-        </div>
-        {error ? <p className="text-destructive text-sm">{error}</p> : null}
+      <div className="space-y-2">
+        {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- uploads do not include a caption file */}
+        <video
+          className="max-h-56 w-full rounded-lg border bg-black"
+          controls
+          preload="metadata"
+          src={value.url}
+        />
+        {!disabled && (
+          <Button onClick={() => onChange(null)} size="sm" variant="ghost">
+            <XIcon data-icon="inline-start" />
+            {t("removeVideo")}
+          </Button>
+        )}
       </div>
     );
   }
@@ -124,25 +114,21 @@ export function SocialVideoAttachment({
         ref={inputRef}
         type="file"
       />
-      <button
-        className={cn(
-          "text-muted-foreground flex items-center gap-1.5 text-sm",
-          "hover:text-foreground disabled:opacity-50"
-        )}
-        disabled={disabled || uploading}
-        onClick={() => inputRef.current?.click()}
-        type="button"
-      >
-        {uploading ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <VideoIcon className="size-4" />
-        )}
-        {uploading ? t("uploadingVideo") : t("attachVideo")}
-      </button>
-      <p className="text-muted-foreground text-xs">
-        {t("attachVideoHint", { maxMb: SOCIAL_VIDEO.maxBytesMb })}
-      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          disabled={disabled}
+          loading={uploading}
+          onClick={() => inputRef.current?.click()}
+          size="sm"
+          variant="outline"
+        >
+          <VideoIcon data-icon="inline-start" />
+          {uploading ? t("uploadingVideo") : t("attachVideo")}
+        </Button>
+        <p className="text-muted-foreground text-xs">
+          {t("attachVideoHint", { maxMb: SOCIAL_VIDEO.maxBytesMb })}
+        </p>
+      </div>
       {error ? <p className="text-destructive text-sm">{error}</p> : null}
     </div>
   );

@@ -3,6 +3,10 @@ import type { GeoWriterBrief } from "@notra/ai/types/geo-writer";
 import type { GeoWriterSourceKind } from "@notra/db/types/geo-writer";
 import type {
   AiTrafficResponse,
+  WebAnalyticsOutcome,
+  WebAnalyticsResponse,
+  WebEngagement,
+  WebAnalyticsSource,
   GeoAnswerSource,
   GeoChangeEvent,
   GeoChangesSummary,
@@ -16,6 +20,7 @@ import type {
   GeoEngineFamily,
   GeoIngestFramework,
   GeoIngestPackageManager,
+  GeoDrainProvider,
   GeoIngestSetupResponse,
   GeoJourney,
   GeoJourneyDailyPoint,
@@ -30,6 +35,7 @@ import type {
   GeoPresenceStatus,
   GeoProject,
   GeoPromptHistoryCheck,
+  GeoResolvedModelCatalog,
   GeoPromptIntent,
   GeoPromptReceiptView,
   GeoPromptResult,
@@ -54,26 +60,25 @@ import type {
   GeoTrafficSource,
   GeoTrafficSourceGroupDefinition,
   GeoTrafficTotals,
-  GeoTrafficTrendRow,
   GeoVisitorType,
   MentionProviderRow,
   ShareOfVoiceRow,
   GeoPromptTranslationLanguagePlan,
   GeoPromptTranslationEntry,
 } from "@notra/geo-core/types/geo";
-import type { useTranslations } from "next-intl";
+import type { TableColumn } from "@notra/ui/components/ui/data-table";
 import type {
   ComponentProps,
   ComponentPropsWithoutRef,
-  PointerEventHandler,
   ReactNode,
 } from "react";
+import type { useTranslations } from "use-intl";
 
 import type { Button } from "@/components/button";
-import type { TableColumn } from "@/components/motion/table";
 import type { GeoPromptDetailSurface } from "@/types/analytics/geo-events";
 import type { ChartConfig, ChartSeriesColors } from "@/types/charts";
 import type { GeoPromptDetailState } from "@/types/geo-prompt-detail";
+import type { GeoScanModelMenuProps } from "@/types/geo-scan-activity";
 
 export interface GeoProjectCreateInput {
   name: string;
@@ -157,29 +162,29 @@ export interface TrafficPageViewProps {
   projectId: string | undefined;
   settings: GeoSettings | null;
   isEmptyTraffic: boolean;
-  revealActive: boolean;
   geoRange: GeoRangeControl;
   traffic: AiTrafficResponse | undefined;
   isTrafficPending: boolean;
-  inventoryPages: readonly GeoTrafficPage[];
   knownHosts: readonly string[];
+  knownPaths: readonly string[];
+  pathQuery: string;
   isPagesPending: boolean;
   trafficPages: readonly GeoTrafficPage[];
   ingestSetup: GeoIngestSetupResponse | undefined;
+  web: WebAnalyticsResponse | undefined;
 }
 
 export interface GeoTrafficSkeletonProps {
   geoRange?: GeoRangeControl;
 }
 
-export interface GeoLayoutProps {
-  children: ReactNode;
-  modal: ReactNode;
-  params: Promise<{ slug: string }>;
-}
-
 export interface GeoProjectScopeProps {
   slug: string;
+  children: ReactNode;
+}
+
+export interface GeoLiveProviderProps {
+  organizationId: string;
   children: ReactNode;
 }
 
@@ -197,8 +202,7 @@ export interface GeoOverviewPageReady {
   isScanning: boolean;
   revealActive: boolean;
   tabs: GeoTabsProps;
-  scanPreflight: ScanPreflightDialogProps;
-  onRunScan: () => void;
+  scanMenu: GeoScanModelMenuProps;
 }
 
 export type GeoOverviewPageModel =
@@ -208,10 +212,6 @@ export type GeoOverviewPageModel =
 
 export interface GeoOverviewLoadedProps {
   page: GeoOverviewPageReady;
-}
-
-export interface GeoScanSpinnerProps {
-  visible: boolean;
 }
 
 export interface GeoStatDeltaLabels {
@@ -234,6 +234,8 @@ export interface PromptEngineSwitcherProps {
   results: readonly { engine: string }[];
   active: { engine: string };
   onChange: (engine: string, direction: number) => void;
+  /** Pointer intent on a menu item; warm that engine's answer. */
+  onPrefetch?: (engine: string) => void;
 }
 
 export interface GeoSettingsUpsertOptions {
@@ -252,6 +254,11 @@ export interface GeoPromptTableRow {
   bestPosition: number | null;
   presence: GeoPresenceStatus | null;
   results: GeoPromptResultSummary[];
+}
+
+export interface GeoPromptBrandCount {
+  name: string;
+  count: number;
 }
 
 export type GeoPromptIntentFilter = GeoPromptIntent | "all";
@@ -294,10 +301,6 @@ export interface PromptTagChipsProps {
   tags: string[];
 }
 
-export interface PromptIntentBadgeProps {
-  intent: GeoPromptIntent;
-}
-
 export interface PromptPresenceBadgeProps {
   status: GeoPresenceStatus | null;
 }
@@ -305,23 +308,6 @@ export interface PromptPresenceBadgeProps {
 export interface PromptTagsDialogTarget {
   mode: "edit" | "bulk";
   rows: GeoPromptTableRow[];
-}
-
-export interface SlidingTabIndicatorProps {
-  /** Active tab value; a change starts the slide. */
-  value: string;
-}
-
-export interface TabIndicatorBox {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-export interface PromptsPageTabIconProps {
-  children: ReactNode;
-  pinned?: boolean;
 }
 
 export interface PromptsPageTabCountProps {
@@ -429,6 +415,7 @@ export type GeoBrandSearchHandlerInput = GeoScopeInput & GeoBrandSearchInput;
 
 export interface GeoTrafficLogQueryOptions {
   host?: string;
+  path?: string;
 }
 
 export interface GeoJourneyPathNode {
@@ -519,6 +506,13 @@ export interface SheetStat {
 
 export interface SheetStatGridProps {
   stats: readonly SheetStat[];
+}
+
+export interface TrafficSheetHeroProps {
+  stats: readonly SheetStat[];
+  series: { day: string; value: number }[];
+  chartTitle: string;
+  chartLabel: string;
 }
 
 export type JourneyGroupSheetStat =
@@ -614,10 +608,11 @@ export interface DailyTrendChartProps {
   label: string;
 }
 
-export interface JourneyCountCellProps {
+export interface GeoCountCellProps {
   label: string;
-  journeys: number;
-  previousJourneys: number;
+  value: number;
+  previousValue?: number | null;
+  unavailableHint?: string;
 }
 
 export interface JourneyPathPillProps {
@@ -643,6 +638,12 @@ export interface GeoPackageManagerIconProps {
 export interface GeoIngestSetupPanelProps {
   setup: GeoIngestSetupResponse | undefined;
   className?: string;
+}
+
+export interface GeoIngestDrainSetupProps {
+  provider: GeoDrainProvider;
+  setup: GeoIngestSetupResponse | undefined;
+  onCopy: () => void;
 }
 
 export interface TrafficEmptyProps {
@@ -682,6 +683,7 @@ export interface AiTrafficCardProps {
   pages: readonly GeoTrafficPage[];
   settingsHref: string;
   isPending?: boolean;
+  showHero?: boolean;
 }
 
 export interface GeoTrafficPageSource {
@@ -704,10 +706,29 @@ export interface TrafficPageSourcesCellProps {
   group: GeoTrafficPageGroup;
 }
 
+export interface TrafficPageColumnLabels {
+  page: string;
+  sources: string;
+  visits: string;
+}
+
+export interface TrafficSourceMemberColumnLabels {
+  bot: string;
+  source: string;
+  purpose: string;
+  visits: string;
+  lastSeen: string;
+  purposeLabel: (category: string) => string;
+}
+
+export interface TrafficSourcePageColumnLabels {
+  page: string;
+  visits: string;
+}
+
 export interface TrafficPagesCardProps {
   pages: readonly GeoTrafficPage[];
   isPending?: boolean;
-  hosts?: readonly string[];
 }
 
 export interface TrafficPagesResultsProps {
@@ -717,10 +738,6 @@ export interface TrafficPagesResultsProps {
 }
 
 export interface TrafficPagesFiltersProps {
-  showHostFilter: boolean;
-  hostSelectValue: string;
-  hostOptions: readonly string[];
-  onHostChange: (value: string) => void;
   pathQuery: string;
   onPathQueryChange: (value: string) => void;
 }
@@ -920,6 +937,11 @@ export interface AiTrafficLogCardProps {
 export interface CitationsTableProps {
   entries: GeoTrafficLogEntry[];
   height: number;
+  /**
+   * The query the entries answer; rows only animate in while it stays the
+   * same. Undefined while the entries are another query's placeholder.
+   */
+  liveKey?: string;
   loading?: boolean;
 }
 
@@ -963,6 +985,21 @@ export interface TrafficSourceSheetContentProps {
   pages: readonly GeoTrafficPage[];
 }
 
+export interface UseTrafficSourceColumnsOptions {
+  /**
+   * Daily series per row, keyed by `trafficGroupKey(band, key)`. Rows without
+   * a series show the visit count alone.
+   */
+  seriesByKey?: ReadonlyMap<string, { day: string; value: number }[]>;
+  /**
+   * Rows are single bots of one source rather than source groups: the name
+   * drops the bot count and the purpose is one plain badge.
+   */
+  rowsAreBots?: boolean;
+  /** Replaces the first column's header, e.g. with a titled count. */
+  sourceHeader?: ReactNode;
+}
+
 export interface TrafficSourceGroupCellProps {
   group: GeoTrafficSourceGroup;
 }
@@ -975,16 +1012,6 @@ export interface GeoTrafficPurposeTotal {
   category: string;
   visits: number;
   members: string[];
-}
-
-export interface TrafficBreakdownCardProps {
-  icon: ReactNode;
-  title: string;
-  aside?: ReactNode;
-  align?: "start" | "center" | "end";
-  children: ReactNode;
-  onPointerEnter?: PointerEventHandler<HTMLDivElement>;
-  onPointerLeave?: PointerEventHandler<HTMLDivElement>;
 }
 
 export interface TrafficSourceGroupIconProps {
@@ -1032,9 +1059,31 @@ export interface CodeSnippetProps {
   className?: string;
   filename?: string;
   headerEnd?: ReactNode;
+  /** Variant switcher shown in the header (e.g. `CodeSnippetTabs`). */
+  tabs?: ReactNode;
   variant?: "command" | "panel";
   label?: string;
   onCopy?: () => void;
+}
+
+export interface CodeSnippetTabOption {
+  value: string;
+  label: string;
+  icon?: ReactNode;
+}
+
+export interface CodeSnippetTabsProps {
+  label: string;
+  value: string;
+  options: readonly CodeSnippetTabOption[];
+  onValueChange: (value: string) => void;
+}
+
+export interface CopyPromptButtonProps {
+  prompt: string;
+  disabled?: boolean;
+  onCopy?: () => void;
+  className?: string;
 }
 
 export interface CopyCodeButtonProps {
@@ -1048,7 +1097,7 @@ export type GeoSettingsFormSection = "brand" | "languages" | "models";
 export interface GeoSettingsFormProps {
   organizationId: string;
   settings: GeoSettings | null;
-  catalog: GeoModelCatalog;
+  catalog: GeoResolvedModelCatalog;
   promptCount?: number;
   hideHeader?: boolean;
   section?: GeoSettingsFormSection;
@@ -1077,7 +1126,7 @@ export interface GeoLanguagesSectionProps {
 
 export interface GeoModelsSectionProps {
   id: string;
-  catalog: GeoModelCatalog;
+  catalog: GeoResolvedModelCatalog;
   engines: string[];
   onEnginesChange: (values: string[]) => void;
   enforceZdr: boolean;
@@ -1108,7 +1157,7 @@ export interface GeoSettingsAutosaveInput {
   scanIntervalHours: number;
   canEnforceZdr: boolean;
   planLoading: boolean;
-  catalog: GeoModelCatalog;
+  catalog: GeoResolvedModelCatalog;
   settings: GeoSettings | null;
   brandDomain: string | null;
 }
@@ -1129,7 +1178,7 @@ export interface GeoTagListProps {
 }
 
 export interface GeoEnginePickerProps {
-  catalog: GeoModelCatalog;
+  catalog: GeoResolvedModelCatalog;
   selected: string[];
   onChange: (values: string[]) => void;
   enforceZdr: boolean;
@@ -1147,7 +1196,7 @@ export interface GeoEnginePickerProps {
 }
 
 export interface GeoEngineProviderListProps {
-  catalog: GeoModelCatalog;
+  catalog: GeoResolvedModelCatalog;
   disabled: boolean;
   expanded: ReadonlySet<string>;
   id: string;
@@ -1170,7 +1219,7 @@ export interface GeoEngineProviderListProps {
 
 export interface GeoEngineProviderRowProps {
   approvedNonZdrIds: ReadonlySet<string>;
-  catalog: GeoModelCatalog;
+  catalog: GeoResolvedModelCatalog;
   disabled: boolean;
   expanded: boolean;
   hiddenCount: number;
@@ -1194,6 +1243,7 @@ export interface GeoEngineProviderRowProps {
 export interface GeoEngineProviderModelsProps {
   additionalModels: readonly GeoModelCatalogEntry[];
   approvedNonZdrIds: ReadonlySet<string>;
+  catalog: GeoResolvedModelCatalog;
   disabled: boolean;
   id: string;
   lastSelected: boolean;
@@ -1215,6 +1265,7 @@ export interface GeoLanguagePickerProps {
   labeled?: boolean;
   /** Id for the search input, so a visible label can point at it. */
   inputId?: string;
+  inputClassName?: string;
   /** The project's prompt language; it cannot be removed. */
   lockedLanguage?: string | null;
 }
@@ -1291,6 +1342,41 @@ export interface CompetitorShareCardProps {
   isScanning?: boolean;
   organizationSlug?: string;
   organizationId?: string;
+}
+
+export interface EngineMatrixColumn {
+  family: string;
+  /** Engine id with the most checks, used for the column icon. */
+  engine: string;
+  label: string;
+  checks: number;
+}
+
+export interface EngineMatrixRow {
+  brand: string;
+  own: boolean;
+  /** Mention rate per column, `null` where the engine has no checks. */
+  rates: (number | null)[];
+  /** Answers mentioning the brand, per column. */
+  mentions: number[];
+}
+
+export interface EngineMatrix {
+  columns: EngineMatrixColumn[];
+  rows: EngineMatrixRow[];
+  minRate: number;
+  maxRate: number;
+}
+
+export interface CompetitorEngineMatrixCardProps {
+  organizationId: string;
+  range: GeoRangeQuery;
+  companyName: string | null;
+  aliases?: readonly string[];
+  competitors?: GeoCompetitor[];
+  trackedEngines?: readonly string[];
+  isScanning?: boolean;
+  organizationSlug?: string;
 }
 
 export interface CompetitorEditDialogProps {
@@ -1426,7 +1512,6 @@ export interface GeoRemoveDialogProps {
   description: string | ((items: string[]) => string);
   actionLabel?: string;
   destructive?: boolean;
-  pendingLabel?: string;
   title?: string;
 }
 
@@ -1514,23 +1599,10 @@ export interface PromptAnswerContentProps extends Omit<
 }
 
 export interface PromptReceiptHistoryProps {
-  title: string;
   entries: PromptHistoryEntry[];
   isLoading: boolean;
-  /** Tracked competitors, used to resolve brand logos by domain. */
-  competitors?: readonly GeoCompetitor[];
   /** Opens the answer captured by one scan. Rows become clickable when set. */
   onSelect?: (check: GeoPromptHistoryCheck) => void;
-}
-
-export interface PromptHistoryBrandTokenProps {
-  name: string;
-  competitors: readonly GeoCompetitor[] | undefined;
-}
-
-export interface PromptHistoryNewCompetitorsCellProps {
-  names: readonly string[];
-  competitors: readonly GeoCompetitor[] | undefined;
 }
 
 export interface GeoAnswerActionsProps {
@@ -1631,11 +1703,6 @@ export interface GeoSectionSkeletonProps {
   className?: string;
 }
 
-export interface GeoTableSkeletonProps {
-  rows: number;
-  toolbar?: ReactNode;
-}
-
 export interface GeoSettingsSkeletonSectionProps {
   title: string;
   description: string;
@@ -1685,10 +1752,16 @@ export interface TrafficTrendMetric {
 export interface TrafficHeroProps {
   totals: GeoTrafficTotals;
   previousTotals: GeoTrafficTotals | null;
-  rows: readonly GeoTrafficTrendRow[];
+  days: readonly string[];
   groups: readonly GeoTrafficSourceGroup[];
   points: readonly GeoTrafficPoint[];
   settingsHref: string;
+}
+
+export interface TrafficZoomChipProps {
+  rows: readonly { day: string }[];
+  zoomed: boolean;
+  onReset: () => void;
 }
 
 export interface TrafficHeroMetricProps {
@@ -1819,4 +1892,81 @@ export interface PromptTranslationTextProps {
   translating: boolean;
   onEdit: () => void;
   onReset: () => void;
+}
+
+export interface WebTrendShare {
+  people: number;
+  agents: number;
+}
+
+export interface WebTrendRow {
+  day: string;
+  rawDay: string;
+  people: number;
+  agents: number;
+  [key: string]: string | number;
+}
+
+export interface WebVisitorsSectionProps {
+  web: WebAnalyticsResponse;
+  traffic: AiTrafficResponse | undefined;
+  range?: GeoRangeQuery;
+  /** Notra Sites only: visible time per view, replaces the AI-referred metric. */
+  engagement?: WebEngagement;
+}
+
+export interface WebMetricProps {
+  label: string;
+  value: number;
+  previous: number;
+  /** Durations are in seconds and skip the delta until both periods have data. */
+  format?: "count" | "duration";
+}
+
+export interface WebOutcomesTableProps {
+  outcomes: readonly WebAnalyticsOutcome[];
+}
+
+export interface WebReferrerIconProps {
+  source: WebAnalyticsSource;
+}
+
+export interface WebBreakdownRow {
+  key: string;
+  label: ReactNode;
+  sortLabel: string;
+  value: number;
+  previous?: number | null;
+  fromAi?: number;
+  avgSeconds?: number | null;
+}
+
+export interface WebBreakdownTableProps {
+  title: string;
+  nameHeader: string;
+  valueHeader: string;
+  rows: readonly WebBreakdownRow[];
+  /** Pixel height, used as both floor and cap. Side-by-side tables share one value. */
+  height?: number;
+  showFromAi?: boolean;
+  showAvgTime?: boolean;
+}
+
+export interface TrafficDomainSelectProps {
+  hosts: readonly string[];
+}
+
+export interface TrafficPathEmptyProps {
+  geoRange: GeoRangeControl;
+}
+
+export interface TrafficPathFilterProps {
+  paths: readonly string[];
+}
+
+export interface TrafficExportButtonProps {
+  traffic: AiTrafficResponse | undefined;
+  web: WebAnalyticsResponse | undefined;
+  range: GeoRangeQuery;
+  path: string;
 }

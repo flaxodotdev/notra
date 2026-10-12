@@ -13,7 +13,7 @@ import {
 import type { ComposeOption } from "echarts/core";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { useLocale } from "next-intl";
+import { useLocale } from "use-intl";
 import { motion, useReducedMotion } from "motion/react";
 import { tween } from "@notra/ui/lib/motion";
 import {
@@ -25,11 +25,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { withLocaleTooltip, withLocaleValueAxis } from "@/utils/chart-locale";
+import { buildZeroBaselineAxisLine } from "@/utils/chart-zero-baseline";
 import { EChartsPlotFrame } from "@/components/charts/echarts-plot-frame";
 import {
   Brush,
@@ -71,6 +73,7 @@ import {
   tooltipBaseOption,
   tooltipShell,
 } from "@/components/evilcharts/ui/echarts-tooltip";
+import { withTooltipSizeMotion } from "@/utils/chart-tooltip-size";
 import type {
   ChartConfig,
   ChartMarker,
@@ -508,7 +511,7 @@ function buildGlowSeries(params: {
   paint: string | echarts.graphic.LinearGradient;
   slots: string[];
   values: (number | null)[];
-  curve: { smooth: boolean; step: "middle" | false };
+  curve: { smooth: boolean; step: "middle" | false; smoothMonotone?: "x" };
   connectNulls: boolean;
   z: number;
   selectionDim: number;
@@ -553,6 +556,7 @@ function buildGlowSeries(params: {
       type: "line",
       data: glowData,
       smooth: curve.smooth,
+      smoothMonotone: curve.smoothMonotone,
       step: curve.step,
       connectNulls,
       silent: true,
@@ -606,11 +610,16 @@ function buildGlowSeries(params: {
 function curveConfig(curveType: CurveType): {
   smooth: boolean;
   step: "middle" | false;
+  smoothMonotone?: "x";
 } {
   // Recharts "step" is d3's curveStep: the transition happens at the MIDPOINT
   // between points, so each dot sits centered on its plateau.
   if (curveType === "step") return { smooth: false, step: "middle" };
   if (curveType === "linear") return { smooth: false, step: false };
+  // "monotone" never overshoots between points, so a flat stretch stays flat.
+  if (curveType === "monotone" || curveType === "monotoneX") {
+    return { smooth: true, step: false, smoothMonotone: "x" };
+  }
   return { smooth: true, step: false };
 }
 
@@ -790,7 +799,11 @@ function buildMainAxes(ctx: OptionBuildContext): {
     nameLocation: "middle",
     nameGap: 30,
     nameTextStyle: { color: axisLabelColor, fontSize: 10 },
-    axisLine: { show: false },
+    axisLine: buildZeroBaselineAxisLine(
+      ctx.data,
+      isLoading ? [] : ctx.lines.map((line) => line.dataKey),
+      axisLabelColor
+    ),
     // Tick DOTS: a near-zero-length tick whose round caps form a true circle,
     // in the gridline gray (flattened opaque so the caps don't stack).
     axisTick: {
@@ -959,7 +972,7 @@ function buildTooltipOption(ctx: OptionBuildContext): TooltipComponentOption {
       axisPointerColor: withAlpha(tokens.mutedForeground, AXIS_POINTER_OPACITY),
       strokeWidth: AXIS_POINTER_WIDTH,
     }),
-    formatter: createTooltipFormatter(ctx),
+    formatter: withTooltipSizeMotion(createTooltipFormatter(ctx)),
   };
 }
 
@@ -1020,6 +1033,7 @@ function buildBrushOption(
       yAxisIndex: 1,
       data: data.map((row) => Number(row[key]) || 0),
       smooth: curve.smooth,
+      smoothMonotone: curve.smoothMonotone,
       step: curve.step,
       connectNulls: line.connectNulls,
       silent: true,
@@ -1067,6 +1081,7 @@ function buildLoadingOption(
         type: "line",
         data: ctx.loadingData(),
         smooth: curve.smooth,
+        smoothMonotone: curve.smoothMonotone,
         step: curve.step,
         showSymbol: false,
         silent: true,
@@ -1235,6 +1250,7 @@ function buildLineSeries(ctx: OptionBuildContext): LineSeriesOption[] {
       type: "line",
       data: toPoints(mainValues),
       smooth: curve.smooth,
+      smoothMonotone: curve.smoothMonotone,
       step: curve.step,
       connectNulls: line.connectNulls,
       cursor: line.isClickable ? "pointer" : "default",
@@ -1304,6 +1320,7 @@ function buildLineSeries(ctx: OptionBuildContext): LineSeriesOption[] {
         // and their colors can't mix.
         data: revealActive ? sliceFrom(values, revealIndex as number) : values,
         smooth: curve.smooth,
+        smoothMonotone: curve.smoothMonotone,
         step: curve.step,
         connectNulls: false,
         silent: true,
@@ -1337,6 +1354,7 @@ function buildLineSeries(ctx: OptionBuildContext): LineSeriesOption[] {
       type: "line",
       data: toPoints(bufferValues),
       smooth: curve.smooth,
+      smoothMonotone: curve.smoothMonotone,
       step: curve.step,
       connectNulls: true,
       silent: true,
@@ -1584,17 +1602,19 @@ export function EChartsLineChart<TData extends Record<string, unknown>>({
   );
 
   // Refresh the handlers' snapshot of the latest callbacks/flags every render.
-  live.handlers = {
-    onBrushChange: brushSlot.onChange,
-    onSelectionChange,
-    clickableKeys,
-    selectedDataKey,
-    brushFormatLabel: brushSlot.formatLabel,
-    seriesKeys,
-    enableHoverHighlight,
-    enableHoverReveal,
-  };
-  live.dataLength = data.length;
+  useLayoutEffect(() => {
+    live.handlers = {
+      onBrushChange: brushSlot.onChange,
+      onSelectionChange,
+      clickableKeys,
+      selectedDataKey,
+      brushFormatLabel: brushSlot.formatLabel,
+      seriesKeys,
+      enableHoverHighlight,
+      enableHoverReveal,
+    };
+    live.dataLength = data.length;
+  });
 
   const toggleSelection = useCallback(
     (key: string) => {
@@ -1615,11 +1635,10 @@ export function EChartsLineChart<TData extends Record<string, unknown>>({
         live.hoveredKey = null;
         setHoveredDataKey(null);
       }
-      setSelectedDataKey((prev) => {
-        const next = prev === key ? null : key;
-        onSelectionChange?.(next);
-        return next;
-      });
+      const next = live.handlers.selectedDataKey === key ? null : key;
+      live.handlers.selectedDataKey = next;
+      setSelectedDataKey(next);
+      onSelectionChange?.(next);
     },
     [live, onSelectionChange]
   );

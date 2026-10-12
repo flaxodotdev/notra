@@ -30,7 +30,7 @@ test("rejects another organization's objects on the shared host", () => {
       [`${R2_HOST}/organization/org_2/clip.mp4`],
       "org_1"
     )
-  ).toThrow("Media URL host is not allowed");
+  ).toThrow("Media URL belongs to another organization");
   expect(() =>
     assertAllowedSocialMediaUrls(
       [`${R2_HOST}/organization/org_1/content/clip.mp4`],

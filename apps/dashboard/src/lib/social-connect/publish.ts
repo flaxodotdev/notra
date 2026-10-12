@@ -14,11 +14,12 @@ import {
   isSocialConnectPlatformConfigured,
 } from "@/lib/social-connect/client";
 import {
+  isSocialDeliveryUnknown,
   SocialConnectConfigError,
+  SocialConnectDeliveryUnknownError,
   SocialConnectRequestError,
 } from "@/lib/social-connect/errors";
 import { assertAllowedSocialMediaUrls } from "@/lib/social-connect/media-urls";
-import { assertOwnExternalId } from "@/lib/social-connect/scheduled";
 import type { PublishSocialPostParams } from "@/types/services/social-connect";
 
 const RESULT_POLL_ATTEMPTS = 5;
@@ -49,16 +50,6 @@ function getResultErrorMessage(result: SocialPostResult): string {
 const publishDemoPost = Effect.fn("publishDemoPost")(function* (
   params: PublishSocialPostParams
 ) {
-  // Demo posts publish immediately — accepting a schedule would persist a
-  // schedule ref for a provider schedule that was never created.
-  if (params.scheduledAt) {
-    return yield* Effect.fail(
-      new SocialConnectRequestError({
-        message: "Scheduling is not available in demo mode",
-        cause: null,
-      })
-    );
-  }
   const account = yield* Effect.tryPromise({
     try: () =>
       db.query.connectedSocialAccounts.findFirst({
@@ -104,8 +95,7 @@ const publishDemoPost = Effect.fn("publishDemoPost")(function* (
     postUrl: null,
     username: account.username,
     platform: account.provider,
-    scheduledAt: null,
-    status: "processed" as const,
+    confirmed: true,
   };
 });
 
@@ -159,8 +149,8 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
       })
     );
   }
-  // The global check above passes when either platform key exists — verify
-  // this account's platform key before constructing its client.
+  // The check above passes when either platform has a key; this account
+  // needs its own platform's key.
   if (!isSocialConnectPlatformConfigured(parsedPlatform.data)) {
     return yield* Effect.fail(
       new SocialConnectConfigError({
@@ -170,84 +160,71 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
   }
   const client = getSocialConnectClient(parsedPlatform.data);
 
-  if (params.scheduledAt) {
-    const scheduledTime = Date.parse(params.scheduledAt);
-    if (Number.isNaN(scheduledTime) || scheduledTime <= Date.now()) {
-      return yield* Effect.fail(
-        new SocialConnectRequestError({
-          message: "Scheduled time must be in the future",
-          cause: null,
-        })
-      );
-    }
-  }
-
-  if (params.externalId) {
-    yield* assertOwnExternalId(params.externalId, params.accountId);
-  }
-
-  try {
-    assertAllowedSocialMediaUrls(params.mediaUrls, params.organizationId);
-  } catch (error) {
-    return yield* Effect.fail(error as SocialConnectRequestError);
-  }
-
-  const post = yield* Effect.tryPromise({
+  yield* Effect.try({
     try: () =>
-      client.socialPosts.create({
-        caption: params.content,
-        social_accounts: [account.providerAccountId],
-        ...(params.mediaUrls?.length
-          ? { media: params.mediaUrls.map((url) => ({ url })) }
-          : {}),
-        ...(params.scheduledAt ? { scheduled_at: params.scheduledAt } : {}),
-        ...(params.externalId ? { external_id: params.externalId } : {}),
-      }),
+      assertAllowedSocialMediaUrls(params.mediaUrls, params.organizationId),
     catch: (cause) =>
-      new SocialConnectRequestError({
-        message: "Failed to publish post",
-        cause,
-      }),
+      cause instanceof SocialConnectRequestError
+        ? cause
+        : new SocialConnectRequestError({
+            message: "Invalid media URL",
+            cause: null,
+          }),
   });
 
-  if (params.scheduledAt) {
-    return {
-      postId: post.id,
-      platformPostId: null,
-      postUrl: null,
-      username: account.username,
-      platform: account.provider,
-      scheduledAt: params.scheduledAt,
-      status: "scheduled" as const,
-    };
-  }
+  // Creating a post is not idempotent, so the SDK must not resend it on a
+  // timeout or a server error: the first request may have posted already.
+  const post = yield* Effect.tryPromise({
+    try: () =>
+      client.socialPosts.create(
+        {
+          caption: params.content,
+          social_accounts: [account.providerAccountId],
+          ...(params.mediaUrls?.length
+            ? { media: params.mediaUrls.map((url) => ({ url })) }
+            : {}),
+        },
+        { maxRetries: 0 }
+      ),
+    catch: (cause) =>
+      isSocialDeliveryUnknown(cause)
+        ? new SocialConnectDeliveryUnknownError({
+            message: "The platform did not confirm the post",
+            cause,
+          })
+        : new SocialConnectRequestError({
+            message: "Failed to publish post",
+            cause,
+          }),
+  });
 
-  let postResult: SocialPostResult | null = null;
-  for (let attempt = 0; attempt < RESULT_POLL_ATTEMPTS; attempt += 1) {
-    yield* Effect.sleep(RESULT_POLL_DELAY);
-    const results = yield* Effect.tryPromise({
-      try: () => client.socialPostResults.list({ post_id: [post.id] }),
-      catch: (cause) =>
-        new SocialConnectRequestError({
-          message: "Failed to load published post",
-          cause,
-        }),
-    }).pipe(Effect.catch(() => Effect.succeed(null)));
-
-    postResult = results?.data.at(0) ?? null;
-    if (postResult) {
-      break;
-    }
-  }
+  // The platform publishes asynchronously; poll until it reports a result.
+  const postResult = yield* Effect.sleep(RESULT_POLL_DELAY).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: () => client.socialPostResults.list({ post_id: [post.id] }),
+        catch: (cause) =>
+          new SocialConnectRequestError({
+            message: "Failed to load published post",
+            cause,
+          }),
+      })
+    ),
+    Effect.map(
+      (results): SocialPostResult | null => results.data.at(0) ?? null
+    ),
+    Effect.catch(() => Effect.succeed(null)),
+    Effect.repeat({
+      until: (result) => result !== null,
+      times: (params.resultPollAttempts ?? RESULT_POLL_ATTEMPTS) - 1,
+    })
+  );
 
   if (postResult && !postResult.success) {
     return yield* Effect.fail(
       new SocialConnectRequestError({
         message: getResultErrorMessage(postResult),
-        // Retain the provider result: `cause === null` is reserved for own
-        // validation failures, and the mapper needs the cause to apply
-        // duplicate-content/status handling instead of raw text.
-        cause: postResult,
+        cause: null,
       })
     );
   }
@@ -280,7 +257,7 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
     postUrl,
     username: account.username,
     platform: account.provider,
-    scheduledAt: null,
-    status: "processed" as const,
+    // The provider accepted the post but reported no platform result yet.
+    confirmed: postResult !== null,
   };
 });

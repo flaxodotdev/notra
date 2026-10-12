@@ -7,6 +7,7 @@ export const postSchema = z.object({
   description: z.string().min(1),
   date: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  image: z.string().startsWith("/").optional(),
   author: z
     .string()
     .refine(
