@@ -5,6 +5,7 @@ import {
   Delete02Icon,
   Dots,
   Edit02Icon,
+  InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { API_KEY_DEFAULT_SCOPES } from "@notra/schemas/constants/dashboard/api-keys";
@@ -321,6 +322,7 @@ export function AccountApiKeysSection() {
       </div>
 
       <Alert variant="info">
+        <HugeiconsIcon icon={InformationCircleIcon} />
         <AlertDescription>
           One key for every organization you belong to. Send{" "}
           <span className="font-mono">X-Notra-Organization-Id</span> to choose a
@@ -353,7 +355,14 @@ export function AccountApiKeysSection() {
         }}
         open={dialogOpen}
       >
-        <ResponsiveDialogContent className="flex max-h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <ResponsiveDialogContent
+          className={
+            createdKey
+              ? "sm:max-w-md"
+              : "flex max-h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+          }
+          drawerClassName="[&>form]:px-0"
+        >
           {createdKey ? (
             <>
               <ResponsiveDialogHeader className="shrink-0">
@@ -361,8 +370,9 @@ export function AccountApiKeysSection() {
                   View account API key
                 </ResponsiveDialogTitle>
               </ResponsiveDialogHeader>
-              <div className="space-y-4 p-4">
+              <div className="space-y-4">
                 <Alert variant="info">
+                  <HugeiconsIcon icon={InformationCircleIcon} />
                   <AlertDescription>
                     You can only see this key once.{" "}
                     <span className="text-foreground font-medium">

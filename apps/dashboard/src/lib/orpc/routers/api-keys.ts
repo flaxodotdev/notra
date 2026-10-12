@@ -136,7 +136,7 @@ async function findKeyByExternalId(
 }
 
 function toAccountExternalId(userId: string): string {
-  return `user:${userId}`;
+  return `user_${userId}`;
 }
 
 function toKeyListItem(key: KeyResponseData) {

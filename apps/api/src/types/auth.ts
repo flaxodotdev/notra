@@ -41,7 +41,8 @@ export function isIngestAuth(auth: AuthData): auth is IngestAuthData {
   return "type" in auth && auth.type === "ingest";
 }
 
-const ACCOUNT_KEY_EXTERNAL_ID_PREFIX = "user:";
+// Unkey external IDs only allow [a-zA-Z0-9_.-], so the prefix cannot use a colon.
+const ACCOUNT_KEY_EXTERNAL_ID_PREFIX = "user_";
 
 export const ACCOUNT_ORG_HEADERS = [
   "x-notra-organization-id",
