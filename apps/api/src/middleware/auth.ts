@@ -1,10 +1,12 @@
 import type { createDb } from "@notra/db/drizzle";
 import { members, organizations, users } from "@notra/db/schema";
+import { parseAccountApiKeyUserId } from "@notra/utils/account-api-key";
 import {
   isUnscopedApiPath,
   LEGACY_API_READ_SCOPE,
   LEGACY_API_WRITE_SCOPE,
 } from "@notra/utils/api-scopes";
+import { ACCOUNT_API_KEY_ORGANIZATION_HEADERS } from "@notra/utils/constants/account-api-key";
 import { readOAuthConsentGrant } from "@notra/utils/oauth-consent";
 import { Unkey } from "@unkey/api";
 import type {
@@ -24,7 +26,6 @@ import {
 import { API_AUTH_KINDS } from "../constants/analytics";
 import type { ApiAuthKind } from "../types/analytics";
 import type { AccountApiKeyAuthData, AuthData } from "../types/auth";
-import { ACCOUNT_ORG_HEADERS, parseAccountUserId } from "../types/auth";
 import {
   API_URL,
   AUTH_GUIDE_URL,
@@ -457,7 +458,7 @@ function getRecovery(status: AuthFailureStatus) {
 }
 
 function getRequestedOrganizationId(c: Context): string | null {
-  for (const header of ACCOUNT_ORG_HEADERS) {
+  for (const header of ACCOUNT_API_KEY_ORGANIZATION_HEADERS) {
     const value = c.req.header(header)?.trim();
     if (value) {
       return value;
@@ -471,21 +472,37 @@ async function resolveAccountKeyAuth(
   verified: V2KeysVerifyKeyResponseData & { identity: Identity },
   userId: string
 ): Promise<AuthResult> {
-  const db = c.get("db");
-  const membershipRows = await db.query.members.findMany({
+  const membershipRows = await c.get("db").query.members.findMany({
     where: eq(members.userId, userId),
     columns: { organizationId: true },
     orderBy: [asc(members.createdAt), asc(members.organizationId)],
   });
-  const memberOrgIds = [
-    ...new Set(
-      membershipRows
-        .map((row) => row.organizationId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0)
-    ),
-  ];
+  const memberOrgIds = membershipRows.map((row) => row.organizationId);
+  const requestedOrgId = getRequestedOrganizationId(c);
 
-  if (memberOrgIds.length === 0) {
+  // Membership is read on every request, so leaving an organization revokes
+  // the key there immediately.
+  let organizationId: string | undefined;
+  if (requestedOrgId) {
+    organizationId = memberOrgIds.includes(requestedOrgId)
+      ? requestedOrgId
+      : undefined;
+  } else if (
+    memberOrgIds.length === 1 ||
+    (memberOrgIds.length > 0 && isUnscopedApiPath(c.req.path))
+  ) {
+    organizationId = memberOrgIds[0];
+  } else if (memberOrgIds.length > 1) {
+    return {
+      success: false,
+      error:
+        "Organization selection required: send X-Notra-Organization-Id for the workspace this request should act on",
+      status: 403,
+      kind: API_AUTH_KINDS.UNKEY,
+    };
+  }
+
+  if (!organizationId) {
     return {
       success: false,
       error: "Workspace access revoked",
@@ -494,47 +511,14 @@ async function resolveAccountKeyAuth(
     };
   }
 
-  const requestedOrgId = getRequestedOrganizationId(c);
-  const verifiedIdentity = verified.identity;
-  if (requestedOrgId) {
-    if (!memberOrgIds.includes(requestedOrgId)) {
-      return {
-        success: false,
-        error: "Workspace access revoked",
-        status: 403,
-        kind: API_AUTH_KINDS.UNKEY,
-      };
-    }
-    const auth: AccountApiKeyAuthData = {
-      ...verified,
-      userId,
-      isAccountKey: true,
-      identity: { ...verifiedIdentity, externalId: requestedOrgId },
-    };
-    c.set("auth", auth);
-    return { success: true, auth };
-  }
-
-  const pathname = c.req.path;
-  if (isUnscopedApiPath(pathname) || memberOrgIds.length === 1) {
-    const [fallbackOrgId] = memberOrgIds as [string, ...string[]];
-    const auth: AccountApiKeyAuthData = {
-      ...verified,
-      userId,
-      isAccountKey: true,
-      identity: { ...verifiedIdentity, externalId: fallbackOrgId },
-    };
-    c.set("auth", auth);
-    return { success: true, auth };
-  }
-
-  return {
-    success: false,
-    error:
-      "Organization selection required: send X-Notra-Organization-Id for the workspace this request should act on",
-    status: 403,
-    kind: API_AUTH_KINDS.UNKEY,
+  const auth: AccountApiKeyAuthData = {
+    ...verified,
+    userId,
+    isAccountKey: true,
+    identity: { ...verified.identity, externalId: organizationId },
   };
+  c.set("auth", auth);
+  return { success: true, auth };
 }
 
 async function verifyRequestAuth(
@@ -611,7 +595,7 @@ async function verifyRequestAuth(
       };
     }
 
-    const accountUserId = parseAccountUserId(verifiedIdentity.externalId);
+    const accountUserId = parseAccountApiKeyUserId(verifiedIdentity.externalId);
     if (accountUserId) {
       try {
         return await resolveAccountKeyAuth(

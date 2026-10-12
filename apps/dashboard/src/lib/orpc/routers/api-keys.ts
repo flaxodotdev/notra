@@ -9,6 +9,7 @@ import {
   updateKeyInputSchema,
 } from "@notra/schemas/dashboard/api-keys";
 import { organizationIdInputSchema } from "@notra/schemas/dashboard/auth/organization";
+import { toAccountApiKeyExternalId } from "@notra/utils/account-api-key";
 import { isDemoMode } from "@notra/utils/demo-mode";
 import type {
   KeyResponseData,
@@ -19,6 +20,7 @@ import { and, eq } from "drizzle-orm";
 import { API_KEY_EXPIRATION_MS } from "@/constants/api-keys";
 import { DEMO_DISABLED_MESSAGE } from "@/constants/demo";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
+import { inferApiKeyExpiration } from "@/lib/api-keys/expiration";
 import {
   expandLegacyApiKeyScopes,
   getApiKeyAccessMode,
@@ -39,29 +41,6 @@ import {
   notFound,
   serviceUnavailable,
 } from "../utils/errors";
-
-function inferExpirationOption(createdAt: number, expires: number | null) {
-  if (expires === null) {
-    return "never" as const;
-  }
-
-  const ttl = Math.max(0, expires - createdAt);
-  const day = 24 * 60 * 60 * 1000;
-
-  if (ttl <= 7 * day) {
-    return "7d" as const;
-  }
-
-  if (ttl <= 30 * day) {
-    return "30d" as const;
-  }
-
-  if (ttl <= 60 * day) {
-    return "60d" as const;
-  }
-
-  return "90d" as const;
-}
 
 async function requireUnkeyConfig() {
   const apiId = process.env.UNKEY_API_ID;
@@ -135,10 +114,6 @@ async function findKeyByExternalId(
   return keys.find((key) => key.keyId === keyId) ?? null;
 }
 
-function toAccountExternalId(userId: string): string {
-  return `user_${userId}`;
-}
-
 function toKeyListItem(key: KeyResponseData) {
   const meta = key.meta ?? {};
   const permissions = Array.isArray(key.permissions)
@@ -178,7 +153,7 @@ function resolveUpdatePayload(
       ? (key.meta as Record<string, unknown>)
       : {};
 
-  const currentExpiration = inferExpirationOption(
+  const currentExpiration = inferApiKeyExpiration(
     key.createdAt,
     key.expires ?? null
   );
@@ -356,7 +331,7 @@ export const apiKeysRouter = {
           expiration: input.payload.expiration,
           expiration_changed:
             input.payload.expiration !==
-            inferExpirationOption(key.createdAt, key.expires ?? null),
+            inferApiKeyExpiration(key.createdAt, key.expires ?? null),
         },
       });
 
@@ -412,7 +387,7 @@ export const apiKeysRouter = {
       const keysData = await listKeysByExternalId(
         client,
         apiId,
-        toAccountExternalId(context.user.id)
+        toAccountApiKeyExternalId(context.user.id)
       );
 
       return keysData.map(toKeyListItem);
@@ -432,7 +407,7 @@ export const apiKeysRouter = {
         const created = await client.keys.createKey({
           apiId,
           expires,
-          externalId: toAccountExternalId(context.user.id),
+          externalId: toAccountApiKeyExternalId(context.user.id),
           meta: {
             accessMode: input.accessMode,
             accountWide: true,
@@ -483,7 +458,7 @@ export const apiKeysRouter = {
         const key = await findKeyByExternalId(
           client,
           apiId,
-          toAccountExternalId(context.user.id),
+          toAccountApiKeyExternalId(context.user.id),
           input.payload.keyId
         );
 
@@ -521,7 +496,7 @@ export const apiKeysRouter = {
             expiration: input.payload.expiration,
             expiration_changed:
               input.payload.expiration !==
-              inferExpirationOption(key.createdAt, key.expires ?? null),
+              inferApiKeyExpiration(key.createdAt, key.expires ?? null),
             account_wide: true,
           },
         });
@@ -542,7 +517,7 @@ export const apiKeysRouter = {
         const key = await findKeyByExternalId(
           client,
           apiId,
-          toAccountExternalId(context.user.id),
+          toAccountApiKeyExternalId(context.user.id),
           input.payload.keyId
         );
 
