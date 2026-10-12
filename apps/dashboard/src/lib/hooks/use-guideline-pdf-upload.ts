@@ -16,7 +16,6 @@ import {
 import { uploadFile } from "@/lib/upload/client";
 import { isPdfFile } from "@/utils/brand-guideline-pdf";
 
-/** Picks, uploads and attaches a brand guideline PDF for one voice. */
 export function useGuidelinePdfUpload(organizationId: string, voiceId: string) {
   const tPdf = useTranslations("brand.guidelines.pdf");
   const inputRef = useRef<HTMLInputElement>(null);

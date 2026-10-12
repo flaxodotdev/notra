@@ -21,7 +21,6 @@ export function GuidelinesPdfUploadButton({
     voiceId
   );
 
-  // Once attached, the PDF is replaced from its own row.
   if (
     !data?.guideline ||
     data.guideline.sourcePdfFilename ||

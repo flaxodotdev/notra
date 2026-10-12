@@ -639,7 +639,6 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
   return getBrandGuidelines(brandSettingsId);
 }
 
-/** Deletes an uploaded PDF whose attach never happened. */
 export async function discardBrandGuidelineSourcePdf(
   input: DiscardBrandGuidelineSourcePdfInput
 ) {
