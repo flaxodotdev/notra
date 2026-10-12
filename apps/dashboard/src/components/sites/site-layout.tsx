@@ -48,7 +48,7 @@ export function SiteLayout({
             action={
               <Link
                 className={buttonVariants({ variant: "outline" })}
-                href={`/${organizationSlug}/sites`}
+                href={`/${organizationSlug}/sites?view=all`}
               >
                 {t("backToSites")}
               </Link>

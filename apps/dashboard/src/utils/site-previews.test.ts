@@ -74,6 +74,31 @@ test("active preview pointers survive a fetched history that no longer includes 
   expect(rows[0]?.latestDeploymentId).toBe("served-old");
 });
 
+test("a failed preview update shows its own commit while keeping the older deployment live", () => {
+  const deployment = {
+    id: "new-build",
+    kind: "preview",
+    previewKey: preview.previewKey,
+    status: "failed",
+    commitSha: "newsha123",
+    commitMessage: "Failed preview update",
+    createdAt: new Date("2026-10-11T12:00:00Z"),
+  } as SiteDeployment;
+  const rows = sitePreviewRows({
+    previews: [preview],
+    deployments: [deployment],
+  } as unknown as SiteDetail);
+  expect(rows[0]).toMatchObject({
+    served: true,
+    deploymentId: "served-old",
+    latestDeploymentId: "new-build",
+    status: "failed",
+    commitSha: deployment.commitSha,
+    commitMessage: deployment.commitMessage,
+    updatedAt: deployment.createdAt,
+  });
+});
+
 test("environment filtering uses existing deployment records and includes uploading builds", () => {
   const deployment = { kind: "preview", status: "uploading" } as SiteDeployment;
   expect(

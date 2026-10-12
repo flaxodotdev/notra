@@ -61,19 +61,14 @@ export function SiteOverviewHero() {
     (a, b) => Number(b.isPrimary) - Number(a.isPrimary)
   );
   const aliasUrl = siteUrlOnOrigin(site.aliasOrigin, site.liveUrl);
-  const hasStatus =
-    suspended || pendingProduction !== null || liveDeployment !== null;
 
   return (
     <InstrumentModule
       action={
-        hasStatus ? (
-          <SiteOverviewStatus
-            live={liveDeployment !== null}
-            pendingProduction={pendingProduction}
-            suspended={suspended}
-          />
-        ) : null
+        <SiteOverviewStatus
+          deployment={pendingProduction ?? liveDeployment}
+          suspended={suspended}
+        />
       }
       eyebrow={t("production")}
       variant="table"

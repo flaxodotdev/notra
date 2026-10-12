@@ -40,7 +40,11 @@ export function sitePreviewRows(detail: SiteDetail): SitePreviewRow[] {
       served: true,
       status: newerBuild?.status ?? "ready",
       latestDeploymentId: newerBuild?.id ?? preview.deploymentId,
-      updatedAt: preview.activatedAt,
+      commitSha: newerBuild ? newerBuild.commitSha : preview.commitSha,
+      commitMessage: newerBuild
+        ? newerBuild.commitMessage
+        : preview.commitMessage,
+      updatedAt: newerBuild?.createdAt ?? preview.activatedAt,
     };
   });
   served.sort(

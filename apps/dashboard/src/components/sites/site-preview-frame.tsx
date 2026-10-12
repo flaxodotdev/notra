@@ -1,14 +1,17 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import {
   SITE_PREVIEW_VIEWPORT_HEIGHT,
   SITE_PREVIEW_VIEWPORT_WIDTH,
+  SITE_PREVIEW_REACHABILITY_STALE_MS,
 } from "@/constants/sites";
 import { cn } from "@/lib/utils";
 import type { SitePreviewFrameProps } from "@/types/components/sites";
+import { isSitePreviewReachable } from "@/utils/site-preview-reachability";
 
 export function SitePreviewFrame({
   url,
@@ -16,14 +19,27 @@ export function SitePreviewFrame({
   fallback,
 }: SitePreviewFrameProps) {
   const t = useTranslations("sites.previewFrame");
-  const [loaded, setLoaded] = useState(false);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const reachability = useQuery({
+    queryKey: ["site-preview-reachability", url],
+    queryFn: ({ signal }) =>
+      url ? isSitePreviewReachable(url, signal) : false,
+    enabled: Boolean(url),
+    retry: false,
+    staleTime: SITE_PREVIEW_REACHABILITY_STALE_MS,
+  });
+  const reachable = reachability.data === true;
+  // A failed refetch keeps the last successful result, so only an error
+  // without one hides the preview.
+  const unavailable =
+    !url || reachability.data === false || (reachability.isError && !reachable);
   const [width, setWidth] = useState(0);
   const scale = width > 0 ? width / SITE_PREVIEW_VIEWPORT_WIDTH : 0;
 
   return (
     <div
       className={cn(
-        "bg-muted relative aspect-[16/10] overflow-hidden rounded-xl outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10",
+        "bg-shell relative aspect-[16/10] overflow-hidden rounded-xl outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10",
         className
       )}
       ref={(node) => {
@@ -37,15 +53,16 @@ export function SitePreviewFrame({
         return () => observer.disconnect();
       }}
     >
-      {url && scale > 0 ? (
+      {url && reachable && scale > 0 ? (
         <iframe
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute top-0 left-0 h-(--preview-height) w-(--preview-width) origin-top-left scale-(--preview-scale) border-0 transition-opacity duration-300",
-            loaded ? "opacity-100" : "opacity-0"
+            loadedUrl === url ? "opacity-100" : "opacity-0"
           )}
+          key={url}
           loading="lazy"
-          onLoad={() => setLoaded(true)}
+          onLoad={() => setLoadedUrl(url)}
           sandbox="allow-same-origin"
           src={url}
           style={
@@ -59,11 +76,13 @@ export function SitePreviewFrame({
           title={t("title")}
         />
       ) : null}
-      {url ? null : (
-        <div className="text-muted-foreground absolute inset-0 flex items-center justify-center text-sm">
-          {fallback ?? t("unavailable")}
+      {unavailable ? (
+        <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="bg-background text-muted-foreground max-w-full rounded-lg px-3 py-2 text-center text-sm font-medium text-pretty">
+            {url ? t("unavailable") : (fallback ?? t("unavailable"))}
+          </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

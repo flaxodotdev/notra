@@ -13,7 +13,7 @@ import { SiteEnvironmentBadge } from "@/components/sites/site-environment-badge"
 import { SitePreviewDeleteDialog } from "@/components/sites/site-preview-delete-dialog";
 import { SiteRelativeTime } from "@/components/sites/site-relative-time";
 import { SiteRollbackDialog } from "@/components/sites/site-rollback-dialog";
-import { SiteStatusDot } from "@/components/sites/site-status-dot";
+import { SiteStatusBadge } from "@/components/sites/site-status-badge";
 import {
   SITE_DEPLOYMENT_ROW_HEIGHT,
   SITE_MANUAL_TRIGGER_ICONS,
@@ -128,14 +128,13 @@ export function SiteDeploymentsTable({
     {
       key: "environment",
       header: t("columns.environment"),
-      width: "10rem",
+      width: "11rem",
       collapsePriority: 2,
       sortable: true,
       sortValue: (deployment) => deployment.kind,
       cell: (deployment) => (
         <SiteEnvironmentBadge
           kind={deployment.kind}
-          live={deployment.live}
           previewKey={deployment.previewKey}
         />
       ),
@@ -143,11 +142,12 @@ export function SiteDeploymentsTable({
     {
       key: "status",
       header: t("columns.status"),
-      width: "9rem",
+      width: "12rem",
+      minWidth: "8rem",
       sortable: true,
       sortValue: (deployment) => deployment.status,
       cell: (deployment) => (
-        <SiteStatusDot
+        <SiteStatusBadge
           duration={
             deployment.status === "ready" ||
             deployment.status === "building" ||
@@ -155,7 +155,6 @@ export function SiteDeploymentsTable({
               ? formatBuildDuration(deploymentElapsedMs(deployment, now))
               : null
           }
-          live={deployment.live}
           status={deployment.status}
         />
       ),
@@ -233,6 +232,7 @@ export function SiteDeploymentsTable({
   return (
     <>
       <DataTable
+        autoHeight
         columns={columns}
         data={deployments}
         emptyState={emptyState}
@@ -258,7 +258,7 @@ export function SiteDeploymentsTable({
             : undefined
         }
         resizable
-        rowHeight={SITE_DEPLOYMENT_ROW_HEIGHT}
+        rowSizing="content"
         scrollFade={false}
       />
       {withActions ? (

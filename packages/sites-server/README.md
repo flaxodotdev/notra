@@ -70,6 +70,15 @@ failures are not silently treated as successful persistence: an already failing
 pipeline preserves its original exception and records the persistence error in
 its best-effort R2 log.
 
+Sandbox HTTP rejections retain a redacted provider error response and, when
+available, an `x-request-id` or `x-upstash-request-id`. Diagnostic reads are
+limited to 4 KiB and 2 seconds. Oversized bodies are omitted rather than partially
+logged, so truncation cannot expose part of a credential. Unreadable bodies retain
+the HTTP status and a safe placeholder, including rejections near the request
+deadline. `sites.job_failed` also logs the site/deployment IDs,
+attempt count, sandbox operation, status, and provider diagnostics. The enriched
+error message is retained by the existing job, build-log, and telemetry paths.
+
 `metrics.version` is 1. `phases` contains monotonic millisecond durations for
 attempted repository access, source download, sandbox startup, upload, execution, result reads,
 output download, cleanup and publication. Guest extraction, compilation and

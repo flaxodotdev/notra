@@ -131,7 +131,7 @@ export function DashboardSidebar({
 
   function handleBack() {
     if (isSitePage) {
-      router.push(`/${slug}/sites`);
+      router.push(`/${slug}/sites?view=all`);
       return;
     }
     if (hasVisitedMainRef.current) {

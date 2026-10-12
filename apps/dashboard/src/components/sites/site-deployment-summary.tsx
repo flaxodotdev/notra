@@ -13,7 +13,7 @@ import { useLocale, useTranslations } from "use-intl";
 import { SiteEnvironmentBadge } from "@/components/sites/site-environment-badge";
 import { SitePreviewFrame } from "@/components/sites/site-preview-frame";
 import { SiteRelativeTime } from "@/components/sites/site-relative-time";
-import { SiteStatusDot } from "@/components/sites/site-status-dot";
+import { SiteStatusBadge } from "@/components/sites/site-status-badge";
 import { SITE_DEPLOYMENT_SUMMARY_SURFACE_CLASS } from "@/constants/sites";
 import { useNow } from "@/lib/hooks/use-now";
 import { cn } from "@/lib/utils";
@@ -128,16 +128,11 @@ export function SiteDeploymentSummary({
         />
         <dl className="grid content-center gap-x-8 gap-y-5 sm:grid-cols-2">
           <Fact label={t("fields.status")}>
-            <SiteStatusDot
-              duration={duration}
-              live={live}
-              status={deployment.status}
-            />
+            <SiteStatusBadge duration={duration} status={deployment.status} />
           </Fact>
           <Fact label={t("fields.environment")}>
             <SiteEnvironmentBadge
               kind={deployment.kind}
-              live={live}
               previewKey={deployment.previewKey}
             />
           </Fact>

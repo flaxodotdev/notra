@@ -328,7 +328,9 @@ function sitesHeaderBreadcrumbs(
       key={`${id}-sites-root`}
     >
       <BreadcrumbLink
-        render={<Link href={`/${slug}/sites`}>{labels.segments.sites}</Link>}
+        render={
+          <Link href={`/${slug}/sites?view=all`}>{labels.segments.sites}</Link>
+        }
       />
     </BreadcrumbItem>,
     separator("site"),
