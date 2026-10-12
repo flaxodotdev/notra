@@ -16,16 +16,7 @@ import {
   createApiKeySchema,
   updateApiKeySchema,
 } from "@notra/schemas/dashboard/api-keys";
-import {
-  ResponsiveAlertDialog,
-  ResponsiveAlertDialogAction,
-  ResponsiveAlertDialogCancel,
-  ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
-  ResponsiveAlertDialogFooter,
-  ResponsiveAlertDialogHeader,
-  ResponsiveAlertDialogTitle,
-} from "@notra/ui/components/shared/responsive-alert-dialog";
+import { ConfirmDialog } from "@notra/ui/components/shared/confirm-dialog";
 import {
   ResponsiveDialog,
   ResponsiveDialogClose,
@@ -35,6 +26,10 @@ import {
   ResponsiveDialogTitle,
 } from "@notra/ui/components/shared/responsive-dialog";
 import { Alert, AlertDescription } from "@notra/ui/components/ui/alert";
+import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,19 +48,19 @@ import {
   SelectValue,
 } from "@notra/ui/components/ui/select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { ApiKeyRevealField } from "@/components/api-keys/api-key-reveal-field";
 import { ApiKeyPermissionSelector } from "@/components/api-keys/permission-selector";
 import { Button } from "@/components/button";
-import { Table, type TableColumn } from "@/components/motion/table";
 import {
   API_KEY_EXPIRATION_OPTIONS,
   API_KEY_PERMISSION_SUMMARY,
 } from "@/constants/api-keys";
 import { expandLegacyApiKeyScopes } from "@/lib/api-keys/scopes";
+import { useApiKeyExpirationItems } from "@/lib/hooks/use-api-key-expiration-items";
 import { dashboardOrpc } from "@/lib/orpc/query";
 import type { ApiKeyAccessMode, ApiKeyExpiration } from "@/types/api-keys";
 
@@ -116,6 +111,7 @@ function getAccountEditExpiration(
 
 export function AccountApiKeysSection() {
   const t = useTranslations("apiKeys");
+  const expirationItems = useApiKeyExpirationItems();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -333,7 +329,7 @@ export function AccountApiKeysSection() {
         </AlertDescription>
       </Alert>
 
-      <Table
+      <DataTable
         columns={columns}
         data={keys}
         emptyState="No account API keys yet"
@@ -415,13 +411,14 @@ export function AccountApiKeysSection() {
                   <FieldLabel>Expiration</FieldLabel>
                   <Select
                     disabled={createMutation.isPending}
+                    items={expirationItems}
                     onValueChange={(value) =>
                       setExpiration(value as ApiKeyExpiration)
                     }
                     value={expiration}
                   >
                     <SelectTrigger>
-                      <SelectValue className="capitalize" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {API_KEY_EXPIRATION_OPTIONS.map((option) => (
@@ -498,6 +495,7 @@ export function AccountApiKeysSection() {
                 <FieldLabel>Expiration</FieldLabel>
                 <Select
                   disabled={updateMutation.isPending}
+                  items={expirationItems}
                   onValueChange={(value) =>
                     setEditValues((prev) => ({
                       ...prev,
@@ -507,7 +505,7 @@ export function AccountApiKeysSection() {
                   value={editValues.expiration}
                 >
                   <SelectTrigger>
-                    <SelectValue className="capitalize" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {API_KEY_EXPIRATION_OPTIONS.map((option) => (
@@ -556,43 +554,24 @@ export function AccountApiKeysSection() {
         </ResponsiveDialogContent>
       </ResponsiveDialog>
 
-      <ResponsiveAlertDialog
+      <ConfirmDialog
+        confirmLabel="Delete API key"
+        description={`This will permanently delete ${deletingKey ? deletingKey.name : "this API key"}. This action cannot be undone.`}
+        onConfirm={() => {
+          if (deletingKey) {
+            deleteMutation.mutate(deletingKey.keyId);
+          }
+        }}
         onOpenChange={(open) => {
           if (!open && !deleteMutation.isPending) {
             setDeletingKey(null);
           }
         }}
         open={!!deletingKey}
-      >
-        <ResponsiveAlertDialogContent>
-          <ResponsiveAlertDialogHeader>
-            <ResponsiveAlertDialogTitle>
-              Delete account API key?
-            </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              This will permanently delete
-              {deletingKey ? ` ${deletingKey.name}` : " this API key"}. This
-              action cannot be undone.
-            </ResponsiveAlertDialogDescription>
-          </ResponsiveAlertDialogHeader>
-          <ResponsiveAlertDialogFooter>
-            <ResponsiveAlertDialogCancel disabled={deleteMutation.isPending}>
-              Cancel
-            </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={!deletingKey || deleteMutation.isPending}
-              onClick={() => {
-                if (deletingKey) {
-                  deleteMutation.mutate(deletingKey.keyId);
-                }
-              }}
-            >
-              {deleteMutation.isPending ? "Deleting…" : "Delete API Key"}
-            </ResponsiveAlertDialogAction>
-          </ResponsiveAlertDialogFooter>
-        </ResponsiveAlertDialogContent>
-      </ResponsiveAlertDialog>
+        pending={deleteMutation.isPending}
+        title="Delete account API key?"
+        variant="destructive"
+      />
     </div>
   );
 }
