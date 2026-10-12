@@ -33,7 +33,6 @@ import type {
   AttachBrandGuidelineSourcePdfInput,
   BrandGuidelineGenerationStepInput,
   BrandGuidelinePdfErrorKey,
-  DiscardBrandGuidelineSourcePdfInput,
   NormalizedScreenshot,
 } from "@/types/brand-guidelines";
 import {
@@ -637,11 +636,4 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
     await deleteGuidelinePdfIfUnreferenced(existing.sourcePdfStorageKey);
   }
   return getBrandGuidelines(brandSettingsId);
-}
-
-export async function discardBrandGuidelineSourcePdf(
-  input: DiscardBrandGuidelineSourcePdfInput
-) {
-  await assertGuidelinePdfKey(input.organizationId, input.key);
-  await deleteGuidelinePdfIfUnreferenced(input.key);
 }

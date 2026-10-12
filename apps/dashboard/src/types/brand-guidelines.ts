@@ -195,11 +195,6 @@ export interface AttachBrandGuidelineSourcePdfInput {
   organizationId: string;
 }
 
-export interface DiscardBrandGuidelineSourcePdfInput {
-  key: string;
-  organizationId: string;
-}
-
 export type BrandGuidelinePdfErrorKey =
   | "generateFirst"
   | "invalidFile"

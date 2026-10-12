@@ -120,7 +120,3 @@ export interface AttachGuidelineSourcePdfInput {
   filename: string;
   key: string;
 }
-
-export interface DiscardGuidelineSourcePdfInput {
-  key: string;
-}

@@ -9,10 +9,7 @@ import { type ChangeEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "use-intl";
 
-import {
-  useAttachGuidelineSourcePdf,
-  useDiscardGuidelineSourcePdf,
-} from "@/lib/hooks/use-brand-guidelines";
+import { useAttachGuidelineSourcePdf } from "@/lib/hooks/use-brand-guidelines";
 import { uploadFile } from "@/lib/upload/client";
 import { isPdfFile } from "@/utils/brand-guideline-pdf";
 
@@ -21,7 +18,6 @@ export function useGuidelinePdfUpload(organizationId: string, voiceId: string) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const attach = useAttachGuidelineSourcePdf(organizationId, voiceId);
-  const discard = useDiscardGuidelineSourcePdf(organizationId, voiceId);
   const maxMb = MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024;
 
   const upload = async (file: File) => {
@@ -43,7 +39,6 @@ export function useGuidelinePdfUpload(organizationId: string, voiceId: string) {
     }
 
     setIsUploading(true);
-    let uploadedKey: string | null = null;
     try {
       const uploaded = await uploadFile({
         file:
@@ -54,14 +49,10 @@ export function useGuidelinePdfUpload(organizationId: string, voiceId: string) {
               }),
         type: "brand_guideline_pdf",
       });
-      uploadedKey = uploaded.key;
+      // The server deletes the upload itself when attaching fails.
       await attach.mutateAsync({ filename, key: uploaded.key });
-      uploadedKey = null;
       toast.success(tPdf("saved"));
     } catch (error) {
-      if (uploadedKey) {
-        discard.mutate({ key: uploadedKey });
-      }
       toast.error(error instanceof Error ? error.message : tPdf("saveFailed"));
     } finally {
       setIsUploading(false);

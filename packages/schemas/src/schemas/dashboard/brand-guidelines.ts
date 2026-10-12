@@ -118,10 +118,6 @@ export const attachGuidelineSourcePdfSchema = z.object({
     }),
 });
 
-export const discardGuidelineSourcePdfSchema = z.object({
-  key: guidelinePdfKeySchema,
-});
-
 export const createGuidelineAssetSchema = z.object({
   kind: guidelineAssetKindSchema,
   variant: guidelineAssetVariantSchema,

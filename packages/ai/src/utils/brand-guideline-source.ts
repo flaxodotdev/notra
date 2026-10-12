@@ -1,18 +1,18 @@
 import {
   BRAND_GUIDELINE_SOURCE_TEXT_LIMIT,
   BRAND_GUIDELINE_SOURCE_TRUNCATION_MARKER,
-  EXCESS_BLANK_LINES_REGEX,
-  HORIZONTAL_WHITESPACE_RUN_REGEX,
-  LINE_BREAK_REGEX,
+  BRAND_GUIDELINE_BLANK_LINES_REGEX,
+  BRAND_GUIDELINE_WHITESPACE_RUN_REGEX,
+  BRAND_GUIDELINE_LINE_BREAK_REGEX,
 } from "@notra/ai/constants/brand-guideline-source";
 
 // Keeps the markdown structure (headings, lists, tables) of the parsed PDF and
 // only collapses runs of spaces and blank lines.
-export function normalizeBrandGuidelineSourceText(value: string) {
+function normalizeBrandGuidelineSourceText(value: string) {
   return value
-    .replace(LINE_BREAK_REGEX, "\n")
-    .replace(HORIZONTAL_WHITESPACE_RUN_REGEX, " ")
-    .replace(EXCESS_BLANK_LINES_REGEX, "\n\n")
+    .replace(BRAND_GUIDELINE_LINE_BREAK_REGEX, "\n")
+    .replace(BRAND_GUIDELINE_WHITESPACE_RUN_REGEX, " ")
+    .replace(BRAND_GUIDELINE_BLANK_LINES_REGEX, "\n\n")
     .trim();
 }
 

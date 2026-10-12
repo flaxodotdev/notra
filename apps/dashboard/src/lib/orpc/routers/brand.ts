@@ -42,7 +42,6 @@ import {
   attachGuidelineSourcePdfSchema,
   createGuidelineAssetSchema,
   createGuidelineColorSchema,
-  discardGuidelineSourcePdfSchema,
   updateGuidelineAssetSchema,
   updateGuidelineColorSchema,
   updateGuidelineFontSchema,
@@ -66,7 +65,6 @@ import { assertActiveSubscription } from "@/lib/billing/subscription";
 import {
   attachBrandGuidelineSourcePdf,
   BrandGuidelineSourcePdfValidationError,
-  discardBrandGuidelineSourcePdf,
   getBrandGuidelines,
   markBrandGuidelinesFailed,
   removeBrandGuidelineSourcePdf,
@@ -1015,20 +1013,6 @@ export const brandRouter = {
         await assertActiveSubscription(input.organizationId);
         await verifyVoiceOwnership(input.organizationId, input.voiceId);
         return removeBrandGuidelineSourcePdf(input.voiceId);
-      }),
-    discardSourcePdf: baseProcedure
-      .input(voiceInputSchema.and(discardGuidelineSourcePdfSchema))
-      .handler(async ({ context, input }) => {
-        await assertOrganizationAccess({
-          headers: context.headers,
-          organizationId: input.organizationId,
-        });
-        await verifyVoiceOwnership(input.organizationId, input.voiceId);
-        await discardBrandGuidelineSourcePdf({
-          key: input.key,
-          organizationId: input.organizationId,
-        });
-        return { success: true };
       }),
   },
   sitemaps: brandSitemapsRouter,

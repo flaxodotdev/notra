@@ -22,7 +22,6 @@ import { BRAND_GUIDELINE_POLL_INTERVAL_MS } from "@/constants/brand-guidelines";
 import type {
   AttachGuidelineSourcePdfInput,
   BrandGuidelinesResponse,
-  DiscardGuidelineSourcePdfInput,
 } from "@/types/hooks/brand-guidelines";
 
 import { dashboardOrpc } from "../orpc/query";
@@ -254,19 +253,5 @@ export function useRemoveGuidelineSourcePdf(
       }),
     organizationId,
     voiceId,
-  });
-}
-
-export function useDiscardGuidelineSourcePdf(
-  organizationId: string,
-  voiceId: string
-) {
-  return useMutation({
-    mutationFn: (input: DiscardGuidelineSourcePdfInput) =>
-      dashboardOrpc.brand.guidelines.discardSourcePdf.call({
-        organizationId,
-        voiceId,
-        ...input,
-      }),
   });
 }
