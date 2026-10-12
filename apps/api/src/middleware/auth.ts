@@ -55,6 +55,10 @@ const OAUTH_AUDIENCES = [
   "https://mcp.usenotra.com",
   "https://mcp.usenotra.com/mcp",
 ] as const;
+// Workspace-scoped MCP connections (`/mcp/{workspace}`) get tokens for their
+// own resource URL; same segment rule as the MCP server.
+const SCOPED_MCP_AUDIENCE_REGEX =
+  /^https:\/\/mcp\.usenotra\.com\/mcp\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const SCOPE_SEPARATOR_REGEX = /\s+/;
 const WORKOS_ID_CACHE_MAX_SIZE = 1000;
 const WORKOS_ID_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -239,7 +243,10 @@ function isAllowedAudience(
   }
 
   const audiences = Array.isArray(aud) ? aud : [aud];
-  return audiences.some((audience) => allowed.has(audience));
+  return audiences.some(
+    (audience) =>
+      allowed.has(audience) || SCOPED_MCP_AUDIENCE_REGEX.test(audience)
+  );
 }
 
 function getRemoteJwks(jwksUrl: string): ReturnType<typeof createRemoteJWKSet> {
