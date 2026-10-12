@@ -114,6 +114,8 @@ export interface BrandIdentityHeaderProps {
   onAddSitemap: () => void;
   onRefreshGuidelines: () => void;
   isRefreshingGuidelines: boolean;
+  organizationId: string;
+  voiceId: string;
 }
 
 export interface BrandIdentityTabsProps {

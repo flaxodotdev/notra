@@ -201,7 +201,17 @@ export interface DiscardBrandGuidelineSourcePdfInput {
 }
 
 export type BrandGuidelinePdfErrorKey =
+  | "generateFirst"
   | "invalidFile"
   | "noText"
   | "readFailed"
   | "unavailable";
+
+export interface GuidelineContentSummary {
+  lastGeneratedAt: Date | string | null;
+  assets: readonly unknown[];
+  colors: readonly unknown[];
+  fonts: readonly unknown[];
+  tokens: readonly unknown[];
+  screenshots: readonly unknown[];
+}

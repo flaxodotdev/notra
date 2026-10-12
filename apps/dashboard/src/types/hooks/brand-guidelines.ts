@@ -36,7 +36,6 @@ export interface BrandGuideline {
   lastGenerationError: string | null;
   sourcePdfFilename: string | null;
   sourcePdfUrl: string | null;
-  sourcePdfPreview: string | null;
   sourcePdfUploadedAt: string | null;
   createdAt: string;
   updatedAt: string;

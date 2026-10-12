@@ -62,6 +62,8 @@ export function BrandIdentityWorkspace({
             dispatchUi({ type: "set-add-sitemap-open", open: true })
           }
           onRefreshGuidelines={onRefreshGuidelines}
+          organizationId={organizationId}
+          voiceId={selectedVoice.id}
         />
 
         <VoiceSelector

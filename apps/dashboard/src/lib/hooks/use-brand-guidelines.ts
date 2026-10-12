@@ -62,10 +62,10 @@ export function useBrandGuidelines(organizationId: string, voiceId: string) {
       enabled: !!organizationId && !!voiceId,
     }),
     refetchInterval: (query) => {
-      // A PDF-only row stays `queued` without a workflow, so only poll while
-      // generating.
       const status = query.state.data?.guideline?.status;
-      return status === "generating" ? BRAND_GUIDELINE_POLL_INTERVAL_MS : false;
+      return status === "queued" || status === "generating"
+        ? BRAND_GUIDELINE_POLL_INTERVAL_MS
+        : false;
     },
   });
 }

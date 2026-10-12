@@ -1090,6 +1090,7 @@
       "logoFetchFailed": "Das Logo konnte nicht abgerufen werden"
     },
     "brandGuidelinePdf": {
+      "generateFirst": "Generiere zuerst deine Brand Guidelines, bevor du ein PDF hinzufügst",
       "invalidFile": "Das ist kein gültiges Brand-Guideline-PDF",
       "noText": "In diesem PDF wurde kein Text gefunden. Exportiere es als textbasiertes PDF und versuche es erneut.",
       "readFailed": "Dieses PDF konnte nicht gelesen werden. Versuche es erneut oder exportiere es neu.",
@@ -1454,9 +1455,9 @@
         "noAssetsDescription": "Für diese Identität wurden noch keine Marken-Assets gefunden. Aktualisiere, um die neuesten Logos, Farben und Screenshots zu übernehmen."
       },
       "pdf": {
-        "title": "Richtlinien-PDF",
+        "upload": "PDF hochladen",
+        "uploadedAt": "Hochgeladen {time}",
         "uploadLabel": "Markenrichtlinien-PDF hochladen",
-        "sizeHint": "PDF, max. {maxMb} MB",
         "notPdf": "Lade eine PDF-Datei hoch",
         "tooLarge": "Das Richtlinien-PDF darf höchstens {maxMb}MB groß sein",
         "badFilename": "Der PDF-Dateiname muss zwischen 1 und 200 Zeichen lang sein",
@@ -1465,8 +1466,7 @@
         "removed": "Richtlinien-PDF entfernt",
         "removeFailed": "Das PDF konnte nicht entfernt werden",
         "replace": "Richtlinien-PDF ersetzen",
-        "remove": "{filename} entfernen",
-        "open": "{filename} öffnen"
+        "remove": "{filename} entfernen"
       },
       "tokens": {
         "title": "UI-Tokens"

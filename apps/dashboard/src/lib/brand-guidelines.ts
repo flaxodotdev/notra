@@ -19,7 +19,7 @@ import {
   brandGuidelineTokens,
 } from "@notra/db/schema";
 import { MAX_BRAND_GUIDELINE_PDF_FILE_SIZE } from "@notra/schemas/constants/dashboard/upload";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import {
   BRAND_GUIDELINE_DESKTOP_SCREENSHOT_CONFIG,
@@ -37,6 +37,7 @@ import type {
   NormalizedScreenshot,
 } from "@/types/brand-guidelines";
 import {
+  hasGeneratedGuidelines,
   hasPdfSignature,
   isGuidelinePdfKeyForOrganization,
 } from "@/utils/brand-guideline-pdf";
@@ -561,42 +562,35 @@ export async function attachBrandGuidelineSourcePdf(
 
   let replacedKey: string | null;
   try {
+    const guideline = await getGuidelineByBrandSettingsId(
+      input.brandSettingsId
+    );
+    if (!(guideline && hasGeneratedGuidelines(guideline))) {
+      throw await guidelinePdfError("generateFirst");
+    }
+
     const text = await readGuidelinePdfText(input.key);
     const now = new Date();
-    const values = {
-      sourcePdfFilename: input.filename.trim(),
-      sourcePdfStorageKey: input.key,
-      sourcePdfText: text,
-      sourcePdfUploadedAt: now,
-      sourcePdfUrl: `${getR2Config().publicUrl.replace(BRAND_GUIDELINE_TRAILING_SLASH_REGEX, "")}/${input.key}`,
-      updatedAt: now,
-    };
 
-    // The lock serializes concurrent replaces per voice so each one knows
-    // exactly which key it replaced.
+    // Row lock so concurrent replaces each know which key they replaced.
     replacedKey = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`brand-guideline-pdf:${input.brandSettingsId}`}))`
-      );
-      const existing = await tx.query.brandGuidelines.findFirst({
-        where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
-        columns: { id: true, sourcePdfStorageKey: true },
-      });
+      const [locked] = await tx
+        .select({ sourcePdfStorageKey: brandGuidelines.sourcePdfStorageKey })
+        .from(brandGuidelines)
+        .where(eq(brandGuidelines.id, guideline.id))
+        .for("update");
       await tx
-        .insert(brandGuidelines)
-        .values({
-          id: existing?.id ?? crypto.randomUUID(),
-          brandSettingsId: input.brandSettingsId,
-          createdAt: now,
-          // A PDF-only row has never generated, so it keeps the empty state.
-          status: "queued",
-          ...values,
+        .update(brandGuidelines)
+        .set({
+          sourcePdfFilename: input.filename.trim(),
+          sourcePdfStorageKey: input.key,
+          sourcePdfText: text,
+          sourcePdfUploadedAt: now,
+          sourcePdfUrl: `${getR2Config().publicUrl.replace(BRAND_GUIDELINE_TRAILING_SLASH_REGEX, "")}/${input.key}`,
+          updatedAt: now,
         })
-        .onConflictDoUpdate({
-          target: brandGuidelines.brandSettingsId,
-          set: values,
-        });
-      return existing?.sourcePdfStorageKey ?? null;
+        .where(eq(brandGuidelines.id, guideline.id));
+      return locked?.sourcePdfStorageKey ?? null;
     });
   } catch (error) {
     // The key may belong to another voice of the same org, so only delete

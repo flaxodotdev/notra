@@ -186,10 +186,10 @@ export function AttachmentPreviewDialog({
             </div>
           ) : null}
           {isPdf ? (
+            // oxlint-disable-next-line react/iframe-missing-sandbox -- Chrome refuses to render PDFs in sandboxed frames; the file is served as application/pdf from the storage origin, so only the PDF viewer loads.
             <iframe
               className="h-full w-full"
               referrerPolicy="no-referrer"
-              sandbox="allow-scripts"
               src={attachment.url}
               title={attachment.filename}
             />

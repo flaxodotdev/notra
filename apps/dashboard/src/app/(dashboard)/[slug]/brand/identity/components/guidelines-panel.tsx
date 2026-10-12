@@ -40,10 +40,9 @@ export function GuidelinesPanel({
   const refresh = useRefreshBrandGuidelinesAction(organizationId, voiceId);
 
   const isFailed = data?.guideline?.status === "failed";
-  // `queued` is the initial/never-generated state (including PDF-only rows
-  // created by attach). Only `generating` means a workflow is actively
-  // running; polling and the generating UI key off this.
-  const isGenerating = data?.guideline?.status === "generating";
+  const isGenerating =
+    data?.guideline?.status === "queued" ||
+    data?.guideline?.status === "generating";
   const isRefreshBusy = refresh.isPending || isGenerating;
   const generationError = data?.guideline?.lastGenerationError;
 
@@ -88,32 +87,21 @@ export function GuidelinesPanel({
 
   const { guideline, assets, colors, fonts, tokens, screenshots } = data;
 
-  const sourcePdf = (
-    <GuidelinesSourcePdfSection
-      guideline={guideline}
-      organizationId={organizationId}
-      voiceId={voiceId}
-    />
-  );
-
   if (!guideline) {
     return (
-      <div className="space-y-6">
-        {sourcePdf}
-        <EmptyState
-          action={
-            <GuidelinesActionButton
-              busy={isRefreshBusy}
-              icon={SparklesIcon}
-              label={t("generate")}
-              onClick={refresh.refreshGuidelines}
-            />
-          }
-          description={t("emptyDescription")}
-          preview={<EmptyStateGuidelinesPreview />}
-          title={t("emptyTitle")}
-        />
-      </div>
+      <EmptyState
+        action={
+          <GuidelinesActionButton
+            busy={isRefreshBusy}
+            icon={SparklesIcon}
+            label={t("generate")}
+            onClick={refresh.refreshGuidelines}
+          />
+        }
+        description={t("emptyDescription")}
+        preview={<EmptyStateGuidelinesPreview />}
+        title={t("emptyTitle")}
+      />
     );
   }
 
@@ -124,37 +112,9 @@ export function GuidelinesPanel({
     tokens.length > 0 ||
     screenshots.length > 0;
 
-  // Never generated: no generated assets and no successful generation yet.
-  // Covers both `guideline === null` and PDF-only `queued` rows so a PDF
-  // upload alone keeps the "Generate Guidelines" empty state instead of the
-  // "Guidelines are empty / Refresh" state.
-  const neverGenerated = !hasData && !guideline?.lastGeneratedAt && !isFailed;
-
-  if (neverGenerated && !isGenerating) {
-    return (
-      <div className="space-y-6">
-        {sourcePdf}
-        <EmptyState
-          action={
-            <GuidelinesActionButton
-              busy={isRefreshBusy}
-              icon={SparklesIcon}
-              label={t("generate")}
-              onClick={refresh.refreshGuidelines}
-            />
-          }
-          description={t("emptyDescription")}
-          preview={<EmptyStateGuidelinesPreview />}
-          title={t("emptyTitle")}
-        />
-      </div>
-    );
-  }
-
   if (isGenerating && !hasData) {
     return (
       <div className="space-y-6">
-        {sourcePdf}
         <div className="flex items-center justify-between gap-3">
           <p className="text-muted-foreground flex items-center gap-2 text-sm">
             <Spinner />
@@ -172,11 +132,19 @@ export function GuidelinesPanel({
 
   return (
     <div className="space-y-6">
-      {sourcePdf}
-      <GuidelinesStatusLine
-        generating={isGenerating}
-        lastGeneratedAt={guideline.lastGeneratedAt}
-      />
+      <div className="flex items-center justify-between gap-3">
+        <GuidelinesSourcePdfSection
+          guideline={guideline}
+          organizationId={organizationId}
+          voiceId={voiceId}
+        />
+        <div className="ml-auto">
+          <GuidelinesStatusLine
+            generating={isGenerating}
+            lastGeneratedAt={guideline.lastGeneratedAt}
+          />
+        </div>
+      </div>
 
       {hasData ? (
         <>

@@ -13,6 +13,8 @@ import type {
   BrandTab,
 } from "@/types/brand-identity";
 
+import { GuidelinesPdfUploadButton } from "./guidelines-pdf-upload-button";
+
 export function BrandIdentityHeader({
   activeTab,
   onAddIdentity,
@@ -20,6 +22,8 @@ export function BrandIdentityHeader({
   onAddSitemap,
   onRefreshGuidelines,
   isRefreshingGuidelines,
+  organizationId,
+  voiceId,
 }: BrandIdentityHeaderProps) {
   const t = useTranslations("brand.identity.header");
   const tBrandShared = useTranslations("brand.shared");
@@ -48,10 +52,19 @@ export function BrandIdentityHeader({
       title={tLabels(BRAND_IDENTITY_TAB_LABEL_KEYS[activeTab])}
     >
       {activeTab === "guidelines" ? (
-        <Button loading={isRefreshingGuidelines} onClick={onRefreshGuidelines}>
-          <HugeiconsIcon className="size-4" icon={Refresh03Icon} />
-          {tBrandShared("refreshGuidelines")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <GuidelinesPdfUploadButton
+            organizationId={organizationId}
+            voiceId={voiceId}
+          />
+          <Button
+            loading={isRefreshingGuidelines}
+            onClick={onRefreshGuidelines}
+          >
+            <HugeiconsIcon className="size-4" icon={Refresh03Icon} />
+            {tBrandShared("refreshGuidelines")}
+          </Button>
+        </div>
       ) : null}
       {action ? (
         <Button onClick={action.onClick}>
