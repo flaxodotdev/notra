@@ -1,3 +1,4 @@
+import type { FileDiffMetadata } from "@pierre/diffs";
 import type { ReactNode } from "react";
 
 import type {
@@ -38,12 +39,12 @@ export interface SiteCodeAnnotationRowProps {
   annotation: SiteCodeAnnotation;
 }
 
-export interface SiteFileDiffProps {
-  path: string;
-  before: string | null;
-  after: string | null;
+export type SiteFileDiffProps = {
   className?: string;
-}
+} & (
+  | { fileDiff: FileDiffMetadata }
+  | { path: string; before: string | null; after: string | null }
+);
 
 export interface SiteEditorPaneProps {
   organizationId: string;

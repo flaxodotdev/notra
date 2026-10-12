@@ -4,8 +4,6 @@ import type {
 } from "@notra/sites-core/types/site-integrations";
 import type { ComponentType, SVGProps } from "react";
 
-export type { SiteIntegrationName };
-
 interface SiteIntegrationField {
   key: string;
   placeholder?: string;

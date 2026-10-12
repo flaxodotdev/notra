@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 
+import type { AreaPages } from "../../compiler/types/agent-files";
 import { authorsOf } from "../lib/authors";
 import { getBlogEntries, getChangelogEntries } from "../lib/entries";
 import { areaDescription, areaTitle, href, params } from "../lib/params";
@@ -36,7 +37,11 @@ export const GET: APIRoute = async () => {
           indexable: !entry.data.draft,
         }));
   return new Response(
-    JSON.stringify({ ...common, indexPath: href(), entries }),
+    JSON.stringify({
+      ...common,
+      indexPath: href(),
+      entries,
+    } satisfies AreaPages),
     {
       headers: { "Content-Type": "application/json" },
     }

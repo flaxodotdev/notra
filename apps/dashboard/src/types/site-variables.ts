@@ -1,4 +1,4 @@
-import type { dashboardOrpc } from "@/lib/orpc/query";
+import type { SiteEditorDocument } from "@/types/sites";
 
 export interface SiteVariableRow {
   id: string;
@@ -6,10 +6,6 @@ export interface SiteVariableRow {
   value: string;
 }
 
-export type SiteVariablesDocument = Awaited<
-  ReturnType<typeof dashboardOrpc.sites.editor.read.call>
->;
-
 export interface SiteVariablesFormProps {
-  document: SiteVariablesDocument;
+  document: SiteEditorDocument;
 }
