@@ -16,6 +16,9 @@ export interface OperationalLogEvent {
   projectId?: string | null;
   provider?: string;
   errorName?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  websiteUrl?: string;
 }
 
 export interface OperationalContext {
@@ -23,6 +26,9 @@ export interface OperationalContext {
   organizationId?: string | null;
   projectId?: string | null;
   runId?: string;
+  scanId?: string;
+  promptId?: string;
+  turn?: number;
 }
 
 export type LogFlushScheduler = (flush: () => Promise<void>) => void;

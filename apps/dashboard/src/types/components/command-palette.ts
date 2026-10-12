@@ -1,5 +1,5 @@
 import type { IconSvgElement } from "@hugeicons/react";
-import type { useTranslations } from "next-intl";
+import type { useTranslations } from "use-intl";
 
 import type { NavVisibility } from "@/types/components/nav";
 import type { SettingsSectionId } from "@/types/settings/modal";
@@ -28,6 +28,7 @@ export type CommandRouteId =
   | "geo-settings-languages"
   | "geo-settings-models"
   | "content"
+  | "sites"
   | "brand-company-info"
   | "brand-references"
   | "automation-schedules"

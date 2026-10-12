@@ -1,8 +1,16 @@
 import { isDemoMode } from "@notra/utils/demo-mode";
-import { Client as QStashClient } from "@upstash/qstash";
+import {
+  Client as QStashClient,
+  QstashError as QStashSdkError,
+} from "@upstash/qstash";
 
+import { QSTASH_DESTINATION_REJECTION_PATTERN } from "../constants/qstash";
 import { CUSTOM_SCHEDULE_DEFAULT_INTERVAL_DAYS } from "../constants/schedule-interval";
-import type { CreateQstashRouteScheduleProps } from "../types/qstash";
+import { QstashScheduleSetupError } from "../schemas/qstash";
+import type {
+  CreateQstashRouteScheduleProps,
+  PublishQstashRouteMessageProps,
+} from "../types/qstash";
 import { toUtcDateString } from "../utils/schedule-interval";
 import {
   getConfiguredAppUrl,
@@ -31,9 +39,31 @@ export interface TriggerCronConfig {
 function getQstashToken() {
   const token = process.env.QSTASH_TOKEN;
   if (!token) {
-    throw new Error("QSTASH_TOKEN is not configured");
+    throw new QstashScheduleSetupError({ reason: "missing_token" });
   }
   return token;
+}
+
+function getScheduleAppUrl() {
+  const appUrl = getConfiguredAppUrl();
+  if (!appUrl) {
+    throw new QstashScheduleSetupError({ reason: "missing_app_url" });
+  }
+  return appUrl;
+}
+
+/** Classify the SDK's text-only rejection once, where the raw body lives. */
+function toScheduleCreateError(error: unknown) {
+  if (
+    error instanceof QStashSdkError &&
+    QSTASH_DESTINATION_REJECTION_PATTERN.test(error.message)
+  ) {
+    return new QstashScheduleSetupError({
+      reason: "invalid_destination",
+      cause: error,
+    });
+  }
+  return error;
 }
 
 export function getAppUrl() {
@@ -122,19 +152,23 @@ export async function createQstashSchedule({
     return scheduleId ?? `demo-schedule-${triggerId}`;
   }
   const client = getQStashClient();
-  const appUrl = getAppUrl();
+  const appUrl = getScheduleAppUrl();
 
   const destination = `${appUrl}/api/workflows/schedule`;
 
-  const result = await client.schedules.create({
-    ...(scheduleId && { scheduleId }),
-    destination,
-    cron,
-    body: JSON.stringify({ triggerId }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
+  const result = await client.schedules
+    .create({
+      ...(scheduleId && { scheduleId }),
+      destination,
+      cron,
+      body: JSON.stringify({ triggerId }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+    .catch((error: unknown) => {
+      throw toScheduleCreateError(error);
+    });
 
   const resolvedScheduleId = result.scheduleId ?? scheduleId;
 
@@ -155,17 +189,21 @@ export async function createQstashRouteSchedule({
     return scheduleId ?? `demo-schedule-${crypto.randomUUID()}`;
   }
   const client = getQStashClient();
-  const appUrl = getAppUrl();
+  const appUrl = getScheduleAppUrl();
 
-  const result = await client.schedules.create({
-    ...(scheduleId && { scheduleId }),
-    destination: `${appUrl}${path}`,
-    cron,
-    body: JSON.stringify(body),
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
+  const result = await client.schedules
+    .create({
+      ...(scheduleId && { scheduleId }),
+      destination: `${appUrl}${path}`,
+      cron,
+      body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+    .catch((error: unknown) => {
+      throw toScheduleCreateError(error);
+    });
 
   const resolvedScheduleId = result.scheduleId ?? scheduleId;
 
@@ -174,6 +212,32 @@ export async function createQstashRouteSchedule({
   }
 
   return resolvedScheduleId;
+}
+
+/**
+ * Sends one message to a dashboard route, held by QStash until `notBefore`.
+ * Addressed like the schedule triggers, so the API (which only knows the
+ * dashboard as `WORKFLOW_BASE_URL`) can send it too; the route verifies the
+ * signature against the same base.
+ */
+export async function publishQstashRouteMessage({
+  path,
+  body,
+  notBefore,
+  deduplicationId,
+}: PublishQstashRouteMessageProps) {
+  const client = getQStashClient();
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
+    throw new QstashScheduleSetupError({ reason: "missing_app_url" });
+  }
+  await client.publishJSON({
+    url: `${baseUrl}${path}`,
+    body,
+    // Whole seconds, rounded up so the message never lands before the time.
+    notBefore: Math.ceil(notBefore.getTime() / 1000),
+    deduplicationId,
+  });
 }
 
 export async function deleteQstashSchedule(scheduleId: string) {

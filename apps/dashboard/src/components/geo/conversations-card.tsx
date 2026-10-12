@@ -3,7 +3,6 @@
 import {
   AiMagicIcon,
   Delete02Icon,
-  Loading03Icon,
   MessageMultiple01Icon,
   MoreHorizontalIcon,
   PencilEdit02Icon,
@@ -13,6 +12,10 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { GEO_MAX_SEQUENCES } from "@notra/geo-core/constants/geo";
 import type { GeoPromptSequence } from "@notra/geo-core/types/geo";
+import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,21 +31,20 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@notra/ui/components/ui/empty";
+import { Spinner } from "@notra/ui/components/ui/spinner";
 import { Switch } from "@notra/ui/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
-import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { ConversationBuilderDialog } from "@/components/geo/conversation-builder-dialog";
 import { ConversationResultsDialog } from "@/components/geo/conversation-results-dialog";
-import { StatusSpinner } from "@/components/geo/status-spinner";
-import { Table, type TableColumn } from "@/components/motion/table";
 import { TABLE_ROW_HEIGHT } from "@/constants/table";
 import {
   useGeoRunSequence,
@@ -82,6 +84,7 @@ function ConversationRowActions({
             <Button
               aria-label={t("runNamed", { name: sequence.name })}
               disabled={isRunPending}
+              loading={isRunning}
               onClick={(event) => {
                 event.stopPropagation();
                 onRun();
@@ -91,11 +94,7 @@ function ConversationRowActions({
             />
           }
         >
-          <HugeiconsIcon
-            className={isRunning ? "animate-spin" : undefined}
-            icon={isRunning ? Loading03Icon : PlayIcon}
-            size={14}
-          />
+          <HugeiconsIcon icon={PlayIcon} size={14} />
           {t("run")}
         </TooltipTrigger>
         <TooltipContent>
@@ -275,7 +274,7 @@ export function ConversationsCard({
       variant={sequences.length === 0 ? "default" : "ghost"}
     >
       {generateSequences.isPending ? (
-        <StatusSpinner />
+        <Spinner className="size-3.5" />
       ) : (
         <HugeiconsIcon icon={AiMagicIcon} size={14} />
       )}
@@ -326,8 +325,7 @@ export function ConversationsCard({
           </EmptyContent>
         </Empty>
       ) : (
-        <Table
-          className="rounded-2xl"
+        <DataTable
           columns={columns}
           data={sequences}
           defaultSort={{ key: "name", direction: "asc" }}

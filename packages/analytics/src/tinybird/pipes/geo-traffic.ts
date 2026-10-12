@@ -20,10 +20,15 @@ import {
   GEO_EXCLUDED_SOURCES_SQL,
   GEO_HOST_FILTER_PARAMS,
   GEO_HOST_FILTER_SQL,
+  GEO_HOSTS_PARAMS,
+  GEO_HOSTS_SET,
+  GEO_HOSTS_SQL,
   GEO_JOURNEY_DEEP_CRAWL_PAGES_SQL,
   GEO_JOURNEY_FIRST_SEEN_CURRENT_CONDITION,
   GEO_PROJECT_SCOPE_PARAMS,
   GEO_PROJECT_SCOPE_SQL,
+  GEO_SITE_SCOPE_PARAMS,
+  GEO_SITE_SCOPE_SQL,
   GEO_WINDOW_PARAMS,
 } from "../../constants/geo-queries";
 import { geoTrafficDaily, geoTrafficPagesByHostDaily } from "../datasources";
@@ -33,6 +38,7 @@ const GEO_TRAFFIC_PAGES_BY_HOST_DAILY_SQL = `
             toDate(captured_at) AS day,
             organization_id,
             project_id,
+            site_id,
             visitor_type,
             source,
             host,
@@ -40,7 +46,7 @@ const GEO_TRAFFIC_PAGES_BY_HOST_DAILY_SQL = `
             countState() AS visits_state,
             maxState(captured_at) AS last_seen_state
           FROM geo_traffic_events
-          GROUP BY day, organization_id, project_id, visitor_type, source, host, path
+          GROUP BY day, organization_id, project_id, site_id, visitor_type, source, host, path
         `;
 
 export const geoTrafficDailyMv = defineMaterializedView(
@@ -57,6 +63,7 @@ export const geoTrafficDailyMv = defineMaterializedView(
           toDate(captured_at) AS day,
           organization_id,
           project_id,
+          site_id,
           visitor_type,
           source,
           countState() AS visits_state,
@@ -67,7 +74,7 @@ export const geoTrafficDailyMv = defineMaterializedView(
           anyState(category) AS category_state,
           anyState(confidence) AS confidence_state
         FROM geo_traffic_events
-        GROUP BY day, organization_id, project_id, visitor_type, source
+        GROUP BY day, organization_id, project_id, site_id, visitor_type, source
       `,
       }),
     ],
@@ -112,8 +119,10 @@ export const geoTrafficOverview = defineEndpoint("geo_traffic_overview", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     ...GEO_WINDOW_PARAMS,
+    ...GEO_HOSTS_PARAMS,
   },
   nodes: [
     node({
@@ -133,10 +142,58 @@ export const geoTrafficOverview = defineEndpoint("geo_traffic_overview", {
         FROM geo_traffic_daily
         WHERE organization_id = {{String(organization_id)}}
           ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
           ${GEO_EXCLUDED_SOURCES_SQL}
           ${GEO_DAY_COMPARISON_WINDOW_SQL}
         GROUP BY source, visitor_type
-        HAVING visits > 0
+      `,
+    }),
+    node({
+      name: "per_source_hosts",
+      sql: `
+        SELECT
+          h.source AS source,
+          h.visitor_type AS visitor_type,
+          d.agent AS agent,
+          d.category AS category,
+          d.confidence AS confidence,
+          h.visits AS visits,
+          h.previous_visits AS previous_visits,
+          toUInt64(0) AS markdown_visits,
+          h.paths AS paths,
+          h.last_seen_at AS last_seen_at
+        FROM (
+          SELECT
+            source,
+            visitor_type,
+            countMergeIf(visits_state, (${GEO_DAY_CURRENT_CONDITION})) AS visits,
+            countMergeIf(visits_state, (${GEO_DAY_PREVIOUS_CONDITION})) AS previous_visits,
+            uniqExactIf(path, (${GEO_DAY_CURRENT_CONDITION})) AS paths,
+            maxMergeIf(last_seen_state, (${GEO_DAY_CURRENT_CONDITION})) AS last_seen_at
+          FROM geo_traffic_pages_by_host_daily
+          WHERE ${GEO_HOSTS_SET}
+            AND organization_id = {{String(organization_id)}}
+            ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
+            ${GEO_EXCLUDED_SOURCES_SQL}
+            ${GEO_HOSTS_SQL}
+            ${GEO_DAY_COMPARISON_WINDOW_SQL}
+          GROUP BY source, visitor_type
+        ) AS h
+        LEFT JOIN (
+          SELECT source, visitor_type, agent, category, confidence FROM per_source
+        ) AS d ON d.source = h.source AND d.visitor_type = h.visitor_type
+      `,
+    }),
+    node({
+      name: "result",
+      sql: `
+        SELECT * FROM (
+          SELECT * FROM per_source WHERE NOT (${GEO_HOSTS_SET})
+          UNION ALL
+          SELECT * FROM per_source_hosts
+        )
+        WHERE visits > 0 OR previous_visits > 0
         ORDER BY visits DESC, source ASC
       `,
     }),
@@ -160,8 +217,10 @@ export const geoTrafficTimeseries = defineEndpoint("geo_traffic_timeseries", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     ...GEO_WINDOW_PARAMS,
+    ...GEO_HOSTS_PARAMS,
   },
   nodes: [
     node({
@@ -173,9 +232,26 @@ export const geoTrafficTimeseries = defineEndpoint("geo_traffic_timeseries", {
           source,
           countMerge(visits_state) AS visits
         FROM geo_traffic_daily
-        WHERE organization_id = {{String(organization_id)}}
+        WHERE NOT (${GEO_HOSTS_SET})
+          AND organization_id = {{String(organization_id)}}
           ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
           ${GEO_EXCLUDED_SOURCES_SQL}
+          ${GEO_DAY_WINDOW_SQL}
+        GROUP BY day, visitor_type, source
+        UNION ALL
+        SELECT
+          day,
+          visitor_type,
+          source,
+          countMerge(visits_state) AS visits
+        FROM geo_traffic_pages_by_host_daily
+        WHERE ${GEO_HOSTS_SET}
+          AND organization_id = {{String(organization_id)}}
+          ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
+          ${GEO_EXCLUDED_SOURCES_SQL}
+          ${GEO_HOSTS_SQL}
           ${GEO_DAY_WINDOW_SQL}
         GROUP BY day, visitor_type, source
         ORDER BY day ASC, visitor_type ASC, source ASC
@@ -196,6 +272,7 @@ export const geoTrafficPages = defineEndpoint("geo_traffic_pages", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     ...GEO_WINDOW_PARAMS,
     visitor: p
@@ -204,6 +281,7 @@ export const geoTrafficPages = defineEndpoint("geo_traffic_pages", {
       .describe("Visitor type filter, empty for every AI visitor"),
     limit: p.int32().optional(20).describe("Max rows"),
     ...GEO_HOST_FILTER_PARAMS,
+    ...GEO_HOSTS_PARAMS,
   },
   nodes: [
     node({
@@ -223,11 +301,13 @@ export const geoTrafficPages = defineEndpoint("geo_traffic_pages", {
         FROM geo_traffic_events
         WHERE organization_id = {{String(organization_id)}}
           ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
           ${GEO_EXCLUDED_SOURCES_SQL}
           AND visitor_type IN ('crawler', 'ai_referral')
           AND ({{String(visitor, '')}} = '' OR visitor_type = {{String(visitor, '')}})
           AND ((${GEO_CAPTURED_CURRENT_CONDITION}) OR (${GEO_CAPTURED_PREVIOUS_CONDITION}))
           ${GEO_HOST_FILTER_SQL}
+          ${GEO_HOSTS_SQL}
         GROUP BY host, path, source, visitor_type
         HAVING visits > 0
         ORDER BY visits DESC, host ASC, path ASC
@@ -246,11 +326,27 @@ export const geoTrafficPages = defineEndpoint("geo_traffic_pages", {
   },
 });
 
+const GEO_TRAFFIC_LOG_FILTER_SQL = `WHERE organization_id = {{String(organization_id)}}
+          ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
+          ${GEO_EXCLUDED_SOURCES_SQL}
+          AND (
+            ({{String(visitor_type, '')}} = '' AND visitor_type IN ('crawler', 'ai_referral'))
+            OR has(splitByChar(',', {{String(visitor_type, '')}}), visitor_type)
+          )
+          AND (
+            {{String(category, '')}} = ''
+            OR has(splitByChar(',', {{String(category, '')}}), category)
+          )
+          AND captured_at >= now() - toIntervalDay(90)
+          ${GEO_HOST_FILTER_SQL}`;
+
 export const geoTrafficLog = defineEndpoint("geo_traffic_log", {
   description: "Most recent captured AI visits, newest first",
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     limit: p.int32().optional(50).describe("Max events"),
     visitor_type: p
@@ -270,6 +366,10 @@ export const geoTrafficLog = defineEndpoint("geo_traffic_log", {
   nodes: [
     node({
       name: "recent",
+      // The sort key can't serve newest-first across both visitor types, so
+      // a plain ORDER BY ... LIMIT reads every column of the 90-day window.
+      // Finding the cutoff on captured_at alone first and then reading only
+      // the rows at or after it cut bytes read ~9x in a benchmark.
       sql: `
         SELECT
           captured_at,
@@ -285,20 +385,18 @@ export const geoTrafficLog = defineEndpoint("geo_traffic_log", {
           wants_markdown,
           substring(ua, 1, 180) AS ua_snippet
         FROM geo_traffic_events
-        WHERE organization_id = {{String(organization_id)}}
-          ${GEO_PROJECT_SCOPE_SQL}
-          ${GEO_EXCLUDED_SOURCES_SQL}
-          AND (
-            ({{String(visitor_type, '')}} = '' AND visitor_type IN ('crawler', 'ai_referral'))
-            OR has(splitByChar(',', {{String(visitor_type, '')}}), visitor_type)
+        ${GEO_TRAFFIC_LOG_FILTER_SQL}
+          AND captured_at >= (
+            SELECT min(captured_at)
+            FROM (
+              SELECT captured_at
+              FROM geo_traffic_events
+              ${GEO_TRAFFIC_LOG_FILTER_SQL}
+              ORDER BY captured_at DESC
+              LIMIT {{Int32(limit, 50)}}
+            )
           )
-          AND (
-            {{String(category, '')}} = ''
-            OR has(splitByChar(',', {{String(category, '')}}), category)
-          )
-          AND captured_at >= now() - toIntervalDay(90)
-          ${GEO_HOST_FILTER_SQL}
-        ORDER BY captured_at DESC
+        ORDER BY captured_at DESC, request_id DESC
         LIMIT {{Int32(limit, 50)}}
       `,
     }),
@@ -325,6 +423,7 @@ export const geoTrafficJourneys = defineEndpoint("geo_traffic_journeys", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     ...GEO_WINDOW_PARAMS,
     limit: p.int32().optional(25).describe("Max journeys"),
@@ -342,6 +441,7 @@ export const geoTrafficJourneys = defineEndpoint("geo_traffic_journeys", {
         FROM geo_traffic_events
         WHERE organization_id = {{String(organization_id)}}
           ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
           ${GEO_EXCLUDED_SOURCES_SQL}
           ${GEO_CAPTURED_WINDOW_SQL}
           AND visitor_type IN ('crawler', 'ai_referral')
@@ -401,6 +501,7 @@ const GEO_JOURNEY_COMPARISON_EVENTS_SQL = `
         WHERE organization_id = {{String(organization_id)}}
           AND visitor_type IN ('crawler', 'ai_referral')
           ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
           ${GEO_EXCLUDED_SOURCES_SQL}
           ${GEO_CAPTURED_COMPARISON_WINDOW_SQL}
           AND journey_id != ''
@@ -412,6 +513,7 @@ export const geoJourneySources = defineEndpoint("geo_journey_sources", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     ...GEO_WINDOW_PARAMS,
   },
@@ -492,6 +594,7 @@ export const geoJourneyPages = defineEndpoint("geo_journey_pages", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     ...GEO_WINDOW_PARAMS,
     limit: p.int32().optional(500).describe("Max pages"),
@@ -585,6 +688,7 @@ export const geoJourneyDetail = defineEndpoint("geo_journey_detail", {
   params: {
     organization_id: p.string().describe("Organization id"),
     ...GEO_PROJECT_SCOPE_PARAMS,
+    ...GEO_SITE_SCOPE_PARAMS,
     ...GEO_EXCLUDED_SOURCES_PARAMS,
     journey_id: p.string().describe("Journey id"),
     ...GEO_WINDOW_PARAMS,
@@ -606,6 +710,7 @@ export const geoJourneyDetail = defineEndpoint("geo_journey_detail", {
         FROM geo_traffic_events
         WHERE organization_id = {{String(organization_id)}}
           ${GEO_PROJECT_SCOPE_SQL}
+          ${GEO_SITE_SCOPE_SQL}
           ${GEO_EXCLUDED_SOURCES_SQL}
           AND journey_id = {{String(journey_id)}}
           ${GEO_CAPTURED_WINDOW_SQL}

@@ -2,24 +2,18 @@
 
 import { Delete02Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { ConfirmDialog } from "@notra/ui/components/shared/confirm-dialog";
 import {
-  ResponsiveAlertDialog,
-  ResponsiveAlertDialogAction,
-  ResponsiveAlertDialogCancel,
-  ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
-  ResponsiveAlertDialogFooter,
-  ResponsiveAlertDialogHeader,
-  ResponsiveAlertDialogTitle,
-} from "@notra/ui/components/shared/responsive-alert-dialog";
-import { useLocale, useTranslations } from "next-intl";
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
+import { Spinner } from "@notra/ui/components/ui/spinner";
 import { type RefObject, useRef, useState } from "react";
+import { useLocale, useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { PromptSuggestionSheet } from "@/components/geo/prompt-suggestion-sheet";
 import { SearchConsoleToolbar } from "@/components/geo/search-console-card";
-import { StatusSpinner } from "@/components/geo/status-spinner";
-import { Table, type TableColumn } from "@/components/motion/table";
 import { TABLE_ROW_HEIGHT } from "@/constants/table";
 import {
   useGeoSuggestionAccept,
@@ -52,22 +46,22 @@ function SuggestionRowActions({
   onDismiss,
   suggestion,
 }: SuggestionRowActionsProps) {
-  const tCommon2 = useTranslations("common");
   const tGeoShared = useTranslations("geo.shared");
   return (
     <div className="flex h-full shrink-0 items-center justify-end gap-1">
       <Button
+        aria-busy={accepting}
         disabled={disabled}
         onClick={onAccept}
         size="sm"
         variant="secondary"
       >
         {accepting ? (
-          <StatusSpinner />
+          <Spinner className="size-3.5" />
         ) : (
           <HugeiconsIcon icon={PlusSignIcon} size={14} />
         )}
-        {accepting ? tCommon2("labels.adding") : tGeoShared("track")}
+        {tGeoShared("track")}
       </Button>
       <Button
         aria-label={tGeoShared("removePrompt", { prompt: suggestion.prompt })}
@@ -78,7 +72,7 @@ function SuggestionRowActions({
         variant="ghost"
       >
         {dismissing ? (
-          <StatusSpinner />
+          <Spinner className="size-3.5" />
         ) : (
           <HugeiconsIcon icon={Delete02Icon} size={14} />
         )}
@@ -234,54 +228,44 @@ function DismissSuggestionDialog({
   const t = useTranslations("geo.promptSuggestions");
   const tCommon = useTranslations("common.actions");
   return (
-    <ResponsiveAlertDialog
+    <ConfirmDialog
+      className="sm:max-w-md"
+      confirmLabel={tCommon("remove")}
+      description={
+        suggestion
+          ? t("dismissDescription", { prompt: suggestion.prompt })
+          : null
+      }
+      onConfirm={() => {
+        if (suggestion) {
+          onConfirm(suggestion.id);
+        }
+        onOpenChange(false);
+      }}
       onOpenChange={onOpenChange}
       open={suggestion !== null}
-    >
-      <ResponsiveAlertDialogContent className="sm:max-w-md">
-        <ResponsiveAlertDialogHeader>
-          <ResponsiveAlertDialogTitle>
-            {t("dismissTitle")}
-          </ResponsiveAlertDialogTitle>
-          <ResponsiveAlertDialogDescription>
-            {suggestion
-              ? t("dismissDescription", { prompt: suggestion.prompt })
-              : null}
-          </ResponsiveAlertDialogDescription>
-        </ResponsiveAlertDialogHeader>
-        <ResponsiveAlertDialogFooter>
-          <ResponsiveAlertDialogCancel onClick={() => onOpenChange(false)}>
-            {tCommon("cancel")}
-          </ResponsiveAlertDialogCancel>
-          <ResponsiveAlertDialogAction
-            onClick={() => {
-              if (suggestion) {
-                onConfirm(suggestion.id);
-              }
-              onOpenChange(false);
-            }}
-            type="button"
-            variant="destructive"
-          >
-            {tCommon("remove")}
-          </ResponsiveAlertDialogAction>
-        </ResponsiveAlertDialogFooter>
-      </ResponsiveAlertDialogContent>
-    </ResponsiveAlertDialog>
+      title={t("dismissTitle")}
+      variant="destructive"
+    />
   );
 }
 
 function TrackAllButton({ pending, onClick }: TrackAllButtonProps) {
   const t = useTranslations("geo.promptSuggestions");
-  const tCommon = useTranslations("common");
   return (
-    <Button disabled={pending} onClick={onClick} size="sm" variant="outline">
+    <Button
+      aria-busy={pending}
+      disabled={pending}
+      onClick={onClick}
+      size="sm"
+      variant="outline"
+    >
       {pending ? (
-        <StatusSpinner />
+        <Spinner className="size-3.5" />
       ) : (
         <HugeiconsIcon icon={PlusSignIcon} size={14} />
       )}
-      {pending ? tCommon("labels.adding") : t("trackAll")}
+      {t("trackAll")}
     </Button>
   );
 }
@@ -294,25 +278,93 @@ function SuggestionDetailActions({
   onDismiss,
 }: SuggestionDetailActionsProps) {
   const tGeoShared = useTranslations("geo.shared");
-  const tCommon = useTranslations("common");
   const tActions = useTranslations("common.actions");
   return (
     <>
       <Button disabled={disabled} onClick={onDismiss} variant="outline">
-        {dismissing ? <StatusSpinner /> : null}
+        {dismissing ? <Spinner className="size-3.5" /> : null}
         {tActions("remove")}
       </Button>
-      <Button disabled={disabled} onClick={onAccept}>
-        {accepting ? <StatusSpinner /> : null}
-        {accepting ? tCommon("labels.adding") : tGeoShared("track")}
+      <Button aria-busy={accepting} disabled={disabled} onClick={onAccept}>
+        {accepting ? <Spinner className="size-3.5" /> : null}
+        {tGeoShared("track")}
       </Button>
     </>
   );
 }
 
+/** Whether the open suggestion can't take an action right now. */
+function isSuggestionBusy(
+  suggestion: GeoPromptSuggestion | null,
+  state: {
+    blocked: boolean;
+    accepting: ReadonlySet<string>;
+    dismissing: ReadonlySet<string>;
+  }
+): boolean {
+  if (!suggestion) {
+    return false;
+  }
+  return (
+    state.blocked ||
+    state.accepting.has(suggestion.id) ||
+    state.dismissing.has(suggestion.id)
+  );
+}
+
+/** Accepts the rest once every in-flight row request settled without error. */
+async function acceptAllAfterPending(
+  pendingRequests: Map<string, Promise<unknown>>,
+  acceptAll: () => Promise<unknown>
+): Promise<void> {
+  const pendingResults = await Promise.allSettled([
+    ...pendingRequests.values(),
+  ]);
+  if (pendingResults.some((result) => result.status === "rejected")) {
+    return;
+  }
+  await acceptAll();
+}
+
+/**
+ * "Track all" waits for any single-row accept or dismiss still in flight, then
+ * accepts the rest. While it is queued, row actions are blocked.
+ */
+function useTrackAllQueue(
+  acceptAll: { isPending: boolean; mutateAsync: () => Promise<unknown> },
+  pendingRequests: RefObject<Map<string, Promise<unknown>>>
+) {
+  const [isQueued, setIsQueued] = useState(false);
+  const queued = useRef(false);
+
+  const run = async () => {
+    if (queued.current || acceptAll.isPending) {
+      return;
+    }
+    queued.current = true;
+    setIsQueued(true);
+    // No try/finally here: React Compiler can't compile it inside a hook.
+    await acceptAllAfterPending(
+      pendingRequests.current,
+      acceptAll.mutateAsync
+    ).catch(() => {
+      // The mutation hook reports the error.
+    });
+    queued.current = false;
+    setIsQueued(false);
+  };
+
+  return {
+    run,
+    pending: isQueued || acceptAll.isPending,
+    isBlocked: () => queued.current || acceptAll.isPending,
+  };
+}
+
 export function PromptSuggestions({
   organizationId,
   callbackPath,
+  onViewTrackedPrompt,
 }: PromptSuggestionsProps) {
   const t = useTranslations("geo.promptSuggestions");
   const tGeoShared = useTranslations("geo.shared");
@@ -324,17 +376,18 @@ export function PromptSuggestions({
     useGscStatus(organizationId);
   useGscConnectionToast();
   const checking = useGscAnalyzing(organizationId);
-  const accept = useGeoSuggestionAccept(organizationId);
-  const acceptAll = useGeoSuggestionsAcceptAll(organizationId);
+  const accept = useGeoSuggestionAccept(organizationId, onViewTrackedPrompt);
+  const acceptAll = useGeoSuggestionsAcceptAll(organizationId, () =>
+    onViewTrackedPrompt()
+  );
   const dismissSuggestion = useGeoSuggestionDismiss(organizationId);
-  const [isTrackAllQueued, setIsTrackAllQueued] = useState(false);
   const [confirmDismiss, setConfirmDismiss] =
     useState<GeoPromptSuggestion | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [propertyPickerOpen, setPropertyPickerOpen] = useState(false);
   const pendingSuggestionRequests = useRef(new Map<string, Promise<unknown>>());
-  const trackAllQueued = useRef(false);
-  const rowActionsBlocked = () => trackAllQueued.current || acceptAll.isPending;
+  const trackAll = useTrackAllQueue(acceptAll, pendingSuggestionRequests);
+  const rowActionsBlocked = trackAll.isBlocked;
   const [acceptingSuggestionIds, acceptSuggestion] = useSuggestionRowAction(
     accept.mutateAsync,
     pendingSuggestionRequests,
@@ -352,36 +405,12 @@ export function PromptSuggestions({
   const showSuggestionsTable =
     loading || hasSuggestions || isSearchConsoleSynced(searchConsoleStatus);
   const detail = suggestions.find((row) => row.id === detailId) ?? null;
-  const trackAllPending = isTrackAllQueued || acceptAll.isPending;
-  const detailBusy =
-    detail !== null &&
-    (checking ||
-      trackAllPending ||
-      acceptingSuggestionIds.has(detail.id) ||
-      dismissingSuggestionIds.has(detail.id));
-
-  const acceptAllSuggestions = async () => {
-    if (trackAllQueued.current || acceptAll.isPending) {
-      return;
-    }
-
-    trackAllQueued.current = true;
-    setIsTrackAllQueued(true);
-    try {
-      const pendingResults = await Promise.allSettled([
-        ...pendingSuggestionRequests.current.values(),
-      ]);
-      if (pendingResults.some((result) => result.status === "rejected")) {
-        return;
-      }
-      await acceptAll.mutateAsync();
-    } catch {
-      // The mutation hook reports the error.
-    } finally {
-      trackAllQueued.current = false;
-      setIsTrackAllQueued(false);
-    }
-  };
+  const trackAllPending = trackAll.pending;
+  const detailBusy = isSuggestionBusy(detail, {
+    blocked: checking || trackAllPending,
+    accepting: acceptingSuggestionIds,
+    dismissing: dismissingSuggestionIds,
+  });
 
   const columns = suggestionColumns({
     acceptingSuggestionIds,
@@ -404,7 +433,7 @@ export function PromptSuggestions({
     !checking && suggestions.length > 1 ? (
       <TrackAllButton
         onClick={() => {
-          void acceptAllSuggestions();
+          void trackAll.run();
         }}
         pending={trackAllPending}
       />
@@ -426,14 +455,14 @@ export function PromptSuggestions({
         status={searchConsoleStatus}
       />
       {showSuggestionsTable ? (
-        <Table
-          className="rounded-2xl"
+        <DataTable
+          autoHeight
           columns={columns}
           data={suggestions}
           defaultSort={{ key: "impressions", direction: "desc" }}
           emptyState={t("empty")}
           getRowId={(row) => row.id}
-          height={tableHeightFor(Math.max(suggestions.length, loading ? 3 : 1))}
+          height={tableHeightFor(loading ? 3 : 1)}
           loading={loading}
           onRowClick={(row) => setDetailId(row.id)}
           resizable

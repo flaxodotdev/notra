@@ -7,13 +7,19 @@ import type {
   TextSelection,
 } from "@notra/ai/types/chat";
 import type { ChatStatus, UIMessage } from "ai";
+import type { RefObject } from "react";
 
 import ChatInput from "@/components/chat-input";
 import type { QueuedMessage } from "@/components/chat/chat-queue";
 import { ContentChatActivityPanel } from "@/components/content/content-chat-activity-panel";
 import { RightPanel } from "@/components/dashboard/right-panel";
+import type {
+  ChatInputEditingTarget,
+  ContentChatInputHandle,
+} from "@/types/components/chat-input";
 
 export interface ContentDetailChatComposerProps {
+  ref: RefObject<ContentChatInputHandle | null>;
   context: ContextItem[];
   disabled: boolean;
   error: string | null;
@@ -34,6 +40,7 @@ export interface ContentDetailChatComposerProps {
   organizationId: string;
   organizationSlug: string;
   placeholder?: string;
+  editingTarget?: ChatInputEditingTarget;
   queuedMessages: QueuedMessage[];
   selection: TextSelection | null;
   value: string;

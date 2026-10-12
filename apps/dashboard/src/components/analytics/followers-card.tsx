@@ -1,17 +1,17 @@
 "use client";
 
 import {
+  InstrumentEmpty,
+  InstrumentModule,
+} from "@notra/ui/components/instrument/instrument-module";
+import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@notra/ui/components/ui/avatar";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "use-intl";
 
 import { ChartSparkline } from "@/components/charts/chart-sparkline";
-import {
-  InstrumentEmpty,
-  InstrumentModule,
-} from "@/components/instrument/instrument-module";
 import { useFormatMetric } from "@/lib/hooks/use-format-metric";
 import { cn } from "@/lib/utils";
 import type {

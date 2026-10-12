@@ -13,6 +13,7 @@ import type {
   RouteRequest,
   RouterLogger,
 } from "@notra/ai/types/router";
+import { recordRequestAICost } from "@notra/ai/utils/request-ai-usage";
 
 import { createCreditTracker } from "./credits";
 import { GatewayCreditBalanceError } from "./errors";
@@ -125,6 +126,7 @@ export function createModelRouter(config: ModelRouterConfig): ModelRouter {
           organizationId: options?.organizationId,
           gateway: options?.gateway,
           zdr: options?.zdr,
+          logContext: options?.logContext,
         },
         policy: config.policy,
         adapters: config.adapters,
@@ -148,6 +150,9 @@ export function createModelRouter(config: ModelRouterConfig): ModelRouter {
         const enriched = await adapter.lookupRouteMetadata(
           metadata.generationId
         );
+        if (enriched.costUsd !== undefined) {
+          recordRequestAICost(metadata.generationId, enriched.costUsd);
+        }
         return { ...metadata, ...enriched };
       } catch (error) {
         logger.warn("ai.router.generation_lookup_failed", {

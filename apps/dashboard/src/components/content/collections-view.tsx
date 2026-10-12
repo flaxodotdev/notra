@@ -2,23 +2,45 @@
 
 import type { PostCollectionSummary } from "@notra/schemas/dashboard/content";
 import { LogoStack } from "@notra/ui/components/geo/logo-stack";
-import { TablePagination } from "@notra/ui/components/shared/table-pagination";
+import { ConfirmDialog } from "@notra/ui/components/shared/confirm-dialog";
+import { TruncateWithTooltip } from "@notra/ui/components/shared/truncate-with-tooltip";
 import { Badge } from "@notra/ui/components/ui/badge";
-import { formatDistanceToNowStrict } from "date-fns";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-
-import { StatusSpinner } from "@/components/geo/status-spinner";
-import { Table, type TableColumn } from "@/components/motion/table";
 import {
+  DataTable,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
+import { Spinner } from "@notra/ui/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@notra/ui/components/ui/tooltip";
+import { useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNowStrict } from "date-fns";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useNow, useTranslations } from "use-intl";
+
+import {
+  CollectionActionsMenu,
+  CollectionMenuItems,
+} from "@/components/content/collection-menu-items";
+import Link from "@/components/framework/link";
+import {
+  COLLECTION_JUST_NOW_MS,
   COLLECTION_TABLE_ROW_HEIGHT,
+  COLLECTION_TABLE_TOOLTIP_DELAY_MS,
   COLLECTION_TYPE_STACK_LIMIT,
 } from "@/constants/content-collections";
+import { usePostSchedule } from "@/lib/hooks/use-content-calendar";
+import { useLocalDateFormat } from "@/lib/hooks/use-local-date-format";
 import { useOutputTypeLabel } from "@/lib/hooks/use-output-type-label";
+import { usePostActions } from "@/lib/hooks/use-post-actions";
 import { useDateFnsLocale } from "@/lib/i18n/date-fns";
 import { useLogoStackLabels } from "@/lib/i18n/use-logo-stack-labels";
-import { cn } from "@/lib/utils";
+import { useRouter } from "@/lib/navigation";
+import { dashboardOrpc } from "@/lib/orpc/query";
 import type {
   CollectionStatus,
   CollectionsViewProps,
@@ -29,8 +51,16 @@ import {
   collectionTitle,
   collectionStatus,
 } from "@/utils/content-collections";
+import { toErrorMessage } from "@/utils/error-message";
+import dynamic from "@/utils/lazy-component";
 import { getOutputTypeIconClass, OutputTypeIcon } from "@/utils/output-types";
 import { paginatedTableHeightFor } from "@/utils/table";
+
+const ScheduleContentDialog = dynamic(() =>
+  import("@/components/content/schedule/schedule-content-dialog").then(
+    (module) => module.ScheduleContentDialog
+  )
+);
 
 function statusVariant(
   status: CollectionStatus
@@ -51,7 +81,7 @@ function CollectionStatusBadge({ status }: { status: CollectionStatus }) {
       className="inline-flex items-center gap-1.5 rounded-sm text-[0.6875rem] whitespace-nowrap"
       variant={statusVariant(status)}
     >
-      {status === "generating" ? <StatusSpinner /> : null}
+      {status === "generating" ? <Spinner /> : null}
       {t("status", { status })}
     </Badge>
   );
@@ -104,9 +134,9 @@ function CollectionNameCell({
   const t = useTranslations("content.collections");
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="truncate text-sm leading-snug font-medium">
+      <TruncateWithTooltip className="text-sm leading-snug font-medium">
         {collectionTitle(collection)}
-      </span>
+      </TruncateWithTooltip>
       <span className="text-muted-foreground truncate text-xs tabular-nums">
         {collectionMeta(collection, t)}
       </span>
@@ -117,19 +147,102 @@ function CollectionNameCell({
 export function CollectionsView({
   collections,
   pagination,
+  organizationId,
   organizationSlug,
-  view,
   loading = false,
 }: CollectionsViewProps) {
   const router = useRouter();
   const t = useTranslations("content.collections");
   const tCommon = useTranslations("common");
+  const tCalendar = useTranslations("content.calendar.toasts");
+  const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] =
+    useState<PostCollectionSummary | null>(null);
+  const [scheduleTarget, setScheduleTarget] =
+    useState<PostCollectionSummary | null>(null);
+  const [isOpeningSchedule, setIsOpeningSchedule] = useState(false);
+  const { data: scheduleData } = usePostSchedule(
+    organizationId,
+    scheduleTarget?.singlePost?.id ?? ""
+  );
+  const { deleteCollection, isDeleting } = usePostActions(organizationId);
+  const menuProps = {
+    organizationSlug,
+    disabled: isDeleting || isOpeningSchedule,
+    onDelete: setDeleteTarget,
+    onSchedule: async (collection: PostCollectionSummary) => {
+      if (!collection.singlePost) {
+        return;
+      }
+      setIsOpeningSchedule(true);
+      try {
+        await queryClient.fetchQuery({
+          ...dashboardOrpc.contentCalendar.get.queryOptions({
+            input: { organizationId, contentId: collection.singlePost.id },
+          }),
+          staleTime: 0,
+        });
+        setScheduleTarget(collection);
+      } catch (error) {
+        toast.error(toErrorMessage(error, tCalendar("scheduleFailed")));
+      }
+      setIsOpeningSchedule(false);
+    },
+  };
+  const deleteDialog = (
+    <ConfirmDialog
+      confirmLabel={tCommon("actions.delete")}
+      description={
+        deleteTarget?.postCount === 1
+          ? tCommon("messages.thisWillPermanentlyDeleteTitle", {
+              title: collectionTitle(deleteTarget),
+            })
+          : t("actions.deleteDescription", {
+              title: deleteTarget ? collectionTitle(deleteTarget) : "",
+              count: deleteTarget?.postCount ?? 0,
+            })
+      }
+      onConfirm={async () => {
+        if (!deleteTarget) {
+          return;
+        }
+        const deleted = await deleteCollection(deleteTarget.id);
+        if (deleted) {
+          setDeleteTarget(null);
+          if (collections.length === 1 && pagination.page > 1) {
+            void pagination.setPage(pagination.page - 1);
+          }
+        }
+      }}
+      onOpenChange={(open) => {
+        if (!open) {
+          setDeleteTarget(null);
+        }
+      }}
+      open={deleteTarget !== null}
+      pending={isDeleting}
+      title={
+        deleteTarget?.postCount === 1
+          ? tCommon("labels.deletePost")
+          : t("actions.deleteTitle")
+      }
+      variant="destructive"
+    />
+  );
   const dateFnsLocale = useDateFnsLocale();
-  const formatRelativeDate = (dateString: string) =>
-    formatDistanceToNowStrict(new Date(dateString), {
+  const formatDate = useLocalDateFormat();
+  const now = useNow({ updateInterval: 60_000 });
+  const formatRelativeDate = (dateString: string) => {
+    const date = new Date(dateString);
+    // date-fns has no "just now"; it would print "0 seconds ago".
+    if (Math.abs(now.getTime() - date.getTime()) < COLLECTION_JUST_NOW_MS) {
+      return tCommon("time.justNow");
+    }
+    return formatDistanceToNowStrict(date, {
       addSuffix: true,
       locale: dateFnsLocale,
     });
+  };
   const collectionColumns: TableColumn<PostCollectionSummary>[] = [
     {
       key: "types",
@@ -155,12 +268,24 @@ export function CollectionsView({
       width: "8.5rem",
       collapsePriority: 3,
       cell: (collection) => (
-        <span
-          className="text-muted-foreground whitespace-nowrap tabular-nums"
-          suppressHydrationWarning
-        >
-          {formatRelativeDate(collection.createdAt)}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="text-muted-foreground whitespace-nowrap tabular-nums"
+                suppressHydrationWarning
+              />
+            }
+          >
+            {formatRelativeDate(collection.createdAt)}
+          </TooltipTrigger>
+          <TooltipContent>
+            {formatDate(new Date(collection.createdAt), {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </TooltipContent>
+        </Tooltip>
       ),
     },
   ];
@@ -175,87 +300,75 @@ export function CollectionsView({
           className="focus-visible:ring-ring block min-w-0 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
           href={collectionHref(organizationSlug, collection)}
           prefetch={false}
-          title={collectionTitle(collection)}
         >
           <CollectionNameCell collection={collection} />
         </Link>
       ),
     },
     ...collectionColumns,
+    {
+      key: "actions",
+      header: <span className="sr-only">{tCommon("labels.actions")}</span>,
+      width: "4rem",
+      minWidth: "4rem",
+      align: "right",
+      cell: (collection) => (
+        <CollectionActionsMenu collection={collection} {...menuProps} />
+      ),
+    },
   ];
 
-  if (view === "grid") {
-    return (
-      <div
-        aria-busy={loading || undefined}
-        className={cn(
-          "space-y-4",
-          loading &&
-            "pointer-events-none opacity-60 transition-opacity duration-200 motion-reduce:transition-none"
-        )}
-        inert={loading ? true : undefined}
-      >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {collections.map((collection) => (
-            <Link
-              className="border-border/60 bg-background hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 flex-col gap-4 rounded-xl border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              href={collectionHref(organizationSlug, collection)}
-              key={collection.id}
-              prefetch={false}
-              title={collectionTitle(collection)}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CollectionTypesCell contentTypes={collection.contentTypes} />
-                <CollectionStatusBadge status={collectionStatus(collection)} />
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <p className="line-clamp-2 text-sm leading-snug font-medium wrap-anywhere">
-                  {collectionTitle(collection)}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {collectionMeta(collection, t)}
-                </p>
-              </div>
-              <time
-                className="text-muted-foreground text-xs"
-                dateTime={collection.createdAt}
-                suppressHydrationWarning
-              >
-                {formatRelativeDate(collection.createdAt)}
-              </time>
-            </Link>
-          ))}
-        </div>
-        {collections.length === 0 ? (
-          <p className="text-muted-foreground py-8 text-center text-sm">
-            {t("emptyPage")}
-          </p>
-        ) : null}
-        <TablePagination {...pagination} itemLabel={t("items")} />
-      </div>
-    );
-  }
-
+  // One shared tooltip glides between the cells instead of reopening.
   return (
-    <Table
-      className="rounded-xl"
-      columns={columns}
-      data={collections}
-      emptyState={t("emptyPage")}
-      footer={<TablePagination {...pagination} itemLabel={t("items")} />}
-      getRowId={(collection) => collection.id}
-      height={paginatedTableHeightFor(
-        pagination.pageRowCount,
-        COLLECTION_TABLE_ROW_HEIGHT
-      )}
-      loading={loading}
-      onRowClick={(collection) =>
-        router.push(collectionHref(organizationSlug, collection))
-      }
-      onRowPointerEnter={(collection) =>
-        router.prefetch(collectionHref(organizationSlug, collection))
-      }
-      rowHeight={COLLECTION_TABLE_ROW_HEIGHT}
-    />
+    <TooltipProvider delay={COLLECTION_TABLE_TOOLTIP_DELAY_MS}>
+      <DataTable
+        columns={columns}
+        data={collections}
+        emptyState={t("emptyPage")}
+        pagination={{
+          mode: "server",
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          totalItems: pagination.totalItems,
+          onPageChange: pagination.setPage,
+          onPageSizeChange: pagination.onPageSizeChange,
+          itemLabel: t("items", { count: pagination.totalItems }),
+        }}
+        getRowId={(collection) => collection.id}
+        height={paginatedTableHeightFor(
+          pagination.pageRowCount,
+          COLLECTION_TABLE_ROW_HEIGHT
+        )}
+        loading={loading}
+        onRowClick={(collection) =>
+          router.push(collectionHref(organizationSlug, collection))
+        }
+        onRowPointerEnter={(collection) =>
+          router.prefetch(collectionHref(organizationSlug, collection))
+        }
+        rowHeight={COLLECTION_TABLE_ROW_HEIGHT}
+        renderRowContextMenu={(collection) => (
+          <CollectionMenuItems collection={collection} {...menuProps} />
+        )}
+      />
+      {deleteDialog}
+      {scheduleTarget?.singlePost ? (
+        <ScheduleContentDialog
+          contentId={scheduleTarget.singlePost.id}
+          contentType={scheduleTarget.contentTypes[0] ?? ""}
+          hasUnsavedChanges={false}
+          onOpenChange={(open) => {
+            if (!open) {
+              setScheduleTarget(null);
+            }
+          }}
+          open
+          organizationId={organizationId}
+          organizationSlug={organizationSlug}
+          schedule={scheduleData?.schedule ?? null}
+          title={collectionTitle(scheduleTarget)}
+        />
+      ) : null}
+    </TooltipProvider>
   );
 }

@@ -254,6 +254,15 @@ const ingestSetupFieldsSchema = z.object({
     astro: z.string(),
     sveltekit: z.string(),
   }),
+  drainUrls: z
+    .object({
+      vercel: z.string(),
+      cloudflare: z.string(),
+    })
+    .openapi({
+      description:
+        "Endpoints a Vercel log drain or Cloudflare Logpush job posts request logs to, authenticated with the tracking token.",
+    }),
   organization: organizationResponseSchema,
 });
 

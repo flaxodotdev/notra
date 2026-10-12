@@ -3,9 +3,12 @@ import {
   createQstashSchedule,
   deleteQstashSchedule,
 } from "@notra/ai/qstash/triggers";
+import { QstashScheduleSetupError } from "@notra/ai/schemas/qstash";
+import { logError } from "@notra/ai/utils/server-log";
 import {
   hashTrigger,
   normalizeTriggerConfig,
+  scheduleDedupeHashes,
 } from "@notra/ai/utils/trigger-hash";
 import { db } from "@notra/db/drizzle";
 import {
@@ -25,12 +28,12 @@ import {
 } from "@notra/schemas/dashboard/integrations";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
-import { getTranslations } from "next-intl/server";
 
 import { DEFAULT_LOOKBACK_WINDOW } from "@/constants/workflows";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
 import { assertOrganizationAccess } from "@/lib/auth/organization";
 import { assertActiveSubscription } from "@/lib/billing/subscription";
+import { getTranslations } from "@/lib/i18n/server";
 import { baseProcedure } from "@/lib/orpc/base";
 import {
   ManualTriggerRunError,
@@ -116,11 +119,9 @@ async function manualRunErrorMessage(code: string): Promise<string> {
 }
 
 async function mapQstashError(error: unknown): Promise<never> {
-  const message = error instanceof Error ? error.message : "Unknown error";
-
   if (
-    message.includes("invalid destination") ||
-    message.includes("unable to resolve host")
+    error instanceof QstashScheduleSetupError &&
+    error.reason === "invalid_destination"
   ) {
     throw badRequest(
       (await getTranslations("errors.automation"))("externalUrlMissing"),
@@ -389,7 +390,7 @@ export const automationRouter = {
         if (previousQstashScheduleId) {
           await deleteQstashSchedule(previousQstashScheduleId).catch(
             (error) => {
-              console.error("Error deleting schedule:", error);
+              logError("Error deleting schedule", error);
             }
           );
         }
@@ -578,7 +579,7 @@ export const automationRouter = {
         const existing = await db.query.contentTriggers.findFirst({
           where: and(
             eq(contentTriggers.organizationId, input.organizationId),
-            eq(contentTriggers.dedupeHash, dedupeHash)
+            inArray(contentTriggers.dedupeHash, scheduleDedupeHashes(input))
           ),
         });
 
@@ -685,7 +686,7 @@ export const automationRouter = {
           if (qstashScheduleId) {
             await deleteQstashSchedule(qstashScheduleId).catch(
               (cleanupError) => {
-                console.error("Error deleting schedule:", cleanupError);
+                logError("Error deleting schedule", cleanupError);
               }
             );
           }
@@ -699,7 +700,7 @@ export const automationRouter = {
               )
             )
             .catch((cleanupError) => {
-              console.error("Error deleting trigger:", cleanupError);
+              logError("Error deleting trigger", cleanupError);
             });
 
           throw internalServerError("Internal server error", error);
@@ -731,7 +732,7 @@ export const automationRouter = {
         const duplicate = await db.query.contentTriggers.findFirst({
           where: and(
             eq(contentTriggers.organizationId, input.organizationId),
-            eq(contentTriggers.dedupeHash, dedupeHash),
+            inArray(contentTriggers.dedupeHash, scheduleDedupeHashes(input)),
             ne(contentTriggers.id, input.triggerId)
           ),
         });
@@ -867,7 +868,7 @@ export const automationRouter = {
           if (qstashScheduleId && qstashScheduleId !== existingScheduleId) {
             await deleteQstashSchedule(qstashScheduleId).catch(
               (cleanupError) => {
-                console.error("Error deleting schedule:", cleanupError);
+                logError("Error deleting schedule", cleanupError);
               }
             );
           }

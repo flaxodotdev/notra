@@ -1,8 +1,11 @@
+import { ROUTER_METADATA_KEY } from "@notra/ai/constants/router";
 import type {
   ModelCallTelemetry,
   ModelCallTelemetryOptions,
 } from "@notra/ai/types/model-call-telemetry";
 import type { ResolvedRoute, RouterLogFields } from "@notra/ai/types/router";
+import { getOperationalContext } from "@notra/ai/utils/operational-context";
+import { recordRequestAIUsage } from "@notra/ai/utils/request-ai-usage";
 
 /** One lifecycle per SDK model invocation, including any router fallback. */
 export function createModelCallTelemetry({
@@ -10,8 +13,11 @@ export function createModelCallTelemetry({
   request,
   operation,
   signal,
+  providerOptions,
 }: ModelCallTelemetryOptions): ModelCallTelemetry {
   const callId = crypto.randomUUID();
+  const context = { ...getOperationalContext(), ...request.logContext };
+  const tags = providerOptions?.gateway?.tags;
   const startedAt = performance.now();
   let route: ResolvedRoute | undefined;
   let attemptCount = 0;
@@ -25,9 +31,14 @@ export function createModelCallTelemetry({
   ) {
     try {
       logger[level](event, {
+        ...context,
+        requestId: context.requestId ?? callId,
+        ...(Array.isArray(tags)
+          ? { tags: tags.filter((tag) => typeof tag === "string") }
+          : {}),
         callId,
         operation,
-        organizationId: request.organizationId,
+        organizationId: request.organizationId ?? context.organizationId,
         requestedModel: request.modelId,
         model: route?.decision.modelId ?? request.modelId,
         gateway: route?.decision.gateway ?? request.gateway,
@@ -91,7 +102,21 @@ export function createModelCallTelemetry({
       }
       const inputTokens = result.usage.inputTokens.total;
       const outputTokens = result.usage.outputTokens.total;
+      const serviceTier =
+        result.providerMetadata?.gateway?.serviceTier ??
+        result.providerMetadata?.openai?.serviceTier;
       const failed = result.finishReason.unified === "error";
+      const generationId =
+        result.providerMetadata?.[ROUTER_METADATA_KEY]?.generationId;
+      recordRequestAIUsage({
+        model: route?.decision.modelId ?? request.modelId,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens: result.usage.inputTokens.cacheRead,
+        cacheWriteTokens: result.usage.inputTokens.cacheWrite,
+        reasoningTokens: result.usage.outputTokens.reasoning,
+        providerMetadata: result.providerMetadata,
+      });
       finish(
         failed ? "error" : "info",
         failed ? "ai.call.failed" : "ai.call.completed",
@@ -103,11 +128,21 @@ export function createModelCallTelemetry({
               ? inputTokens + outputTokens
               : undefined,
           cacheReadTokens: result.usage.inputTokens.cacheRead,
+          cacheWriteTokens: result.usage.inputTokens.cacheWrite,
+          serviceTier:
+            typeof serviceTier === "string" ? serviceTier : undefined,
           reasoningTokens: result.usage.outputTokens.reasoning,
           finishReason: result.finishReason.unified,
-          responseId: result.responseId,
+          responseId:
+            result.responseId ??
+            (typeof generationId === "string" ? generationId : undefined),
         },
-        failed ? { error: "Provider returned an error finish reason" } : {}
+        {
+          ...(typeof generationId === "string" ? { generationId } : {}),
+          ...(failed
+            ? { error: "Provider returned an error finish reason" }
+            : {}),
+        }
       );
     },
     fail(error) {

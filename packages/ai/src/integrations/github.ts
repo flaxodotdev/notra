@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import {
   githubAppInstallations,
@@ -26,7 +27,9 @@ import {
 import {
   GitHubAppConfigurationError,
   GitHubCredentialDecryptionError,
+  GitHubMultiRepositoryUnsupportedError,
   GitHubPersistenceError,
+  GitHubRepositoryAlreadyConnectedError,
   GitHubRequestError,
   GitHubRepositoryCacheError,
   GitHubResponseError,
@@ -35,6 +38,7 @@ import type {
   GitHubAppPublishAccess,
   GitHubInstallationReference,
   GitHubCredentialDependencies,
+  GitHubInstallationTokenScope,
   SelectGitHubRepositoriesParams,
 } from "../types/github-operations";
 import type {
@@ -184,6 +188,19 @@ function createGitHubAppJwt() {
   return `${header}.${payload}.${signature}`;
 }
 
+export async function createScopedGitHubAppInstallationToken(
+  installationId: string,
+  scope: GitHubInstallationTokenScope
+) {
+  return runGitHubEffect(
+    createGitHubAppInstallationTokenEffect(
+      installationId,
+      undefined,
+      scope
+    ).pipe(Effect.mapError((error) => error.cause))
+  );
+}
+
 async function createGitHubAppInstallationToken(installationId: string) {
   return runGitHubEffect(
     createGitHubAppInstallationTokenEffect(installationId).pipe(
@@ -194,7 +211,8 @@ async function createGitHubAppInstallationToken(installationId: string) {
 
 function createGitHubAppInstallationTokenEffect(
   installationId: string,
-  requestTimeoutMs?: number
+  requestTimeoutMs?: number,
+  scope?: GitHubInstallationTokenScope
 ) {
   return Effect.gen(function* () {
     const jwt = yield* Effect.try({
@@ -211,6 +229,10 @@ function createGitHubAppInstallationTokenEffect(
           "POST /app/installations/{installation_id}/access_tokens",
           {
             installation_id: Number(installationId),
+            ...(scope?.repositories
+              ? { repositories: scope.repositories }
+              : {}),
+            ...(scope?.permissions ? { permissions: scope.permissions } : {}),
             headers: { "X-GitHub-Api-Version": "2022-11-28" },
           }
         ),
@@ -353,9 +375,10 @@ async function getInstallationOrgMembership(params: {
       params.installationId
     );
   } catch (error) {
-    console.error(
-      "Failed to create GitHub App installation token for org membership check:",
-      error instanceof Error ? error.message : String(error)
+    logError(
+      "[GitHub] Failed to create installation token for org membership check",
+      undefined,
+      { error: error instanceof Error ? error.message : String(error) }
     );
     return { verified: false };
   }
@@ -382,9 +405,13 @@ async function getInstallationOrgMembership(params: {
       return { verified: true, isAdmin: false };
     }
     if (getErrorStatus(error) !== 403) {
-      console.error(
-        "GitHub org membership check via installation token failed:",
-        error instanceof Error ? error.message : String(error)
+      logError(
+        "[GitHub] Org membership check via installation token failed",
+        undefined,
+        {
+          status: getErrorStatus(error),
+          error: error instanceof Error ? error.message : String(error),
+        }
       );
     }
     return { verified: false };
@@ -657,7 +684,10 @@ export async function createGitHubIntegration(
   );
 
   if (existingRepository) {
-    throw new Error("Repository already connected");
+    throw new GitHubRepositoryAlreadyConnectedError({
+      organizationId,
+      repository: `${owner}/${repo}`,
+    });
   }
 
   let encryptedToken: string | null = null;
@@ -1306,9 +1336,7 @@ export async function getGitHubCloneTokenForOrganization(
 export async function addRepository(
   _params: AddRepositoryParams & { userId: string }
 ) {
-  throw new Error(
-    "GitHub integrations now support exactly one repository. Create a new integration for another repo."
-  );
+  throw new GitHubMultiRepositoryUnsupportedError();
 }
 
 export async function getRepositoryById(repositoryId: string) {
@@ -1716,19 +1744,24 @@ export function createGitHubAppInstallationTokenForRecordEffect(
 
 export function getTokenForIntegrationIdEffect(
   integrationId: string,
-  options?: { organizationId?: string; requestTimeoutMs?: number }
+  options?: {
+    organizationId?: string;
+    requestTimeoutMs?: number;
+    scope?: GitHubInstallationTokenScope;
+  }
 ) {
   return resolveGitHubToken(
     { integrationId, organizationId: options?.organizationId },
     {
       ...githubCredentialDependencies,
-      ...(options?.requestTimeoutMs === undefined
+      ...(options?.requestTimeoutMs === undefined && !options?.scope
         ? {}
         : {
             createInstallationToken: (installationId: string) =>
               createGitHubAppInstallationTokenEffect(
                 installationId,
-                options.requestTimeoutMs
+                options.requestTimeoutMs,
+                options.scope
               ),
           }),
       findIntegration: (params) =>
@@ -1765,7 +1798,11 @@ export function getTokenForIntegrationIdEffect(
 
 export function getTokenForIntegrationId(
   integrationId: string,
-  options?: { organizationId?: string; requestTimeoutMs?: number }
+  options?: {
+    organizationId?: string;
+    requestTimeoutMs?: number;
+    scope?: GitHubInstallationTokenScope;
+  }
 ) {
   return runGitHubEffect(
     getTokenForIntegrationIdEffect(integrationId, options).pipe(
@@ -1779,7 +1816,10 @@ export function getTokenForIntegrationId(
 
 export async function getGitHubToolRepositoryContextByIntegrationId(
   integrationId: string,
-  options?: { organizationId?: string }
+  options?: {
+    organizationId?: string;
+    tokenScope?: GitHubInstallationTokenScope;
+  }
 ): Promise<GitHubToolRepositoryContext> {
   const whereClause = options?.organizationId
     ? and(
@@ -1825,6 +1865,9 @@ export async function getGitHubToolRepositoryContextByIntegrationId(
   const token =
     (await getTokenForIntegrationId(integration.id, {
       organizationId: integration.organizationId,
+      scope: options?.tokenScope
+        ? { ...options.tokenScope, repositories: [repo] }
+        : undefined,
     })) ?? undefined;
 
   return {
@@ -1927,21 +1970,6 @@ export async function hasWebhookConfigured(repositoryId: string) {
   });
 
   return !!integration?.encryptedWebhookSecret;
-}
-
-export async function getWebhookSecretByRepositoryId(repositoryId: string) {
-  const integration = await db.query.githubIntegrations.findFirst({
-    where: eq(githubIntegrations.id, repositoryId),
-    columns: {
-      encryptedWebhookSecret: true,
-    },
-  });
-
-  if (!integration?.encryptedWebhookSecret) {
-    return null;
-  }
-
-  return decryptToken(integration.encryptedWebhookSecret);
 }
 
 function buildWebhookUrl(

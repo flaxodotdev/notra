@@ -17,6 +17,7 @@ import { githubAppInstallationCanPublishContent } from "@notra/ai/utils/github-a
 import { getGitHubConnectionMethod } from "@notra/ai/utils/github-connection-method";
 import { createOctokit } from "@notra/ai/utils/octokit";
 import { retryWrite } from "@notra/ai/utils/retry-write";
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import {
   githubAppInstallations,
@@ -31,12 +32,12 @@ import { repositoryContentDirectoryConfigSchema } from "@notra/schemas/dashboard
 import { slugify } from "@notra/utils/slugify";
 import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { getTranslations } from "next-intl/server";
 
 import {
   DEFAULT_GITHUB_CONTENT_DIRECTORIES,
   DEFAULT_GITHUB_CONTENT_OUTPUT_ENABLED,
 } from "@/constants/github";
+import { getTranslations } from "@/lib/i18n/server";
 import {
   prepareR2GitHubContentAssets,
   resolveGitHubImagePathTemplate,
@@ -50,6 +51,10 @@ import {
   buildOpenInNotraBadgeUrls,
   resolveNotraBaseUrl,
 } from "@/lib/integrations/github/pull-request-body";
+import {
+  findSiteGitHubPublishTarget,
+  resolveSiteEntryAuthor,
+} from "@/lib/integrations/github/site-publish-target";
 import { runOrpcEffect } from "@/lib/orpc/effect";
 import {
   badRequest,
@@ -62,12 +67,23 @@ import {
   toGitHubPublishOrpcError,
 } from "@/lib/orpc/utils/github-publish-error";
 import { startContentPublicationReconciliation } from "@/lib/workflows/start";
-import type { PublishSavedContentInput } from "@/types/integrations/github-publish";
+import type {
+  PublishSavedContentInput,
+  PublishSavedContentOptions,
+} from "@/types/integrations/github-publish";
 import { toGitHubOperationOrpcError } from "@/utils/github-operation-error";
 import { getGitHubAppPermissionsRecovery } from "@/utils/github-publish-policy";
+import {
+  buildSiteEntryMarkdown,
+  resolveSiteEntryDirectory,
+  resolveSiteEntrySlug,
+  resolveSiteImagePathTemplate,
+  resolveSitePublicDirectory,
+} from "@/utils/site-github-publish";
 
 export async function publishSavedContentToGitHub(
-  input: PublishSavedContentInput
+  input: PublishSavedContentInput,
+  options: PublishSavedContentOptions = {}
 ) {
   const [post, integration, organization] = await Promise.all([
     db.query.posts.findFirst({
@@ -81,6 +97,7 @@ export async function publishSavedContentToGitHub(
         markdown: true,
         contentType: true,
         githubPublish: true,
+        createdAt: true,
       },
     }),
     db
@@ -88,6 +105,7 @@ export async function publishSavedContentToGitHub(
         id: githubIntegrations.id,
         owner: githubIntegrations.owner,
         repo: githubIntegrations.repo,
+        githubRepositoryId: githubIntegrations.githubRepositoryId,
         defaultBranch: githubIntegrations.defaultBranch,
         installationId: githubAppInstallations.installationId,
         installationAccountType: githubAppInstallations.accountType,
@@ -208,16 +226,37 @@ export async function publishSavedContentToGitHub(
   const outputConfig = repositoryContentDirectoryConfigSchema.safeParse(
     contentOutput.config
   );
-  const directory = outputConfig.success
-    ? (outputConfig.data.directory ??
-      DEFAULT_GITHUB_CONTENT_DIRECTORIES[input.contentType])
-    : DEFAULT_GITHUB_CONTENT_DIRECTORIES[input.contentType];
+  const siteTarget = await findSiteGitHubPublishTarget({
+    organizationId: input.organizationId,
+    contentType: input.contentType,
+    repository: {
+      id: integration.id,
+      githubRepositoryId: integration.githubRepositoryId,
+      owner: integration.owner,
+      repo: integration.repo,
+    },
+  });
+  const configuredDirectory = outputConfig.success
+    ? outputConfig.data.directory
+    : undefined;
+  const directory =
+    configuredDirectory ??
+    (siteTarget
+      ? resolveSiteEntryDirectory(siteTarget.rootDirectory, input.contentType)
+      : DEFAULT_GITHUB_CONTENT_DIRECTORIES[input.contentType]);
+  const postSlug = siteTarget
+    ? resolveSiteEntrySlug({
+        contentId: input.contentId,
+        slug: post.slug,
+        title: post.title,
+      })
+    : post.slug;
   const path = resolveGitHubContentPath({
     contentId: input.contentId,
     customPath: input.path,
     directory,
     pathTemplate: outputConfig.success ? outputConfig.data.contentPath : null,
-    slug: post.slug,
+    slug: postSlug,
     title: post.title,
   });
   if (path.length > GITHUB_CONTENT_PATH_MAX_LENGTH) {
@@ -226,7 +265,17 @@ export async function publishSavedContentToGitHub(
   }
 
   const contentSlug =
-    slugify(post.slug ?? "") || slugify(post.title) || input.contentId;
+    slugify(postSlug ?? "") || slugify(post.title) || input.contentId;
+  const configuredImagePath = outputConfig.success
+    ? outputConfig.data.imagePath
+    : null;
+  const imagePath =
+    siteTarget && !configuredImagePath?.trim()
+      ? resolveSiteImagePathTemplate(
+          siteTarget.rootDirectory,
+          input.contentType
+        )
+      : configuredImagePath;
 
   const notraBaseUrl = resolveNotraBaseUrl();
   let publishInstallationId = integration.installationId ?? null;
@@ -280,6 +329,24 @@ export async function publishSavedContentToGitHub(
         }
       : undefined;
 
+  const siteEntryAuthor =
+    siteTarget && input.contentType === "blog_post"
+      ? await resolveSiteEntryAuthor({
+          token,
+          owner: integration.owner,
+          repo: integration.repo,
+          target: siteTarget,
+          publisherUserId: options.publisherUserId,
+          existingEntry:
+            linkedPullRequest && storedPublish.success
+              ? {
+                  branchName: linkedPullRequest.branchName,
+                  path: storedPublish.data.path,
+                }
+              : undefined,
+        })
+      : null;
+
   const octokit = createOctokit(token);
   const publisherLogin =
     getGitHubAppBotLogin() ??
@@ -312,10 +379,17 @@ export async function publishSavedContentToGitHub(
           contentPath,
           imagePathTemplate: resolveGitHubImagePathTemplate(
             contentPath,
-            outputConfig.success ? outputConfig.data.imagePath : null
+            imagePath
           ),
           markdown: savedMarkdown,
           organizationId: input.organizationId,
+          ...(siteTarget
+            ? {
+                publicDirectory: resolveSitePublicDirectory(
+                  siteTarget.rootDirectory
+                ),
+              }
+            : {}),
           slug: contentSlug,
         });
         if (
@@ -326,7 +400,19 @@ export async function publishSavedContentToGitHub(
           const tErrors = await getTranslations("errors.content");
           throw badRequest(tErrors("imagePathTooLong"));
         }
-        return preparedContent;
+        if (!siteTarget) {
+          return preparedContent;
+        }
+        return {
+          ...preparedContent,
+          markdown: buildSiteEntryMarkdown({
+            author: siteEntryAuthor,
+            contentType: input.contentType,
+            date: post.createdAt,
+            markdown: preparedContent.markdown,
+            title: post.title,
+          }),
+        };
       },
       ...(notraBaseUrl && organization
         ? {
@@ -382,10 +468,11 @@ export async function publishSavedContentToGitHub(
       await startContentPublicationReconciliation(publication, publishedAt);
       reconciliationScheduled = true;
     } catch (error) {
-      console.error("Failed to start content publication reconciliation", {
-        ...logContext,
+      logError(
+        "Failed to start content publication reconciliation",
         error,
-      });
+        logContext
+      );
     }
     try {
       await retryWrite(() =>
@@ -402,17 +489,15 @@ export async function publishSavedContentToGitHub(
         try {
           await startContentPublicationReconciliation(publication, publishedAt);
         } catch (startError) {
-          console.error("Failed to start content publication reconciliation", {
-            ...logContext,
-            error: startError,
-          });
+          logError(
+            "Failed to start content publication reconciliation",
+            startError,
+            logContext
+          );
         }
       }
     } catch (error) {
-      console.error("Failed to record content publication", {
-        ...logContext,
-        error,
-      });
+      logError("Failed to record content publication", error, logContext);
       // The PR already exists, so hand the idempotent mapping write to a
       // durable workflow instead of relying on this request process. The
       // publish itself succeeded, whatever happens to the handover.
@@ -420,10 +505,11 @@ export async function publishSavedContentToGitHub(
         try {
           await startContentPublicationReconciliation(publication, publishedAt);
         } catch (startError) {
-          console.error("Failed to start content publication reconciliation", {
-            ...logContext,
-            error: startError,
-          });
+          logError(
+            "Failed to start content publication reconciliation",
+            startError,
+            logContext
+          );
         }
       }
     }
@@ -443,10 +529,11 @@ export async function publishSavedContentToGitHub(
           )
       );
     } catch (error) {
-      console.error("Failed to update GitHub publication metadata", {
-        ...logContext,
+      logError(
+        "Failed to update GitHub publication metadata",
         error,
-      });
+        logContext
+      );
     }
     return result;
   } catch (error) {

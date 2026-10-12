@@ -1,8 +1,8 @@
 import type { createOctokit } from "@notra/ai/utils/octokit";
 import type { redis } from "@notra/ai/utils/redis";
 import { Data } from "effect";
-import type { useTranslations } from "next-intl";
 import type React from "react";
+import type { useTranslations } from "use-intl";
 
 import type messages from "../../../messages/en.json";
 import type { GitHubIntegration, GitHubRepository } from "../integrations";
@@ -32,11 +32,6 @@ export interface GitHubRepositoryMenuProps extends GitHubRepositoryActionsProps 
   isPending: boolean;
   onToggle: () => void;
   onDialog: (dialog: GitHubRepositoryDialog) => void;
-}
-
-export interface GitHubLegacyPageProps {
-  params: Promise<{ slug: string; id: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export interface GitHubWebhookSettingsProps {
@@ -367,6 +362,7 @@ export interface PrepareGitHubContentAssetsParams {
   imagePathTemplate: string;
   markdown: string;
   organizationId: string;
+  publicDirectory?: string;
   publicUrl: string | null;
   slug: string;
   loadImage: (key: string, maxBytes: number) => Promise<GitHubSourceImageAsset>;
@@ -505,3 +501,14 @@ export type GitHubFormsTranslator = ReturnType<
 
 export type GitHubCallbackErrorMessageKey =
   keyof (typeof messages)["integrations"]["github"]["callbackErrors"];
+
+export interface ContentPullRequestRef {
+  owner: string;
+  repo: string;
+  pullNumber: number;
+}
+
+export type ContentPullRequestState =
+  | { status: "merged"; mergedAt: Date | null }
+  | { status: "closed" }
+  | { status: "open"; draft: boolean; nodeId: string };

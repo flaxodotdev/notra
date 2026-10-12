@@ -10,9 +10,14 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { GEO_SCAN_RESULTS_PAGE_SIZE } from "@notra/geo-core/constants/geo-scan-history";
 import type { GeoScanResultSummary } from "@notra/geo-core/types/geo-scan-history";
-import { TablePagination } from "@notra/ui/components/shared/table-pagination";
 import { TruncateWithTooltip } from "@notra/ui/components/shared/truncate-with-tooltip";
 import { Badge } from "@notra/ui/components/ui/badge";
+import {
+  DataTableSkeleton,
+  DataTable,
+  type DataTablePagination,
+  type TableColumn,
+} from "@notra/ui/components/ui/data-table";
 import {
   Empty,
   EmptyContent,
@@ -30,17 +35,16 @@ import {
 } from "@notra/ui/components/ui/select";
 import { Skeleton } from "@notra/ui/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@notra/ui/components/ui/tabs";
-import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { useLocale, useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { EngineIcon } from "@/components/geo/engine-icon";
 import { ScanActivityStatus } from "@/components/geo/scan-activity-status";
 import { ScanAnswerSheet } from "@/components/geo/scan-answer-sheet";
-import { GeoTableSkeleton } from "@/components/geo/skeleton-parts";
-import { Table, type TableColumn } from "@/components/motion/table";
+import { GEO_LOG_ARRIVE_STAGGER_STEPS } from "@/constants/geo-citations";
 import { TABLE_ROW_HEIGHT } from "@/constants/table";
-import { useEngineModeLabel } from "@/lib/hooks/use-engine-mode-label";
+import { useArrivedRowIds } from "@/lib/hooks/use-arrived-row-ids";
 import { useIsGeoScanning } from "@/lib/hooks/use-geo";
 import { useGeoScanRun } from "@/lib/hooks/use-geo-scan-history";
 import type {
@@ -57,13 +61,17 @@ import type {
   GeoScanRunFiltersProps,
   GeoScanRunPendingTableProps,
   GeoScanRunView,
-  GeoScanTablePaginationProps,
   GeoScanViewCountProps,
   ScanRunDetailTranslator,
 } from "@/types/geo-scan-activity";
 import type { GeoSharedTranslator } from "@/types/geo-shared";
 import type { CommonTranslator } from "@/types/i18n";
-import { scanRunDetailView } from "@/utils/geo-scan-activity";
+import { formatEngineFamily } from "@/utils/geo-charts";
+import {
+  hasScanActivityStatus,
+  runProgress,
+  scanRunDetailView,
+} from "@/utils/geo-scan-activity";
 
 const ALL_MODELS = "";
 const SCAN_SKELETON_ROWS = 3;
@@ -76,11 +84,10 @@ const INITIAL_SCAN_RUN_STATE: GeoScanRunDetailState = {
 };
 
 function ModelCell({ engine }: GeoScanModelCellProps) {
-  const formatEngineWithMode = useEngineModeLabel();
   return (
     <span className="flex min-w-0 items-center gap-2">
       <EngineIcon className="size-3.5 shrink-0" engine={engine} />
-      <TruncateWithTooltip>{formatEngineWithMode(engine)}</TruncateWithTooltip>
+      <TruncateWithTooltip>{formatEngineFamily(engine)}</TruncateWithTooltip>
     </span>
   );
 }
@@ -251,30 +258,21 @@ function pendingColumns(
   ];
 }
 
-function ScanTablePagination({
-  offset,
-  total,
-  itemLabel,
-  onOffsetChange,
-}: GeoScanTablePaginationProps) {
-  const page = Math.floor(offset / GEO_SCAN_RESULTS_PAGE_SIZE) + 1;
-  const pageCount = Math.max(1, Math.ceil(total / GEO_SCAN_RESULTS_PAGE_SIZE));
-  return (
-    <TablePagination
-      itemLabel={itemLabel}
-      page={page}
-      pageCount={pageCount}
-      pageRowCount={Math.min(GEO_SCAN_RESULTS_PAGE_SIZE, total - offset)}
-      pageSize={GEO_SCAN_RESULTS_PAGE_SIZE}
-      setPage={(next) =>
-        onOffsetChange(
-          (Math.min(Math.max(1, next), pageCount) - 1) *
-            GEO_SCAN_RESULTS_PAGE_SIZE
-        )
-      }
-      totalItems={total}
-    />
-  );
+function scanPagination(
+  offset: number,
+  total: number,
+  itemLabel: string,
+  onOffsetChange: (offset: number) => void
+): DataTablePagination {
+  return {
+    mode: "server",
+    page: Math.floor(offset / GEO_SCAN_RESULTS_PAGE_SIZE) + 1,
+    pageSize: GEO_SCAN_RESULTS_PAGE_SIZE,
+    totalItems: total,
+    itemLabel,
+    onPageChange: (page) =>
+      onOffsetChange((page - 1) * GEO_SCAN_RESULTS_PAGE_SIZE),
+  };
 }
 
 function scanRunEmptyState(
@@ -284,7 +282,7 @@ function scanRunEmptyState(
 ): ReactNode {
   if (isError && !hasData) {
     return (
-      <span className="flex flex-col items-center gap-2">
+      <span className="text-muted-foreground flex flex-col items-center gap-2">
         {t("loadError")}
         <Button onClick={onRetry} size="sm" variant="outline">
           {tCommon("actions.tryAgain")}
@@ -302,7 +300,6 @@ function ScanRunPendingTable({
   pending,
   showLanguage,
   emptyState,
-  running,
   offset,
   onOffsetChange,
   total,
@@ -313,19 +310,16 @@ function ScanRunPendingTable({
   const tShared = useTranslations("geo.shared");
   const tCommon = useTranslations("common");
   return (
-    <Table
-      className="rounded-2xl"
+    <DataTable
       columns={pendingColumns(showLanguage, t, tShared, tCommon)}
       data={pending}
       emptyState={emptyState}
-      footer={
-        <ScanTablePagination
-          itemLabel={running ? t("itemInProgress") : t("itemMissing")}
-          offset={offset}
-          onOffsetChange={onOffsetChange}
-          total={total}
-        />
-      }
+      pagination={scanPagination(
+        offset,
+        total,
+        t("itemMissing"),
+        onOffsetChange
+      )}
       getRowId={(row) => row.key}
       height={height}
       loading={loading}
@@ -344,27 +338,55 @@ function ScanRunAnswersTable({
   height,
   loading,
   onRowClick,
+  progress,
+  viewKey,
 }: GeoScanRunAnswersTableProps) {
   const t = useTranslations("geo.scanRunDetail");
   const tShared = useTranslations("geo.shared");
   const tCommon = useTranslations("common");
   const locale = useLocale();
+  const arrivals = useArrivedRowIds({
+    ids: results.map((row) => row.id),
+    viewKey,
+    ready: !loading,
+    enabled: progress !== null,
+  });
+  const pagination = scanPagination(
+    offset,
+    total,
+    t("itemAnswers"),
+    onOffsetChange
+  );
+  // The pager renders nothing without answers, so the footer carries the count then.
+  const progressText = progress
+    ? t("progress", {
+        checks: progress.checks.toLocaleString(locale),
+        total: progress.total.toLocaleString(locale),
+      })
+    : null;
   return (
-    <Table
-      className="rounded-2xl"
+    <DataTable
       columns={answerColumns(showLanguage, t, tShared, tCommon, locale)}
       data={results}
       emptyState={emptyState}
       footer={
-        total > 0 ? (
-          <ScanTablePagination
-            itemLabel={t("itemAnswers")}
-            offset={offset}
-            onOffsetChange={onOffsetChange}
-            total={total}
-          />
-        ) : null
+        progressText && total === 0 ? (
+          <p className="text-muted-foreground flex min-h-11 items-center px-4 py-1.5 text-xs tabular-nums">
+            {progressText}
+          </p>
+        ) : undefined
       }
+      pagination={
+        progressText
+          ? { ...pagination, formatRange: () => progressText }
+          : pagination
+      }
+      getRowClassName={(row) => {
+        const order = arrivals.get(row.id);
+        return order === undefined
+          ? undefined
+          : `geo-log-row-arrive geo-log-arrive-${Math.min(order, GEO_LOG_ARRIVE_STAGGER_STEPS)}`;
+      }}
       getRowId={(row) => row.id}
       height={height}
       loading={loading}
@@ -388,10 +410,9 @@ export function ScanRunFilters({
   const t = useTranslations("geo.scanRunDetail");
   const tGeoShared = useTranslations("geo.shared");
   const locale = useLocale();
-  const formatEngineWithMode = useEngineModeLabel();
-  const showViews = pendingCount > 0;
+  const showViews = pendingCount > 0 && !running;
   const showEngines = engines.length > 1;
-  const pendingLabel = running ? tGeoShared("inProgress") : t("missing");
+  const pendingLabel = t("missing");
   if (!(showViews || showEngines)) {
     return null;
   }
@@ -433,9 +454,7 @@ export function ScanRunFilters({
               ) : (
                 <>
                   <EngineIcon className="size-3.5" engine={engine} />
-                  <span className="truncate">
-                    {formatEngineWithMode(engine)}
-                  </span>
+                  <span className="truncate">{formatEngineFamily(engine)}</span>
                 </>
               )}
             </SelectValue>
@@ -448,7 +467,7 @@ export function ScanRunFilters({
               <SelectItem key={item} value={item}>
                 <span className="flex items-center gap-2">
                   <EngineIcon className="size-3.5" engine={item} />
-                  {formatEngineWithMode(item)}
+                  {formatEngineFamily(item)}
                 </span>
               </SelectItem>
             ))}
@@ -515,7 +534,7 @@ export function ScanRunDetail({ organizationId }: GeoScanRunDetailProps) {
     return (
       <section aria-hidden="true" className="space-y-3">
         <Skeleton className="h-5 w-64 max-w-full" />
-        <GeoTableSkeleton rows={SCAN_SKELETON_ROWS} />
+        <DataTableSkeleton rows={SCAN_SKELETON_ROWS} />
       </section>
     );
   }
@@ -532,9 +551,8 @@ export function ScanRunDetail({ organizationId }: GeoScanRunDetailProps) {
   }
   if (isScanning && !query.isError) {
     return (
-      <section aria-label={tGeoShared("scans")} className="space-y-3">
-        <ScanActivityStatus run={undefined} />
-        <GeoTableSkeleton rows={SCAN_SKELETON_ROWS} />
+      <section aria-label={tGeoShared("scans")}>
+        <DataTableSkeleton rows={SCAN_SKELETON_ROWS} />
       </section>
     );
   }
@@ -593,7 +611,6 @@ function ScanRunLoaded({
           setState((prev) => ({ ...prev, pendingOffset }))
         }
         pending={model.pending}
-        running={model.running}
         showLanguage={model.showLanguage}
         total={model.pendingTotal}
       />
@@ -611,9 +628,11 @@ function ScanRunLoaded({
             language: row.language,
           })
         }
+        progress={runProgress(run)}
         results={model.results}
         showLanguage={model.showLanguage}
         total={model.total}
+        viewKey={`${run.id}:${state.offset}:${state.engine}`}
       />
     );
 
@@ -623,28 +642,30 @@ function ScanRunLoaded({
       aria-label={tGeoShared("scans")}
       className="min-w-0 space-y-3"
     >
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <ScanActivityStatus run={run} />
-        {model.hasFilters ? (
-          <ScanRunFilters
-            answerCount={model.answerCount}
-            engine={state.engine}
-            engines={model.engines}
-            onEngineChange={(engine) =>
-              setState((prev) => ({
-                ...prev,
-                engine,
-                offset: 0,
-                pendingOffset: 0,
-              }))
-            }
-            onViewChange={(view) => setState((prev) => ({ ...prev, view }))}
-            pendingCount={model.pendingTotal}
-            running={model.running}
-            view={model.activeView}
-          />
-        ) : null}
-      </div>
+      {hasScanActivityStatus(run) || model.hasFilters ? (
+        <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <ScanActivityStatus run={run} />
+          {model.hasFilters ? (
+            <ScanRunFilters
+              answerCount={model.answerCount}
+              engine={state.engine}
+              engines={model.engines}
+              onEngineChange={(engine) =>
+                setState((prev) => ({
+                  ...prev,
+                  engine,
+                  offset: 0,
+                  pendingOffset: 0,
+                }))
+              }
+              onViewChange={(view) => setState((prev) => ({ ...prev, view }))}
+              pendingCount={model.pendingTotal}
+              running={model.running}
+              view={model.activeView}
+            />
+          ) : null}
+        </div>
+      ) : null}
       {table}
       <ScanAnswerSheet
         checkId={checkId}

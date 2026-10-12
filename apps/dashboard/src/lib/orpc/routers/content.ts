@@ -6,16 +6,22 @@ import {
 } from "@notra/ai/integrations/linear";
 import { type ContentType, contentTypeSchema } from "@notra/ai/schemas/content";
 import { supportsPostSlug } from "@notra/ai/schemas/post";
-import { createLinearClient } from "@notra/ai/utils/linear";
+import {
+  createLinearClient,
+  getLinearIssuePreviews,
+} from "@notra/ai/utils/linear";
 import { createOctokit } from "@notra/ai/utils/octokit";
 import { sanitizeMarkdownHtml } from "@notra/ai/utils/sanitize";
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import { githubIntegrations, postCollections, posts } from "@notra/db/schema";
 import type { BlogPostSubtype } from "@notra/db/types/content";
 import { buildPostCollectionName } from "@notra/db/utils/post-collections";
 import { extractImageArtifactHtml } from "@notra/db/utils/post-image-artifacts";
+import { publishedAtForStatusChange } from "@notra/db/utils/post-published-at";
 import {
   isProjectInOrganization,
+  projectScopedCollectionIds,
   projectScopeFilter,
 } from "@notra/db/utils/projects";
 import { POSTHOG_EVENTS } from "@notra/posthog/events";
@@ -45,8 +51,6 @@ import {
 } from "@notra/schemas/dashboard/content";
 import { clearCompletedGenerationSchema } from "@notra/schemas/dashboard/generations";
 import { slugify } from "@notra/utils/slugify";
-import { publishEventInTransaction } from "@notra/webhooks/drizzle";
-import { postPublishedInput } from "@notra/webhooks/utils/posts";
 import {
   and,
   asc,
@@ -55,14 +59,14 @@ import {
   eq,
   gte,
   inArray,
+  isNull,
   lt,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import { marked } from "marked";
 import { nanoid } from "nanoid";
-import { getTranslations } from "next-intl/server";
-import { after } from "next/server";
 
 import {
   DASHBOARD_HOME_POST_LIMIT,
@@ -76,7 +80,7 @@ import { assertOrganizationAccess } from "@/lib/auth/organization";
 import { assertActiveSubscription } from "@/lib/billing/subscription";
 import { getUtcDayRange } from "@/lib/content/content-calendar";
 import { getContentPublishingMetrics } from "@/lib/content/content-publishing-metrics.server";
-import { projectScopedCollectionIds } from "@/lib/content/project-scope";
+import { afterResponse } from "@/lib/framework/after-response";
 import {
   addActiveGeneration,
   clearCompletedGeneration,
@@ -85,6 +89,7 @@ import {
   getCompletedGenerations,
 } from "@/lib/generations/tracking";
 import { requestGeoRescanForPublishedPost } from "@/lib/geo/rescan";
+import { getTranslations } from "@/lib/i18n/server";
 import { publishSavedContentToGitHub } from "@/lib/integrations/github/publish-saved-content";
 import { baseProcedure } from "@/lib/orpc/base";
 import { startOnDemandRun } from "@/lib/workflows/start";
@@ -250,7 +255,7 @@ function formatFailureMessage(error: unknown): string {
 }
 
 export async function buildContentUpdateData(
-  existingTitle: string,
+  existingPost: { title: string; status: "draft" | "published" },
   input: {
     markdown?: string;
     status?: "draft" | "published";
@@ -268,7 +273,7 @@ export async function buildContentUpdateData(
     updateData.markdown = input.markdown;
 
     if (input.title === undefined) {
-      updateData.title = titleMatch?.[1] ?? existingTitle;
+      updateData.title = titleMatch?.[1] ?? existingPost.title;
     }
 
     updateData.content = sanitizeMarkdownHtml(
@@ -278,6 +283,13 @@ export async function buildContentUpdateData(
 
   if (input.status !== undefined) {
     updateData.status = input.status;
+    const publishedAt = publishedAtForStatusChange(
+      existingPost.status,
+      input.status
+    );
+    if (publishedAt !== undefined) {
+      updateData.publishedAt = publishedAt;
+    }
   }
 
   return updateData;
@@ -781,10 +793,7 @@ export const contentRouter = {
         throw notFound("Content not found");
       }
 
-      const updateData = await buildContentUpdateData(
-        existingPost.title,
-        input
-      );
+      const updateData = await buildContentUpdateData(existingPost, input);
 
       if (input.slug !== undefined) {
         if (!supportsPostSlug(existingPost.contentType)) {
@@ -822,20 +831,6 @@ export const contentRouter = {
               status: posts.status,
               updatedAt: posts.updatedAt,
             });
-          const [row] = rows;
-          if (
-            row &&
-            row.status === "published" &&
-            existingPost.status !== "published"
-          ) {
-            await publishEventInTransaction(
-              tx,
-              postPublishedInput({
-                organizationId: input.organizationId,
-                postId: row.id,
-              })
-            );
-          }
           return rows;
         });
 
@@ -879,7 +874,7 @@ export const contentRouter = {
           updatedPost.status === "published" &&
           existingPost.status !== "published"
         ) {
-          after(() =>
+          afterResponse(() =>
             requestGeoRescanForPublishedPost({
               organizationId: input.organizationId,
               postId: updatedPost.id,
@@ -928,7 +923,9 @@ export const contentRouter = {
         }
       }
 
-      return publishSavedContentToGitHub(input);
+      return publishSavedContentToGitHub(input, {
+        publisherUserId: auth.user.id,
+      });
     }),
   delete: baseProcedure
     .input(contentInputSchema)
@@ -1231,26 +1228,38 @@ export const contentRouter = {
           organizationId: input.organizationId,
         });
 
-        const existingCollection = await db.query.postCollections.findFirst({
-          where: and(
-            eq(postCollections.id, input.collectionId),
-            eq(postCollections.organizationId, input.organizationId)
-          ),
-          columns: { id: true },
-        });
-
-        if (!existingCollection) {
-          throw notFound("Post collection not found");
-        }
-
-        await db
+        const [deletedCollection] = await db
           .delete(postCollections)
           .where(
             and(
               eq(postCollections.id, input.collectionId),
-              eq(postCollections.organizationId, input.organizationId)
+              eq(postCollections.organizationId, input.organizationId),
+              or(
+                isNull(postCollections.expectedPostCount),
+                gte(
+                  postCollections.completedPostCount,
+                  postCollections.expectedPostCount
+                )
+              )
             )
-          );
+          )
+          .returning({ id: postCollections.id });
+
+        if (!deletedCollection) {
+          const existingCollection = await db.query.postCollections.findFirst({
+            where: and(
+              eq(postCollections.id, input.collectionId),
+              eq(postCollections.organizationId, input.organizationId)
+            ),
+            columns: { id: true },
+          });
+
+          if (!existingCollection) {
+            throw notFound("Post collection not found");
+          }
+
+          throw conflict("Cannot delete a collection while it is generating");
+        }
 
         return { success: true };
       }),
@@ -1518,40 +1527,21 @@ export const contentRouter = {
                 lte: lookback.end.toISOString(),
               };
 
-              const issues = await client.issues({
+              const issues = await getLinearIssuePreviews(client, {
                 filter,
                 first: 50,
                 orderBy: "updatedAt" as never,
               });
 
-              const items = await Promise.all(
-                issues.nodes.map(async (issue) => {
-                  const [state, assignee] = await Promise.all([
-                    issue.state,
-                    issue.assignee,
-                  ]);
-                  return {
-                    id: issue.id,
-                    identifier: issue.identifier,
-                    title: issue.title,
-                    state: state?.name ?? null,
-                    assignee: assignee?.name ?? assignee?.displayName ?? null,
-                    completedAt: issue.completedAt?.toISOString() ?? null,
-                    url: issue.url,
-                  };
-                })
-              );
-
               return {
                 integrationId: integration.id,
                 displayName: integration.displayName,
-                issues: items,
+                issues,
               };
             } catch (error) {
-              console.error(
-                `[Preview] Failed to fetch Linear issues for ${integration.id}:`,
-                error
-              );
+              logError("[Preview] Failed to fetch Linear issues", error, {
+                integrationId: integration.id,
+              });
               return {
                 integrationId: integration.id,
                 displayName: integration.displayName,

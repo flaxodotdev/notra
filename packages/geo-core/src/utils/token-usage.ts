@@ -88,7 +88,7 @@ function usageCostUsd(usage: AgentTokenUsage): number {
   if (
     typeof usage.totalUsd === "number" &&
     Number.isFinite(usage.totalUsd) &&
-    usage.totalUsd > 0
+    usage.totalUsd >= 0
   ) {
     return usage.totalUsd;
   }
@@ -112,6 +112,23 @@ export function addAgentTokenUsage(
     cacheWriteTokens: total.cacheWriteTokens + next.cacheWriteTokens,
     reasoningTokens: (total.reasoningTokens ?? 0) + (next.reasoningTokens ?? 0),
     totalUsd: usageCostUsd(total) + usageCostUsd(next),
+  };
+}
+
+/** Usage as if every call had run `factor` times, for weighted billing. */
+export function scaleAgentTokenUsage(
+  usage: AgentTokenUsage,
+  factor: number
+): AgentTokenUsage {
+  const normalized = agentTokenUsageFrom(usage);
+  return {
+    inputTokens: normalized.inputTokens * factor,
+    outputTokens: normalized.outputTokens * factor,
+    totalTokens: normalized.totalTokens * factor,
+    cacheReadTokens: normalized.cacheReadTokens * factor,
+    cacheWriteTokens: normalized.cacheWriteTokens * factor,
+    reasoningTokens: (normalized.reasoningTokens ?? 0) * factor,
+    totalUsd: (normalized.totalUsd ?? 0) * factor,
   };
 }
 

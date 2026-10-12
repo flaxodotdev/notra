@@ -20,16 +20,14 @@ import {
 import { generateText, Output } from "ai";
 import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { createRequestLogger } from "evlog";
-import { type NextRequest, NextResponse } from "next/server";
 
-import { commandRoutesForAI } from "@/components/command-palette/registry";
 import { isAnalyticsEnabledForOrganization } from "@/lib/analytics/flag";
 import { getServerSession } from "@/lib/auth/session";
 import { hasAiCreditsGrant } from "@/lib/billing/subscription";
 import { isIrisEnabledForOrganization } from "@/lib/iris/flag";
+import { isSitesEnabledForOrganization } from "@/lib/sites/flag";
+import { commandRoutesForAI } from "@/utils/command-palette";
 import { getClientIp, ratelimit } from "@/utils/ratelimit";
-
-export const maxDuration = 15;
 
 const LIKE_ESCAPE_PATTERN = /[\\%_]/g;
 
@@ -210,7 +208,7 @@ async function fetchEntityContext(
   return entities;
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const log = createRequestLogger({
     method: "POST",
     path: "/api/command-palette/navigate",
@@ -223,14 +221,14 @@ export async function POST(request: NextRequest) {
   if (!(session && user)) {
     log.set({ feature: "command_palette", unauthorized: true });
     log.emit();
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { success, reset } = await ratelimit.commandPaletteNavigate.limit(
     user.id || getClientIp(request)
   );
   if (!success) {
-    return NextResponse.json(
+    return Response.json(
       { error: "Rate limit exceeded", reset },
       { status: 429 }
     );
@@ -240,7 +238,7 @@ export async function POST(request: NextRequest) {
     await request.json().catch(() => null)
   );
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    return Response.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   const { query, slug } = parsed.data;
@@ -256,17 +254,22 @@ export async function POST(request: NextRequest) {
   if (!member) {
     log.set({ feature: "command_palette", forbiddenSlug: true });
     log.emit();
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const organizationId = member.organizationId;
-  const [hasAiCredits, iris, analytics, entities] = await Promise.all([
+  const [hasAiCredits, iris, analytics, sites, entities] = await Promise.all([
     hasAiCreditsGrant(organizationId).catch(() => false),
     isIrisEnabledForOrganization(organizationId).catch(() => false),
     isAnalyticsEnabledForOrganization(organizationId).catch(() => false),
+    isSitesEnabledForOrganization(organizationId),
     fetchEntityContext(organizationId, query, slug),
   ]);
-  const routes = commandRoutesForAI(slug, hasAiCredits, { iris, analytics });
+  const routes = commandRoutesForAI(slug, hasAiCredits, {
+    iris,
+    analytics,
+    sites,
+  });
 
   const allPaths = [
     ...routes.map((r) => r.path),
@@ -318,14 +321,14 @@ export async function POST(request: NextRequest) {
       normalizedPath !== null && allPaths.includes(normalizedPath);
 
     if (object.action === "navigate" && validPath) {
-      return NextResponse.json({
+      return Response.json({
         action: "navigate",
         path: normalizedPath,
         reason: object.reason,
       });
     }
 
-    return NextResponse.json({
+    return Response.json({
       action: "chat",
       path: null,
       reason: object.reason || "No confident route match.",
@@ -338,7 +341,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : String(error),
     });
     log.emit();
-    return NextResponse.json(
+    return Response.json(
       { action: "chat", path: null, reason: "AI unavailable, opening chat." },
       { status: 200 }
     );

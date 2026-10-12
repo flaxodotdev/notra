@@ -13,7 +13,9 @@ import {
   isSocialConnectConfigured,
 } from "@/lib/social-connect/client";
 import {
+  isSocialDeliveryUnknown,
   SocialConnectConfigError,
+  SocialConnectDeliveryUnknownError,
   SocialConnectRequestError,
 } from "@/lib/social-connect/errors";
 import type { PublishSocialPostParams } from "@/types/services/social-connect";
@@ -91,6 +93,7 @@ const publishDemoPost = Effect.fn("publishDemoPost")(function* (
     postUrl: null,
     username: account.username,
     platform: account.provider,
+    confirmed: true,
   };
 });
 
@@ -146,36 +149,50 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
   }
   const client = getSocialConnectClient(parsedPlatform.data);
 
+  // Creating a post is not idempotent, so the SDK must not resend it on a
+  // timeout or a server error: the first request may have posted already.
   const post = yield* Effect.tryPromise({
     try: () =>
-      client.socialPosts.create({
-        caption: params.content,
-        social_accounts: [account.providerAccountId],
-      }),
+      client.socialPosts.create(
+        {
+          caption: params.content,
+          social_accounts: [account.providerAccountId],
+        },
+        { maxRetries: 0 }
+      ),
     catch: (cause) =>
-      new SocialConnectRequestError({
-        message: "Failed to publish post",
-        cause,
-      }),
+      isSocialDeliveryUnknown(cause)
+        ? new SocialConnectDeliveryUnknownError({
+            message: "The platform did not confirm the post",
+            cause,
+          })
+        : new SocialConnectRequestError({
+            message: "Failed to publish post",
+            cause,
+          }),
   });
 
-  let postResult: SocialPostResult | null = null;
-  for (let attempt = 0; attempt < RESULT_POLL_ATTEMPTS; attempt += 1) {
-    yield* Effect.sleep(RESULT_POLL_DELAY);
-    const results = yield* Effect.tryPromise({
-      try: () => client.socialPostResults.list({ post_id: [post.id] }),
-      catch: (cause) =>
-        new SocialConnectRequestError({
-          message: "Failed to load published post",
-          cause,
-        }),
-    }).pipe(Effect.catch(() => Effect.succeed(null)));
-
-    postResult = results?.data.at(0) ?? null;
-    if (postResult) {
-      break;
-    }
-  }
+  // The platform publishes asynchronously; poll until it reports a result.
+  const postResult = yield* Effect.sleep(RESULT_POLL_DELAY).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: () => client.socialPostResults.list({ post_id: [post.id] }),
+        catch: (cause) =>
+          new SocialConnectRequestError({
+            message: "Failed to load published post",
+            cause,
+          }),
+      })
+    ),
+    Effect.map(
+      (results): SocialPostResult | null => results.data.at(0) ?? null
+    ),
+    Effect.catch(() => Effect.succeed(null)),
+    Effect.repeat({
+      until: (result) => result !== null,
+      times: (params.resultPollAttempts ?? RESULT_POLL_ATTEMPTS) - 1,
+    })
+  );
 
   if (postResult && !postResult.success) {
     return yield* Effect.fail(
@@ -214,5 +231,7 @@ export const publishSocialPost = Effect.fn("publishSocialPost")(function* (
     postUrl,
     username: account.username,
     platform: account.provider,
+    // The provider accepted the post but reported no platform result yet.
+    confirmed: postResult !== null,
   };
 });

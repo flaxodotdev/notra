@@ -153,9 +153,13 @@ export function classifyUpstreamFailure(
 export function buildRouteMetadata(
   decision: RouteDecision,
   adapter: GatewayAdapter,
-  providerMetadata: SharedV4ProviderMetadata | undefined
+  providerMetadata: SharedV4ProviderMetadata | undefined,
+  servedModelId?: string
 ): RouteMetadata {
-  const extracted = adapter.extractRouteMetadata(providerMetadata);
+  const extracted = adapter.extractRouteMetadata(
+    providerMetadata,
+    servedModelId
+  );
   return {
     gateway: decision.gateway,
     requestedModel: decision.requestedModelId,
@@ -166,6 +170,7 @@ export function buildRouteMetadata(
     ...(extracted.upstreamProvider
       ? { upstreamProvider: extracted.upstreamProvider }
       : {}),
+    ...(extracted.costUsd === undefined ? {} : { costUsd: extracted.costUsd }),
     ...(decision.fallbackFrom ? { fallbackFrom: decision.fallbackFrom } : {}),
     ...(decision.fallbackReason
       ? { fallbackReason: decision.fallbackReason }
@@ -176,12 +181,14 @@ export function buildRouteMetadata(
 
 function annotateProviderMetadata(
   providerMetadata: SharedV4ProviderMetadata | undefined,
-  route: ResolvedRoute
+  route: ResolvedRoute,
+  servedModelId?: string
 ): SharedV4ProviderMetadata {
   const metadata = buildRouteMetadata(
     route.decision,
     route.adapter,
-    providerMetadata
+    providerMetadata,
+    servedModelId
   );
   return {
     ...providerMetadata,
@@ -194,9 +201,13 @@ function annotateStream(
   route: ResolvedRoute
 ): ReadableStream<LanguageModelV4StreamPart> {
   let observedProviderMetadata: SharedV4ProviderMetadata | undefined;
+  let servedModelId: string | undefined;
   return stream.pipeThrough(
     new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       transform(part, controller) {
+        if (part.type === "response-metadata" && part.modelId) {
+          servedModelId = part.modelId;
+        }
         if ("providerMetadata" in part && part.providerMetadata) {
           observedProviderMetadata = {
             ...observedProviderMetadata,
@@ -208,7 +219,8 @@ function annotateStream(
             ...part,
             providerMetadata: annotateProviderMetadata(
               observedProviderMetadata,
-              route
+              route,
+              servedModelId
             ),
           });
           return;
@@ -275,6 +287,7 @@ export class RoutedLanguageModel implements LanguageModelV4 {
       request: this.context.request,
       operation: "generate",
       signal: options.abortSignal,
+      providerOptions: options.providerOptions,
     });
     try {
       const result = await this.execute(options, async (route, params) => {
@@ -284,7 +297,8 @@ export class RoutedLanguageModel implements LanguageModelV4 {
           ...generated,
           providerMetadata: annotateProviderMetadata(
             generated.providerMetadata,
-            route
+            route,
+            generated.response?.modelId
           ),
         };
       });
@@ -304,6 +318,7 @@ export class RoutedLanguageModel implements LanguageModelV4 {
       request: this.context.request,
       operation: "stream",
       signal: options.abortSignal,
+      providerOptions: options.providerOptions,
     });
     try {
       return await this.execute(options, async (route, params) => {
@@ -364,6 +379,7 @@ export class RoutedLanguageModel implements LanguageModelV4 {
   ): LanguageModelV4CallOptions {
     const { router, rest } = splitRouterOptions(options.providerOptions);
     const providerOptions = route.adapter.buildProviderOptions({
+      organizationId: this.context.request.organizationId,
       providerOptions: stripForeignGatewayOptions(route.decision.gateway, rest),
       router,
       allowNonZdr: this.context.policy.allowNonZdr,

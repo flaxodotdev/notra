@@ -1,9 +1,12 @@
 import { acquireClaim } from "@notra/ai/autonomy/claims";
+
+import "@/workflows/runtime";
 import {
   confirmContentBilling,
   releaseContentBilling,
   reserveContentBilling,
 } from "@notra/ai/billing/content-billing";
+import { logWarn } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import {
   brandSettings,
@@ -12,8 +15,6 @@ import {
   githubIntegrations,
   linearIntegrations,
   members,
-  organizationNotificationSettings,
-  organizations,
   postCollections,
 } from "@notra/db/schema";
 import { buildPostCollectionName } from "@notra/db/utils/post-collections";
@@ -34,6 +35,7 @@ import {
   trackScheduledContentFailed,
   trackScheduledContentSkipped,
 } from "@/lib/databuddy";
+import { getNotificationData } from "@/lib/email/notification-data";
 import {
   addActiveGeneration,
   completeActiveGeneration,
@@ -493,10 +495,7 @@ export async function appendAutomationLogBestEffort(
 ): Promise<void> {
   const [result] = await Promise.allSettled([appendAutomationLog(input)]);
   if (result?.status === "rejected") {
-    console.error(
-      "[ActivityLog] Failed to record activity log:",
-      result.reason
-    );
+    console.error("[ActivityLog] Failed to record activity log", result.reason);
   }
 }
 
@@ -525,13 +524,11 @@ export async function trackContentOutcome(
         (result) => result.status === "rejected"
       );
       if (failures.length > 0) {
-        console.warn(
-          `[${input.logPrefix}] Failed to track some created posts`,
-          {
-            triggerId: input.triggerId,
-            failureCount: failures.length,
-          }
-        );
+        logWarn("Failed to track some created posts", {
+          workflow: input.logPrefix,
+          triggerId: input.triggerId,
+          failureCount: failures.length,
+        });
       }
       return;
     }
@@ -561,10 +558,14 @@ export async function trackContentOutcome(
       source: input.source,
     });
   } catch (trackingError) {
-    console.warn(`[${input.logPrefix}] Failed to track content outcome`, {
+    logWarn("Failed to track content outcome", {
+      workflow: input.logPrefix,
       triggerId: input.triggerId,
       kind: input.kind,
-      error: trackingError,
+      error:
+        trackingError instanceof Error
+          ? trackingError.message
+          : String(trackingError),
     });
   }
 }
@@ -574,43 +575,7 @@ export async function fetchNotificationData(input: {
   setting: NotificationSettingKey;
 }): Promise<NotificationData> {
   "use step";
-  const notificationSettings =
-    await db.query.organizationNotificationSettings.findFirst({
-      where: eq(
-        organizationNotificationSettings.organizationId,
-        input.organizationId
-      ),
-    });
-
-  if (!notificationSettings?.[input.setting]) {
-    return {
-      enabled: false,
-      ownerEmails: [],
-      organizationName: "",
-      organizationSlug: "",
-    };
-  }
-
-  const [org, ownerMemberships] = await Promise.all([
-    db.query.organizations.findFirst({
-      where: eq(organizations.id, input.organizationId),
-      columns: { name: true, slug: true },
-    }),
-    db.query.members.findMany({
-      where: and(
-        eq(members.organizationId, input.organizationId),
-        eq(members.role, "owner")
-      ),
-      with: { users: { columns: { email: true } } },
-    }),
-  ]);
-
-  return {
-    enabled: true,
-    ownerEmails: ownerMemberships.map((membership) => membership.users.email),
-    organizationName: org?.name ?? "Your organization",
-    organizationSlug: org?.slug ?? "",
-  };
+  return getNotificationData(input);
 }
 
 export async function enqueueDigest(input: EnqueueDigestInput): Promise<void> {

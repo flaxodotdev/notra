@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useTranslations } from "use-intl";
 
 import { ScanModelMenu } from "@/components/geo/scan-model-menu";
 import {
@@ -30,6 +30,7 @@ function PromptScanMenu({
   organizationId,
   row,
   compact = false,
+  primary = false,
   onPrepare,
 }: PromptScanButtonProps) {
   const t = useTranslations("geo.promptScanButton");
@@ -51,6 +52,7 @@ function PromptScanMenu({
   return (
     <ScanModelMenu
       compact={compact}
+      primary={primary}
       disabled={!row.enabled || !data?.settings?.enabled || isScanning}
       disabledReason={disabledReason}
       catalog={catalog?.models}

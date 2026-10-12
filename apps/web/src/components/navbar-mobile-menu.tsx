@@ -1,6 +1,5 @@
-"use client";
-
 import { HugeiconsIcon } from "@hugeicons/react";
+import { ctaButtonVariants } from "@notra/ui/components/shared/cta-button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -8,13 +7,13 @@ import {
 } from "@notra/ui/components/ui/collapsible";
 import { TRANSITION, tween } from "@notra/ui/lib/motion";
 import { cn } from "@notra/ui/lib/utils";
+import { Link } from "@tanstack/react-router";
 import {
   AnimatePresence,
   m,
   type Variants,
   useReducedMotion,
 } from "motion/react";
-import Link from "next/link";
 import { useState } from "react";
 
 import { AUTH_DASHBOARD_URL, AUTH_SIGNIN_URL } from "@/constants/auth";
@@ -34,6 +33,7 @@ import {
   type MarketingNavRailItem,
 } from "@/utils/navigation";
 
+import { NavbarCompactPanel } from "./navbar-compact-panel";
 import { NavbarChevron } from "./navbar-glyphs";
 import { NavbarHref } from "./navbar-href";
 import { TrackedSignupLink } from "./tracked-signup-link";
@@ -51,6 +51,10 @@ const PANEL_CLASSNAME = "overflow-hidden";
 
 const MENU_FOOTER_BUTTON_CLASSNAME =
   "font-display flex h-12 items-center justify-center rounded-full text-base tracking-[-0.015em]";
+const MENU_FOOTER_CTA_CLASSNAME = cn(
+  ctaButtonVariants({ size: "lg" }),
+  "font-display flex w-full text-base"
+);
 
 const STAGGER_IN = 0.028;
 const STAGGER_OUT = 0.018;
@@ -196,7 +200,7 @@ function MobileNavOverlay({
               <m.div key={entry.href} variants={item}>
                 <Link
                   className={TRIGGER_CLASSNAME}
-                  href={entry.href}
+                  to={entry.href}
                   onClick={onNavigate}
                 >
                   {entry.label}
@@ -255,15 +259,19 @@ function GroupDropdown({
           flipped={open}
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className={PANEL_CLASSNAME}>
-        {open ? (
-          <GroupPanel
-            group={group}
-            item={item}
-            onSelect={onSelect}
-            stagger={stagger}
-          />
-        ) : null}
+      <CollapsibleContent
+        className={cn(
+          PANEL_CLASSNAME,
+          group.layout === "compact" &&
+            "duration-fast transition-opacity ease-out data-ending-style:pointer-events-none data-ending-style:opacity-0 motion-reduce:transition-none"
+        )}
+      >
+        <GroupPanel
+          group={group}
+          item={item}
+          onSelect={onSelect}
+          stagger={stagger}
+        />
       </CollapsibleContent>
     </Collapsible>
   );
@@ -280,6 +288,16 @@ function GroupPanel({
   stagger: Variants;
   item: Variants;
 }) {
+  if (group.layout === "compact") {
+    return (
+      <NavbarCompactPanel
+        group={group}
+        item={item}
+        onSelect={onSelect}
+        stagger={stagger}
+      />
+    );
+  }
   return (
     <m.div
       animate="visible"
@@ -377,13 +395,13 @@ function MobileAuthActions({
   if (isAuthenticated) {
     return (
       <m.div variants={item}>
-        <Link
-          className={`cta-gradient-primary ${MENU_FOOTER_BUTTON_CLASSNAME} font-medium text-white`}
+        <a
+          className={MENU_FOOTER_CTA_CLASSNAME}
           href={AUTH_DASHBOARD_URL}
           onClick={onNavigate}
         >
           Dashboard
-        </Link>
+        </a>
       </m.div>
     );
   }
@@ -391,17 +409,17 @@ function MobileAuthActions({
   return (
     <>
       <m.div variants={item}>
-        <Link
+        <a
           className={`${MENU_FOOTER_BUTTON_CLASSNAME} border border-[#1E1E1E26] text-[#1E1E1E] dark:border-white/15 dark:text-white`}
           href={AUTH_SIGNIN_URL}
           onClick={onNavigate}
         >
           Sign In
-        </Link>
+        </a>
       </m.div>
       <m.div variants={item}>
         <TrackedSignupLink
-          className={`cta-gradient-primary ${MENU_FOOTER_BUTTON_CLASSNAME} font-medium text-white`}
+          className={MENU_FOOTER_CTA_CLASSNAME}
           onClick={onNavigate}
           source={NAVBAR_MOBILE_SIGNUP_SOURCE}
         >

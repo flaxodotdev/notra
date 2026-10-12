@@ -6,16 +6,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { AttachmentFilter } from "@notra/schemas/dashboard/attachments";
-import {
-  ResponsiveAlertDialog,
-  ResponsiveAlertDialogAction,
-  ResponsiveAlertDialogCancel,
-  ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
-  ResponsiveAlertDialogFooter,
-  ResponsiveAlertDialogHeader,
-  ResponsiveAlertDialogTitle,
-} from "@notra/ui/components/shared/responsive-alert-dialog";
+import { ConfirmDialog } from "@notra/ui/components/shared/confirm-dialog";
+import { DataTable } from "@notra/ui/components/ui/data-table";
 import {
   Select,
   SelectContent,
@@ -29,14 +21,12 @@ import {
   TooltipTrigger,
 } from "@notra/ui/components/ui/tooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LoaderCircle } from "lucide-react";
-import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview";
-import { Table } from "@/components/motion/table";
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { createAttachmentColumns } from "@/components/settings/attachments/attachment-columns";
 import { SettingsPane } from "@/components/settings/settings-pane";
@@ -186,23 +176,18 @@ export function AttachmentsSection() {
 
         {hasSelection ? (
           <Button
-            disabled={deleteManyMutation.isPending}
+            loading={deleteManyMutation.isPending}
             onClick={() => setConfirmKeys(selectedKeys)}
             size="sm"
             variant="destructive"
           >
-            {deleteManyMutation.isPending ? (
-              <LoaderCircle className="size-4 animate-spin" />
-            ) : (
-              <HugeiconsIcon icon={Delete02Icon} size={16} />
-            )}
+            <HugeiconsIcon icon={Delete02Icon} size={16} />
             {t("deleteSelected", { count: selectedKeys.length })}
           </Button>
         ) : null}
       </div>
 
-      <Table
-        className="rounded-2xl"
+      <DataTable
         columns={columns}
         data={attachments}
         emptyState={isError ? t("loadFailed") : t("empty")}
@@ -227,44 +212,28 @@ export function AttachmentsSection() {
         open={previewAttachment !== null}
       />
 
-      <ResponsiveAlertDialog
+      <ConfirmDialog
+        confirmLabel={tCommon("delete")}
+        description={t("confirmDescription")}
+        onConfirm={() => {
+          if (!confirmKeys) {
+            return;
+          }
+          if (confirmKeys.length === 1) {
+            setPendingKey(confirmKeys[0] ?? null);
+          }
+          deleteManyMutation.mutate(confirmKeys);
+        }}
         onOpenChange={(open) => {
           if (!open) {
             setConfirmKeys(null);
           }
         }}
         open={confirmOpen}
-      >
-        <ResponsiveAlertDialogContent>
-          <ResponsiveAlertDialogHeader>
-            <ResponsiveAlertDialogTitle>
-              {t("confirmTitle", { count: confirmKeys?.length ?? 1 })}
-            </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("confirmDescription")}
-            </ResponsiveAlertDialogDescription>
-          </ResponsiveAlertDialogHeader>
-          <ResponsiveAlertDialogFooter>
-            <ResponsiveAlertDialogCancel>
-              {tCommon("cancel")}
-            </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (!confirmKeys) {
-                  return;
-                }
-                if (confirmKeys.length === 1) {
-                  setPendingKey(confirmKeys[0] ?? null);
-                }
-                deleteManyMutation.mutate(confirmKeys);
-              }}
-            >
-              {tCommon("delete")}
-            </ResponsiveAlertDialogAction>
-          </ResponsiveAlertDialogFooter>
-        </ResponsiveAlertDialogContent>
-      </ResponsiveAlertDialog>
+        pending={deleteManyMutation.isPending}
+        title={t("confirmTitle", { count: confirmKeys?.length ?? 1 })}
+        variant="destructive"
+      />
     </SettingsPane>
   );
 }

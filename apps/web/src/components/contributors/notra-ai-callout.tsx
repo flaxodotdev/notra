@@ -1,7 +1,8 @@
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { ctaButtonVariants } from "@notra/ui/components/shared/cta-button";
 import { Github } from "@notra/ui/components/ui/svgs/github";
-import Link from "next/link";
+import { cn } from "@notra/ui/lib/utils";
 import type { NotraAiCalloutProps } from "~types/contributors";
 
 import { NotraMark } from "@/components/notra-mark";
@@ -44,15 +45,18 @@ export function NotraAiCallout({ prCount }: NotraAiCalloutProps) {
           </p>
         </div>
       </div>
-      <Link
-        className="cta-gradient-primary-flat flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-5.5 py-2.75 font-sans text-[0.875rem] leading-[1.29] font-semibold text-white"
+      <a
+        className={cn(
+          ctaButtonVariants({ size: "sm", variant: "flat" }),
+          "font-sans font-semibold"
+        )}
         href={GITHUB_APP_DOCS_URL}
         rel="noopener noreferrer"
         target="_blank"
       >
         {NOTRA_AI_CALLOUT_CTA}
         <HugeiconsIcon className="size-4" icon={ArrowRight02Icon} />
-      </Link>
+      </a>
     </div>
   );
 }

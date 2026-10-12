@@ -12,11 +12,9 @@ import { Skeleton } from "@notra/ui/components/ui/skeleton";
 import { cn } from "@notra/ui/lib/utils";
 import { isDemoModeClient } from "@notra/utils/demo-mode";
 import { useReducedMotion } from "motion/react";
-import { useTranslations } from "next-intl";
-import dynamic from "next/dynamic";
-import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "use-intl";
 
 import { SubscriptionGate } from "@/components/billing/subscription-gate";
 import { DashboardSidebar } from "@/components/dashboard/app-sidebar";
@@ -24,8 +22,6 @@ import { SiteHeader } from "@/components/dashboard/header";
 import { RestoreSidebarHome } from "@/components/dashboard/restore-sidebar-home";
 import { RightPanel } from "@/components/dashboard/right-panel";
 import { useRightPanel } from "@/components/dashboard/right-panel-context";
-import { DashboardDemoChrome } from "@/components/demo/dashboard-demo-chrome";
-import { DemoPlaygroundProvider } from "@/components/demo/demo-playground-provider";
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { EVE_BANNER_HEIGHT } from "@/constants/onboarding-agent";
 import { RIGHT_PANEL_PORTAL_ID } from "@/constants/right-panel";
@@ -37,12 +33,26 @@ import {
   useRunOnboardingAgent,
 } from "@/lib/hooks/use-onboarding";
 import { useSidebarWidth } from "@/lib/hooks/use-sidebar-width";
+import { usePathname } from "@/lib/navigation";
 import type {
   DashboardOnboardingBannerProps,
   DashboardShellProps,
   DashboardSidebarStyle,
 } from "@/types/components/dashboard-shell";
 import { dashboardShellStyle } from "@/utils/dashboard-shell-style";
+import dynamic from "@/utils/lazy-component";
+
+// Demo-only UI: loaded on demand so production bundles don't carry it.
+const DashboardDemoChrome = dynamic(() =>
+  import("@/components/demo/dashboard-demo-chrome").then(
+    (module) => module.DashboardDemoChrome
+  )
+);
+const DemoPlaygroundProvider = dynamic(() =>
+  import("@/components/demo/demo-playground-provider").then(
+    (module) => module.DemoPlaygroundProvider
+  )
+);
 
 const OnboardingAgentBanner = dynamic(() =>
   import("@/components/dashboard/onboarding-agent-banner").then(
@@ -210,6 +220,7 @@ export function DashboardShell({
   initialOnboardingAgentRun,
   initialSidebarOpen,
   initialSidebarWidth,
+  onboardingBannerDismissed,
 }: DashboardShellProps) {
   const t = useTranslations("dashboard.onboardingBanner");
   const { activeOrganization } = useOrganizationsContext();
@@ -220,8 +231,10 @@ export function DashboardShell({
     initialOnboardingAgentRun
   );
   const runAgent = useRunOnboardingAgent();
-  const { dismiss, dismissed } =
-    useOnboardingAgentBannerDismissal(organizationId);
+  const { dismiss, dismissed } = useOnboardingAgentBannerDismissal(
+    organizationId,
+    onboardingBannerDismissed
+  );
   const running = data?.running ?? false;
   const canStart = !!data && !data.ran && !running && !dismissed;
   const bannerAvailable = running || canStart;

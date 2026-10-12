@@ -1,5 +1,5 @@
-import { describeContentBillingDenial } from "@notra/ai/billing/content-billing";
 import type { AgentTokenUsage } from "@notra/ai/types/agents";
+import { describeContentBillingDenial } from "@notra/ai/utils/content-billing-messages";
 import { db } from "@notra/db/drizzle";
 import { geoPromptTranslations, geoSettings } from "@notra/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -23,6 +23,7 @@ import type {
   GeoScopeInput,
   GeoSkipFields,
 } from "../types/geo";
+import { logGeoFailure } from "../utils/geo-log";
 import { planGeoPromptTranslations } from "../utils/geo-prompt-translations";
 import { addAgentTokenUsage, agentTokenUsageFrom } from "../utils/token-usage";
 import { geoDb, geoSkip } from "./effect";
@@ -383,9 +384,11 @@ export const translateGeoPromptTranslations = Effect.fn(
       .pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
-            console.error(
-              `[GeoPromptTranslations] billing ${action} failed:`,
-              error
+            logGeoFailure(
+              "geo.prompt_translations.billing_failed",
+              `Prompt translation billing ${action} failed`,
+              error,
+              { action, runId, projectId: scope.projectId }
             );
           })
         )

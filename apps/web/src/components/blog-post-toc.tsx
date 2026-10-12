@@ -1,5 +1,3 @@
-"use client";
-
 import { ArrowUp01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -227,6 +225,16 @@ export function BlogPostToc({ toc }: BlogPostTocProps) {
                   }`}
                   href={item.url}
                   onClick={(event) => {
+                    if (
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.ctrlKey ||
+                      event.metaKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
                     event.preventDefault();
                     lockScrollSpy();
                     setActiveId(id);

@@ -15,7 +15,6 @@ import type {
   V2ApisListKeysResponseBody,
 } from "@unkey/api/models/components";
 import { and, eq } from "drizzle-orm";
-import { getTranslations } from "next-intl/server";
 
 import { API_KEY_EXPIRATION_MS } from "@/constants/api-keys";
 import { DEMO_DISABLED_MESSAGE } from "@/constants/demo";
@@ -30,6 +29,7 @@ import {
 import { unkey } from "@/lib/api-keys/unkey";
 import { assertOrganizationAccess } from "@/lib/auth/organization";
 import { assertActiveSubscription } from "@/lib/billing/subscription";
+import { getTranslations } from "@/lib/i18n/server";
 import { authorizedProcedure } from "@/lib/orpc/base";
 
 import {

@@ -1,14 +1,26 @@
 import type { GitHubEventType } from "@notra/schemas/dashboard/github-webhook";
 import type { InputIntegrationType } from "@notra/schemas/dashboard/integrations";
-import type { NextRequest } from "next/server";
 
 export interface WebhookContext {
   provider: InputIntegrationType;
   organizationId: string;
   integrationId: string;
   repositoryId: string;
-  request: NextRequest;
-  rawBody: string;
+  request: Request;
+}
+
+export interface WebhookRouteContext {
+  params: Promise<{
+    provider: string;
+    organizationId: string;
+    integrationId: string;
+    repositoryId: string;
+  }>;
+}
+
+export interface WebhookIntegrationAccess {
+  organizationId: string;
+  enabled: boolean;
 }
 
 export type WebhookHandler = (

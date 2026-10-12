@@ -1,6 +1,7 @@
 import type { AgentTokenUsage } from "@notra/ai/types/agents";
 import type { ContentBillingReservation } from "@notra/ai/types/billing";
 import type { GeoLogEventName } from "@notra/ai/types/evlog";
+import type { GatewayModelOptions } from "@notra/ai/types/gateway";
 import type {
   GeoContentBrief,
   GeoContentSubtype,
@@ -35,6 +36,11 @@ export interface GeoProjectRow {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type GeoProjectResponseRow = Pick<
+  GeoProjectRow,
+  "id" | "name" | "brandSettingsId" | "createdAt"
+>;
 
 export interface GeoProjectsResponse {
   projects: GeoProject[];
@@ -218,8 +224,7 @@ export type GeoScanSkipReason =
   | "superseded"
   | "already_running"
   | "scoped_prompts_missing"
-  | "scoped_engines_missing"
-  | "no_search_engines";
+  | "scoped_engines_missing";
 
 export interface GeoErrorFields {
   errorName: string;
@@ -247,8 +252,6 @@ export interface GeoTimeseriesResponse {
 
 export type GeoSparklineMode = "all" | "search" | "memory";
 
-export type GeoEngineMode = Exclude<GeoSparklineMode, "all">;
-
 export interface MentionRateSparklineOptions {
   family?: string;
   model?: string;
@@ -260,12 +263,10 @@ export interface GeoSparklinePoint {
   value: number;
 }
 
-export interface EngineFamilyModeTrendRow {
+export interface EngineFamilyTrendRow {
   day: string;
   rawDay: string;
   all: number | null;
-  search: number | null;
-  memory: number | null;
   [key: string]: string | number | null;
 }
 
@@ -424,6 +425,25 @@ export interface GeoCompetitorShareTimeseriesPoint {
   mentions: number;
 }
 
+export interface GeoEngineCheckTotal {
+  engine: string;
+  checks: number;
+  /** Own-brand mentions. */
+  mentions: number;
+}
+
+export interface GeoEngineBrandMentions {
+  engine: string;
+  brand: string;
+  mentions: number;
+}
+
+export interface GeoCompetitorEngineMatrixResponse {
+  configured: boolean;
+  engines: GeoEngineCheckTotal[];
+  cells: GeoEngineBrandMentions[];
+}
+
 export interface GeoCompetitorShareResponse {
   configured: boolean;
   points: GeoCompetitorSharePoint[];
@@ -478,6 +498,8 @@ export interface GeoScanCronSweepResult {
   leaseLost: number;
   /** Rows whose project scan slot is still claimed by a running scan. */
   alreadyRunning: number;
+  /** Slots skipped because the billing gate would deny the scan. */
+  billingDenied: number;
   /** Hand-offs that failed; their row keeps its lease and is retried. */
   failed: number;
   /** Slots another sweep advanced while this one held a stale lease. */
@@ -664,7 +686,7 @@ export interface GeoScanProjectContext {
   domains?: string[];
   gate: ContentBillingReservation;
   startedAtMs: number;
-  /** Partial prompt scans do not cover a scheduled project scan. Optional for persisted older plans. */
+  /** Prompt- or engine-scoped scans do not cover a scheduled project scan. Optional for persisted older plans. */
   scoped?: boolean;
 }
 
@@ -693,6 +715,10 @@ export interface GeoScanBatchOutcome {
   usage: AgentTokenUsage;
   engineUsage?: AgentTokenUsage;
   judgeUsage?: AgentTokenUsage;
+  /** AI answers this batch bills; defaults to `checks`. */
+  billedChecks?: number;
+  /** Usage this batch bills as AI credits; defaults to `usage`. */
+  billedUsage?: AgentTokenUsage;
 }
 
 export interface GeoScanFailureMetadata {
@@ -709,6 +735,8 @@ export interface GeoScanProjectTotals {
   usage: AgentTokenUsage;
   engineUsage?: AgentTokenUsage;
   judgeUsage?: AgentTokenUsage;
+  billedChecks?: number;
+  billedUsage?: AgentTokenUsage;
 }
 
 export interface GeoScanFinishTotals {
@@ -856,6 +884,7 @@ export interface GeoGroundedInvocation {
 export interface GeoGroundedInvocationOptions {
   organizationId?: string;
   zdr?: GeoZdrMode;
+  logContext?: GatewayModelOptions["logContext"];
 }
 
 export interface GeoDiscoveredPrompt {
@@ -1212,6 +1241,10 @@ export type GeoIngestFramework =
 
 export type GeoIngestPackageManager = "bun" | "pnpm" | "yarn" | "npm";
 
+export type GeoDrainProvider = "vercel" | "cloudflare";
+
+export type GeoIngestMethod = "sdk" | GeoDrainProvider;
+
 /** Install snippet per supported framework. */
 export type GeoIngestSnippets = Record<GeoIngestFramework, string>;
 
@@ -1220,6 +1253,23 @@ export interface GeoIngestIdentity {
   organizationId: string;
   projectId: string | null;
   generation: number;
+  site?: GeoIngestSiteScope;
+}
+
+export interface GeoIngestSiteScope {
+  id: string;
+  hosts: string[];
+  mounts: string[];
+}
+
+export interface GeoIngestSite extends GeoIngestSiteScope {
+  organizationId: string;
+  projectId: string;
+}
+
+export interface GeoIngestSitePrefix {
+  host: string;
+  mounts: string[];
 }
 
 /** Everything needed to install tracking except the token itself. */
@@ -1227,6 +1277,7 @@ export interface GeoIngestSetupInfo {
   ingestUrl: string;
   snippet: string;
   snippets: GeoIngestSnippets;
+  drainUrls: Record<GeoDrainProvider, string>;
 }
 
 export interface GeoIngestSetupResponse extends GeoIngestSetupInfo {
@@ -1987,4 +2038,108 @@ export interface GeoWebsiteGenerationWrite {
   seedEngines: string[] | null;
   /** Null for projects created before prompt languages; first = prompt language. */
   seedLanguages: readonly string[] | null;
+}
+
+export interface WebAnalyticsScope {
+  organizationId: string;
+  projectId: string | null;
+  includeUnassigned: boolean;
+  siteId: string;
+  hosts: string[];
+}
+
+export interface WebAnalyticsTotals {
+  views: number;
+  previousViews: number;
+  visitors: number;
+  previousVisitors: number;
+  sessions: number;
+  previousSessions: number;
+  engagedSessions: number;
+  aiVisitors: number;
+  previousAiVisitors: number;
+}
+
+export interface WebAnalyticsPoint {
+  day: string;
+  views: number;
+  visitors: number;
+}
+
+export interface WebAnalyticsPage {
+  host: string;
+  path: string;
+  views: number;
+  previousViews: number;
+  visitors: number;
+  landings: number;
+  aiVisitors: number;
+}
+
+export interface WebAnalyticsSource {
+  group: string;
+  source: string;
+  aiProduct: string;
+  sessions: number;
+  previousSessions: number;
+  visitors: number;
+}
+
+export interface WebAnalyticsBreakdown {
+  value: string;
+  visitors: number;
+  previousVisitors?: number | null;
+}
+
+export interface WebAnalyticsOutcome {
+  source: string;
+  sessions: number;
+  pagesPerSession: number;
+  engagedRate: number;
+}
+
+export interface WebAnalyticsHost {
+  host: string;
+  siteId: string;
+  views: number;
+}
+
+export interface WebAnalyticsResponse {
+  configured: boolean;
+  hosts: WebAnalyticsHost[];
+  totals: WebAnalyticsTotals;
+  points: WebAnalyticsPoint[];
+  pages: WebAnalyticsPage[];
+  sources: WebAnalyticsSource[];
+  countries: WebAnalyticsBreakdown[];
+  devices: WebAnalyticsBreakdown[];
+  outcomes: WebAnalyticsOutcome[];
+}
+
+export interface SiteAnalyticsInput {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  publicOrigin: string;
+}
+
+export interface WebEngagementPage {
+  host: string;
+  path: string;
+  views: number;
+  avgSeconds: number;
+}
+
+export interface WebEngagement {
+  /** Page views that reported a visible time; zero before the script ran. */
+  views: number;
+  avgSeconds: number;
+  previousAvgSeconds: number;
+  pages: WebEngagementPage[];
+}
+
+export interface SiteAnalyticsResponse {
+  web: WebAnalyticsResponse;
+  traffic: AiTrafficResponse;
+  engagement: WebEngagement;
 }

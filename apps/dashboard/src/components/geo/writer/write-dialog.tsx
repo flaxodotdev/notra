@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 /**
  * WriteDialog is the GEO write entry: a sidebar of sections that jump to
@@ -16,11 +16,13 @@ import {
   ResponsiveDialogDescription,
   ResponsiveDialogTitle,
 } from "@notra/ui/components/shared/responsive-dialog";
+import {
+  SplitModalContent,
+  SplitModalPane,
+} from "@notra/ui/components/shared/split-modal";
 import { Label } from "@notra/ui/components/ui/label";
 import { cn } from "@notra/ui/lib/utils";
 import { AnimatePresence, LazyMotion, m, useReducedMotion } from "motion/react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import {
   type ComponentProps,
   type ReactNode,
@@ -29,13 +31,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { useGeoProjectScope } from "@/components/providers/geo-project-provider";
-import {
-  SplitModalContent,
-  SplitModalPane,
-} from "@/components/shared/split-modal";
 import { GEO_WRITE_DIALOG_ENTRIES } from "@/constants/geo-analytics";
 import {
   GEO_WRITE_CONTENT_SUBTYPES,
@@ -48,6 +47,7 @@ import { useGeoWriterPlan } from "@/lib/hooks/use-geo-writer";
 import { useWriteSectionLabels } from "@/lib/hooks/use-write-section-labels";
 import { useWriterBrandSelection } from "@/lib/hooks/use-writer-brand-selection";
 import { useWriterPromptSelection } from "@/lib/hooks/use-writer-prompt-selection";
+import { useRouter } from "@/lib/navigation";
 import type {
   WriteAction,
   WriteDialogProps,
@@ -56,7 +56,12 @@ import type {
 import { existingPageLabel } from "@/utils/geo-gaps";
 import { withGeoProject } from "@/utils/geo-paths";
 import { geoContentPath } from "@/utils/geo-write-entry";
-import { recommendedContentSubtype } from "@/utils/geo-writer";
+import {
+  defaultWriterCompetitorIds,
+  recommendedContentSubtype,
+} from "@/utils/geo-writer";
+
+const EMPTY_MENTIONED_COMPETITORS: readonly string[] = [];
 
 import { WriteBrandSelect } from "./write-brand-select";
 import { WriteCompetitorChoices } from "./write-competitor-choices";
@@ -163,7 +168,8 @@ function WriteDialogForm({
   const promptBadgeLabel = existingPageUrl
     ? t("updating", { page: existingPageLabel(existingPageUrl) })
     : baselineLabel;
-  const mentionedCompetitors = initial?.mentionedCompetitors ?? [];
+  const mentionedCompetitors =
+    initial?.mentionedCompetitors ?? EMPTY_MENTIONED_COMPETITORS;
   const {
     brandVoiceId,
     setBrandVoiceId,
@@ -191,12 +197,10 @@ function WriteDialogForm({
     enabled: open,
   });
 
-  useEffect(() => {
-    if (competitorsTouched || competitors.length === 0) {
-      return;
-    }
-    setCompetitorIds(competitors.map((competitor) => competitor.id));
-  }, [competitors, competitorsTouched]);
+  // Until someone picks, the selection follows the loaded competitors.
+  const selectedCompetitorIds = competitorsTouched
+    ? competitorIds
+    : defaultWriterCompetitorIds(competitors, mentionedCompetitors);
 
   const jumpToSection = (id: WriteDialogSectionId) => {
     setActiveSection(id);
@@ -222,7 +226,7 @@ function WriteDialogForm({
         autoApprove: action === "write",
         contentSubtype,
         brandVoiceIds: brandVoiceId ? [brandVoiceId] : [],
-        competitorIds,
+        competitorIds: selectedCompetitorIds,
         sitemapId: effectiveSitemapId ?? undefined,
         sourceKind,
         sourceId,
@@ -412,7 +416,7 @@ function WriteDialogForm({
               setCompetitorsTouched(true);
               setCompetitorIds(ids);
             }}
-            selectedIds={competitorIds}
+            selectedIds={selectedCompetitorIds}
           >
             <WriteSectionHeader
               description={t("competitorsDescription")}
@@ -545,22 +549,10 @@ function WriteActionButton({
   pendingAction: WriteAction | null;
   children: ReactNode;
 }) {
-  const t = useTranslations("geo.writer.writeDialog");
   const isPending = pendingAction === action;
   return (
-    <Button aria-busy={isPending} {...props}>
-      {isPending ? (
-        <>
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="size-4 animate-spin"
-            icon={Loading03Icon}
-          />
-          {t(`pending.${action}.label`)}
-        </>
-      ) : (
-        children
-      )}
+    <Button loading={isPending} {...props}>
+      {children}
     </Button>
   );
 }
