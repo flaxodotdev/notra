@@ -1,3 +1,5 @@
+import { httpErrorKind } from "@notra/ai/utils/http-error-kind";
+import { resolveRequestId } from "@notra/ai/utils/request-id";
 import { createLoggerStorage, defineFrameworkIntegration } from "evlog/toolkit";
 
 const { storage, useLogger } = createLoggerStorage(
@@ -17,8 +19,21 @@ const emittedLoggers = new WeakSet<RequestLogger>();
 export function trackRequestLoggerEmit(logger: RequestLogger): void {
   const emit = logger.emit.bind(logger);
   logger.emit = (overrides) => {
+    const status = overrides?.status ?? logger.getContext().status;
+    if (typeof status === "number" && status >= 500) {
+      logger.setLevel("error");
+    }
     emittedLoggers.add(logger);
-    return emit(overrides);
+    // The body lifecycle can fail after the handler has recorded success.
+    return emit(
+      typeof status === "number"
+        ? {
+            ...overrides,
+            outcome: status >= 400 ? "error" : "success",
+            errorKind: httpErrorKind(status),
+          }
+        : overrides
+    );
   };
 }
 
@@ -36,7 +51,7 @@ export const evlogRequestIntegration = defineFrameworkIntegration<
     method: request?.method ?? "UNKNOWN",
     path: request ? new URL(request.url).pathname : "/",
     headers: request?.headers,
-    requestId: request?.headers.get("x-request-id") ?? undefined,
+    requestId: resolveRequestId(request?.headers.get("x-request-id")),
   }),
   attachLogger: () => {},
   storage,

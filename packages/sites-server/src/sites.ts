@@ -1,6 +1,7 @@
 import { db } from "@notra/db/drizzle";
 import {
   organizations,
+  projects,
   siteDomains,
   siteDrafts,
   siteJobs,
@@ -100,6 +101,18 @@ async function uniqueSlug(base: string): Promise<string> {
 export async function createSite(
   input: CreateSiteInput
 ): Promise<CreateSiteResult> {
+  const project = input.projectId
+    ? await db.query.projects.findFirst({
+        columns: { id: true },
+        where: and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, input.organizationId)
+        ),
+      })
+    : undefined;
+  if (!project) {
+    throw new SiteInputError("Project not found in this organization");
+  }
   const { integration, repository } = await requireOrganizationRepository(
     input.organizationId,
     input.repositoryId
@@ -139,7 +152,7 @@ export async function createSite(
       .values({
         id: siteId,
         organizationId: input.organizationId,
-        projectId: input.projectId ?? null,
+        projectId: project.id,
         name: input.name.trim(),
         slug,
         repositoryId: integration.id,

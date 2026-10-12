@@ -52,7 +52,9 @@ function toGeoFailure(failure: GeoFailureWire): GeoFailure {
       return {
         status: 409,
         error:
-          "Cannot delete the organization's last project. Create another project first.",
+          failure.reason === "has_sites"
+            ? "This project has hosted sites. Delete its sites before deleting the project."
+            : "Cannot delete the organization's last project. Create another project first.",
       };
     case "GeoPromptNotFoundError":
       return { status: 404, error: "Prompt not found" };

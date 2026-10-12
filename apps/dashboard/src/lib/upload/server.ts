@@ -21,6 +21,7 @@ import type {
 import { compressContentImage } from "@/utils/compress-content-image";
 import { contentImageKeyBelongsToOrganization } from "@/utils/content-image-key";
 import { contentImageCompressedTooLargeMessage } from "@/utils/content-image-size";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 import { validateContentVideo } from "@/utils/validate-content-video";
 
 import { readContentImage, saveContentImage } from "./content-image-store";
@@ -77,6 +78,7 @@ async function assertUploadAccess({
         ),
       });
     }
+    recordAuthorizedOrganization(headers, organizationId, user.id);
   }
 
   return {

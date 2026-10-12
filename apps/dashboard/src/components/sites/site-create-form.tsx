@@ -15,6 +15,7 @@ import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { SiteCreateDeploy } from "@/components/sites/site-create-deploy";
+import { SiteCreateProject } from "@/components/sites/site-create-project";
 import { SiteCreateSourceFields } from "@/components/sites/site-create-source-fields";
 import { SiteCreateStage } from "@/components/sites/site-create-stage";
 import { SiteCreateStep } from "@/components/sites/site-create-step";
@@ -56,6 +57,7 @@ import {
   siteCreateSectionPlan,
   withSiteRepository,
 } from "@/utils/site-create";
+import { resolvedSiteProjectId } from "@/utils/site-project";
 
 export function SiteCreateForm({
   organizationId,
@@ -79,7 +81,7 @@ export function SiteCreateForm({
     string | null
   >(null);
 
-  const { projectId } = useActiveProject();
+  const projectId = resolvedSiteProjectId(useActiveProject());
   const createMutation = useCreateSite();
   const isCreating = createMutation.isPending;
   const created = createMutation.data?.site ?? null;
@@ -90,6 +92,7 @@ export function SiteCreateForm({
   });
   const sections = siteCreateSectionPlan(form, suggestions.contentCounts);
   const isReady =
+    Boolean(projectId) &&
     isSiteCreateReady(form, repository) &&
     hasSiteCreateSection(sections) &&
     !suggestions.isLoading;
@@ -167,7 +170,7 @@ export function SiteCreateForm({
   };
 
   const create = () => {
-    if (!(repository && isReady) || isCreating) {
+    if (!(repository && isReady && projectId) || isCreating) {
       return;
     }
     createMutation.mutate(
@@ -223,6 +226,7 @@ export function SiteCreateForm({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6" data-site-fill>
       <PageHeading description={t("description")} title={t("title")} />
+      <SiteCreateProject organizationId={organizationId} />
       <div className="flex min-h-[32rem] min-w-0 flex-1 flex-col">
         <SiteCreateStage
           activeIndex={activeIndex}

@@ -28,6 +28,7 @@ if (!process.env.NOTRA_SITE_DEFAULTS_TEST_WORKER) {
   let diagnosticCode = "config_missing";
   const site = {
     id: "site",
+    projectId: "project",
     name: "Example blog",
     liveUrl: "https://site.example",
     repository: { owner: "example", name: "blog" },

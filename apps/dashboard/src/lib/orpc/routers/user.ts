@@ -27,6 +27,7 @@ import type {
   NextOwnerCandidate,
   OwnedOrganizationSummary,
 } from "@/types/user";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 
 import { badRequest, forbidden, notFound } from "../utils/errors";
 import { userAccountRouter, userSecurityRouter } from "./user-account";
@@ -53,6 +54,13 @@ export const userRouter = {
       const organizationIds = ownedMemberships.map(
         (membership) => membership.organizationId
       );
+      for (const organizationId of organizationIds) {
+        recordAuthorizedOrganization(
+          context.headers,
+          organizationId,
+          context.user.id
+        );
+      }
       const [memberCountRows, ownerCandidates] = await Promise.all([
         db
           .select({
@@ -150,6 +158,11 @@ export const userRouter = {
             const tErrors = await getTranslations("errors.user");
             throw forbidden(tErrors("notMember"));
           }
+          recordAuthorizedOrganization(
+            context.headers,
+            input.organizationId,
+            context.user.id
+          );
 
           const [membershipCountResult] = await tx
             .select({ count: count() })
@@ -263,6 +276,11 @@ export const userRouter = {
             const tErrors = await getTranslations("errors.user");
             throw forbidden(tErrors("notOwner", { orgId: transfer.orgId }));
           }
+          recordAuthorizedOrganization(
+            context.headers,
+            transfer.orgId,
+            context.user.id
+          );
 
           if (transfer.action === "transfer") {
             let newOwner = await tx.query.members.findFirst({

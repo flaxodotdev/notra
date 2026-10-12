@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import type { EnqueueDeploymentInput } from "../src/types/deployments";
 import { deferred } from "./utils/deferred";
+import { seedSiteProject } from "./utils/site-project";
 import { waitForPgBlocker } from "./utils/wait-for-pg-blocker";
 
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
@@ -105,6 +106,7 @@ if (!databaseUrl) {
     await db.insert(sites).values({
       id: siteId,
       organizationId,
+      projectId: await seedSiteProject(organizationId),
       name: "Synthetic admission",
       slug: siteId,
       publicOrigin: `https://${siteId}.notra.site`,

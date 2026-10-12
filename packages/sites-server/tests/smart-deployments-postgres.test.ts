@@ -12,6 +12,7 @@ import type {
 } from "../src/types/deployments";
 import type { R2PutOptions } from "../src/types/r2";
 import type { Site } from "../src/types/sites";
+import { seedSiteProject } from "./utils/site-project";
 
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -292,6 +293,7 @@ if (!databaseUrl) {
       .values({
         id: crypto.randomUUID(),
         organizationId,
+        projectId: await seedSiteProject(organizationId),
         name: "Synthetic",
         slug: crypto.randomUUID(),
         publicOrigin: "https://synthetic.notra.site",
@@ -897,6 +899,7 @@ if (!databaseUrl) {
     await db.insert(sites).values({
       id: secondSiteId,
       organizationId,
+      projectId: site.projectId,
       name: "Second synthetic",
       slug: crypto.randomUUID(),
       publicOrigin: "https://second.notra.site",

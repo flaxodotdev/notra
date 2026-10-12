@@ -4225,9 +4225,9 @@ export const sites = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    projectId: text("project_id").references(() => projects.id, {
-      onDelete: "set null",
-    }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     repositoryId: text("repository_id").references(
@@ -4279,6 +4279,7 @@ export const sites = pgTable(
   },
   (table): PgTableExtraConfigValue[] => [
     index("sites_organizationId_idx").on(table.organizationId),
+    index("sites_org_project_idx").on(table.organizationId, table.projectId),
     uniqueIndex("sites_slug_uidx").on(table.slug),
     index("sites_githubRepositoryId_idx").on(table.githubRepositoryId),
     uniqueIndex("sites_org_id_uidx").on(table.organizationId, table.id),

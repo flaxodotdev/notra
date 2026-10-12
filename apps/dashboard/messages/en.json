@@ -650,6 +650,30 @@
     "shared": {
       "editApiKey": "Edit API key",
       "deleteApiKey": "Delete API key"
+    },
+    "emptyState": {
+      "title": "No API keys yet",
+      "description": "Create a key to read and write this organization's content from scripts, SDKs or MCP clients."
+    },
+    "account": {
+      "title": "Account API keys",
+      "description": "Personal keys that work in every organization you belong to. Send the <code>X-Notra-Organization-Id</code> header to pick one.",
+      "createKey": "Create account key",
+      "emptyTitle": "No account API keys yet",
+      "emptyDescription": "Use an account key for personal automation across workspaces. Shared systems should use organization keys.",
+      "createTitle": "Create account API key",
+      "createDescription": "This key works in every organization you belong to.",
+      "editTitle": "Edit account API key",
+      "viewTitle": "View account API key",
+      "namePlaceholder": "e.g. Personal automation",
+      "deleteTitle": "Delete account API key?",
+      "toasts": {
+        "created": "Account API key created",
+        "updated": "Account API key updated",
+        "deleted": "Account API key deleted"
+      },
+      "loadFailedTitle": "Couldn't load account API keys",
+      "loadFailedDescription": "Your keys are still there. Try loading them again."
     }
   },
   "feedback": {
@@ -948,6 +972,7 @@
       "writerPlanFailed": "The content plan couldn't be created or saved. Please try again.",
       "promptAlreadyTracked": "This prompt is already tracked",
       "lastProjectDelete": "You cannot delete your last project. Create another one first.",
+      "projectHasSitesDelete": "This project has hosted sites. Delete its sites before deleting the project.",
       "createBrandIdentityFirst": "Create a brand identity first",
       "noGroundedEngines": "No search-grounded engines are available under your privacy settings",
       "createConversationFailed": "Failed to create conversation",
@@ -7040,6 +7065,14 @@
     "title": "Sites",
     "description": "Blogs and changelogs, built and hosted from your GitHub repository",
     "newSite": "New site",
+    "projectRequired": {
+      "title": "Select a project",
+      "description": "Create or select a project in the sidebar to manage its sites."
+    },
+    "projectLoadFailed": {
+      "title": "Couldn't load projects",
+      "description": "Reload the page to try again."
+    },
     "empty": {
       "title": "No sites yet",
       "description": "Host a blog and changelog from a GitHub repo. Every push goes live, every pull request gets a preview."
@@ -7123,6 +7156,10 @@
     },
     "new": {
       "title": "New site",
+      "project": "Project: {name}",
+      "projectLoading": "Loading project…",
+      "projectRequired": "Create or select a project in the sidebar before creating a site.",
+      "projectLoadFailed": "Couldn't load projects. Reload the page to try again.",
       "description": "Import a repository. Every push to its production branch goes live.",
       "private": "Private repository",
       "name": "Site name",

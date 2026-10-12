@@ -7,6 +7,7 @@ import {
   Dots,
   Edit02Icon,
   InformationCircleIcon,
+  Key01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -47,6 +48,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@notra/ui/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@notra/ui/components/ui/empty";
 import { Field, FieldLabel } from "@notra/ui/components/ui/field";
 import { Input } from "@notra/ui/components/ui/input";
 import { Kbd } from "@notra/ui/components/ui/kbd";
@@ -66,10 +75,7 @@ import {
 import { useForm } from "@tanstack/react-form";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  KeyResponseData,
-  V2KeysCreateKeyResponseData,
-} from "@unkey/api/models/components";
+import type { V2KeysCreateKeyResponseData } from "@unkey/api/models/components";
 import {
   parseAsArrayOf,
   parseAsString,
@@ -87,6 +93,7 @@ import { toast } from "sonner";
 import { useLocale, useTranslations } from "use-intl";
 import * as z from "zod";
 
+import { AccountApiKeysSection } from "@/components/api-keys/account-api-keys-section";
 import { ApiKeyRevealField } from "@/components/api-keys/api-key-reveal-field";
 import { ApiKeyPermissionSelector } from "@/components/api-keys/permission-selector";
 import { TrackingTokenCard } from "@/components/api-keys/tracking-token-card";
@@ -96,8 +103,9 @@ import { PageContainer } from "@/components/layout/container";
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import {
   API_KEY_EXPIRATION_OPTIONS,
-  type API_KEY_PERMISSION_SUMMARY,
+  API_KEYS_EMPTY_TABLE_HEIGHT,
 } from "@/constants/api-keys";
+import { inferApiKeyExpiration } from "@/lib/api-keys/expiration";
 import { API_KEY_CARD_ITEMS, API_KEY_PRESETS } from "@/lib/api-keys/presets";
 import { expandLegacyApiKeyScopes } from "@/lib/api-keys/scopes";
 import { useApiKeyExpirationItems } from "@/lib/hooks/use-api-key-expiration-items";
@@ -109,6 +117,7 @@ import type {
   ApiKeyCreateConfig,
   ApiKeyExpiration,
   ApiKeyFormValues,
+  ApiKeyListItem,
 } from "@/types/api-keys";
 
 const NEW_KEY_CONFIG_PARSERS = {
@@ -154,21 +163,6 @@ interface ApiKeyEditForm {
     }) => ReactNode;
   }>;
 }
-
-type ApiKeyListItem = Omit<
-  Pick<
-    KeyResponseData,
-    "keyId" | "name" | "start" | "createdAt" | "expires" | "enabled"
-  >,
-  "name" | "expires"
-> & {
-  name: string;
-  accessMode: ApiKeyAccessMode;
-  expires: number | null;
-  permission: (typeof API_KEY_PERMISSION_SUMMARY)[number];
-  permissions: string[];
-  createdBy: string | null;
-};
 
 type CreateApiKeyResponse = V2KeysCreateKeyResponseData & {
   name: string;
@@ -229,32 +223,6 @@ function apiKeysUiReducer(
   }
 }
 
-function getDefaultEditExpiration(
-  createdAt: number,
-  expires: number | null
-): ApiKeyExpiration {
-  if (expires === null) {
-    return "never";
-  }
-
-  const ttl = Math.max(0, expires - createdAt);
-  const day = 24 * 60 * 60 * 1000;
-
-  if (ttl <= 7 * day) {
-    return "7d";
-  }
-
-  if (ttl <= 30 * day) {
-    return "30d";
-  }
-
-  if (ttl <= 60 * day) {
-    return "60d";
-  }
-
-  return "90d";
-}
-
 function ApiKeysHeader({
   createDisabled,
   onCreate,
@@ -309,14 +277,18 @@ function ApiKeysHeader({
 
 function ApiKeysTable({
   actionsDisabled,
+  createDisabled,
   isPending,
   keys,
+  onCreate,
   onDelete,
   onEdit,
 }: {
   actionsDisabled: boolean;
+  createDisabled: boolean;
   isPending: boolean;
   keys: ApiKeyListItem[];
+  onCreate: () => void;
   onDelete: (key: ApiKeyListItem) => void;
   onEdit: (key: ApiKeyListItem) => void;
 }) {
@@ -431,15 +403,32 @@ function ApiKeysTable({
       ),
     },
   ];
-  const visibleRows = isPending ? 3 : Math.max(keys.length, 1);
+  const visibleRows = isPending ? 3 : keys.length;
+  const isEmpty = !isPending && keys.length === 0;
 
   return (
     <DataTable
       columns={columns}
       data={keys}
-      emptyState={t("empty")}
+      emptyState={
+        <Empty className="py-0 md:py-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={Key01Icon} />
+            </EmptyMedia>
+            <EmptyTitle>{t("emptyState.title")}</EmptyTitle>
+            <EmptyDescription>{t("emptyState.description")}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button disabled={createDisabled} onClick={onCreate} size="sm">
+              <HugeiconsIcon className="size-4" icon={Add01Icon} />
+              {t("createKey")}
+            </Button>
+          </EmptyContent>
+        </Empty>
+      }
       getRowId={(apiKey) => apiKey.keyId}
-      height={(visibleRows + 1) * 48}
+      height={isEmpty ? API_KEYS_EMPTY_TABLE_HEIGHT : (visibleRows + 1) * 48}
       loading={isPending}
       rowHeight={48}
     />
@@ -1073,7 +1062,7 @@ export default function ApiKeysPage() {
       name: key.name,
       accessMode: key.accessMode,
       scopes,
-      expiration: getDefaultEditExpiration(key.createdAt, key.expires),
+      expiration: inferApiKeyExpiration(key.createdAt, key.expires),
     });
     editForm.setFieldValue("name", key.name);
     dispatchUi({ type: "editDialogChanged", open: true });
@@ -1093,8 +1082,12 @@ export default function ApiKeysPage() {
 
         <ApiKeysTable
           actionsDisabled={editMutation.isPending || deleteMutation.isPending}
+          createDisabled={planLoading}
           isPending={isPending}
           keys={keys}
+          onCreate={() => {
+            openCreateDialog();
+          }}
           onDelete={(key) =>
             dispatchUi({
               type: "deletingKeyChanged",
@@ -1103,6 +1096,8 @@ export default function ApiKeysPage() {
           }
           onEdit={openEditDialog}
         />
+
+        <AccountApiKeysSection />
 
         <ApiKeyQuickStart onSelect={handlePresetSelect} />
 

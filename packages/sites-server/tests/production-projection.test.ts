@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { Effect } from "effect";
 
+import { seedSiteProject } from "./utils/site-project";
+
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 if (!databaseUrl) {
   test.skip("Published production projection requires synthetic PostgreSQL", () => {});
@@ -94,6 +96,7 @@ if (!databaseUrl) {
     await db.insert(sites).values({
       id: siteId,
       organizationId,
+      projectId: await seedSiteProject(organizationId),
       name: "Synthetic projection",
       slug: crypto.randomUUID().slice(0, 8),
       publicOrigin: "https://old.example.test",
@@ -276,6 +279,7 @@ if (!databaseUrl) {
     await db.insert(sites).values({
       id: foreignId,
       organizationId,
+      projectId: await seedSiteProject(organizationId),
       name: "Foreign synthetic site",
       slug: crypto.randomUUID().slice(0, 8),
       publicOrigin: "https://foreign.example.test",

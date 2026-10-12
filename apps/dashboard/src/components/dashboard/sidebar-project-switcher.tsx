@@ -31,18 +31,18 @@ import { ProjectLogo } from "@/components/geo/project-logo";
 import { useOrganizationsContext } from "@/components/providers/organization-provider";
 import { GEO_SETTINGS_NAV_LINK } from "@/constants/nav";
 import { trackEvent } from "@/lib/analytics/posthog-client";
+import { useActiveProject } from "@/lib/hooks/use-active-project";
 import { useBrandSettings } from "@/lib/hooks/use-brand-analysis";
 import { useGeoProjectsDb } from "@/lib/hooks/use-geo-db";
 import { useGeoProjectQueryState } from "@/lib/hooks/use-geo-project-query";
 import { useSettingsModal } from "@/lib/hooks/use-settings-modal";
-import { usePathname } from "@/lib/navigation";
+import { useSiteDetail } from "@/lib/hooks/use-sites";
+import { usePathname, useRouter } from "@/lib/navigation";
 import { getWebsiteDomain } from "@/utils/brand";
-import {
-  getLastVisitedProjectFromClient,
-  setLastVisitedProject,
-} from "@/utils/cookies";
+import { setLastVisitedProject } from "@/utils/cookies";
 import { isGeoDashboardPath } from "@/utils/geo-paths";
 import { resolveNavItems } from "@/utils/nav";
+import { siteIdFromPath } from "@/utils/site-links";
 
 import { SidebarBrandHeader } from "./sidebar-brand-header";
 import { SidebarLabel } from "./sidebar-label";
@@ -52,10 +52,21 @@ const GEO_SETTINGS_ITEM = resolveNavItems([GEO_SETTINGS_NAV_LINK]).at(0);
 export function SidebarProjectSwitcher() {
   const tCommon = useTranslations("common");
   const pathname = usePathname();
+  const router = useRouter();
   const { activeOrganization } = useOrganizationsContext();
   const organizationId = activeOrganization?.id ?? "";
   const slug = activeOrganization?.slug ?? "";
   const [projectParam, setProjectParam] = useGeoProjectQueryState();
+  const siteId = siteIdFromPath(pathname);
+  const siteDetail = useSiteDetail(organizationId, siteId);
+  const activeScope = useActiveProject();
+  const switchProject = (projectId: string) => {
+    if (siteId) {
+      router.push(`/${slug}/sites?project=${encodeURIComponent(projectId)}`);
+    } else {
+      setProjectParam(projectId);
+    }
+  };
   const { openSettings } = useSettingsModal();
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -68,12 +79,12 @@ export function SidebarProjectSwitcher() {
   const { data: brandData } = useBrandSettings(organizationId);
   const projects = loadedProjects;
   const voices = brandData?.voices ?? [];
-  const lastVisitedProjectId = getLastVisitedProjectFromClient(slug);
-
-  const activeProject =
-    projects.find((project) => project.id === projectParam) ??
-    projects.find((project) => project.id === lastVisitedProjectId) ??
-    projects.at(0);
+  const selectedProjectId = siteId
+    ? siteDetail.data?.site.projectId
+    : activeScope.projectId;
+  const activeProject = projects.find(
+    (project) => project.id === selectedProjectId
+  );
 
   useEffect(() => {
     if (isLoading || isError || !isReady || !slug) {
@@ -112,7 +123,11 @@ export function SidebarProjectSwitcher() {
       voices.find((voice) => voice.id === brandSettingsId)?.websiteUrl ?? null
     );
 
-  if (organizationId && !isError && (isLoading || !isReady)) {
+  if (
+    organizationId &&
+    !activeScope.isError &&
+    (!activeScope.isResolved || (siteId && siteDetail.isPending))
+  ) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
@@ -183,8 +198,8 @@ export function SidebarProjectSwitcher() {
                           project_id: project.id,
                           project_count: projects.length,
                         });
+                        switchProject(project.id);
                       }
-                      setProjectParam(project.id);
                     }}
                   >
                     <ProjectLogo
@@ -227,7 +242,7 @@ export function SidebarProjectSwitcher() {
         </SidebarMenuItem>
       </SidebarMenu>
       <GeoProjectCreateDialog
-        onCreated={(projectId) => setProjectParam(projectId)}
+        onCreated={switchProject}
         onOpenChange={setCreateOpen}
         open={createOpen}
         organizationId={organizationId}

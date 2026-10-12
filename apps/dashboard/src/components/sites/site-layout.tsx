@@ -8,13 +8,18 @@ import {
   AlertTitle,
 } from "@notra/ui/components/ui/alert";
 import { ORPCError } from "@orpc/client";
+import { useEffect } from "react";
 import { useTranslations } from "use-intl";
 
 import { buttonVariants } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import Link from "@/components/framework/link";
+import { useGeoProjectQueryState } from "@/lib/hooks/use-geo-project-query";
 import { useSiteDetail, useSitesOrganizationId } from "@/lib/hooks/use-sites";
-import type { SiteLayoutProps } from "@/types/components/sites";
+import type {
+  SiteLayoutProps,
+  SiteLoadErrorProps,
+} from "@/types/components/sites";
 import { siteHref } from "@/utils/site-links";
 
 import { SiteContext } from "./site-context";
@@ -30,40 +35,27 @@ export function SiteLayout({
   const t = useTranslations("sites.detail");
   const organizationId = useSitesOrganizationId(organizationSlug);
   const detailQuery = useSiteDetail(organizationId, siteId);
+  const [projectParam, setProjectParam] = useGeoProjectQueryState();
+  const owningProjectId = detailQuery.data?.site.projectId;
 
-  if (!detailQuery.data) {
-    const error = detailQuery.error;
-    if (error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE") {
-      return (
-        <SitesPageShell>
-          <SitesUnavailableState />
-        </SitesPageShell>
-      );
+  useEffect(() => {
+    if (owningProjectId && projectParam !== owningProjectId) {
+      setProjectParam(owningProjectId);
     }
-    if (error) {
-      const notFound = error instanceof ORPCError && error.code === "NOT_FOUND";
-      return (
-        <SitesPageShell>
-          <EmptyState
-            action={
-              <Link
-                className={buttonVariants({ variant: "outline" })}
-                href={`/${organizationSlug}/sites?view=all`}
-              >
-                {t("backToSites")}
-              </Link>
-            }
-            description={
-              notFound ? t("notFound.description") : t("loadFailed.description")
-            }
-            title={notFound ? t("notFound.title") : t("loadFailed.title")}
-          />
-        </SitesPageShell>
-      );
-    }
-    return <SitePageSkeleton />;
+  }, [owningProjectId, projectParam, setProjectParam]);
+
+  if (!detailQuery.data && detailQuery.error) {
+    return (
+      <SiteLoadError
+        error={detailQuery.error}
+        organizationSlug={organizationSlug}
+      />
+    );
   }
 
+  if (!detailQuery.data || projectParam !== owningProjectId) {
+    return <SitePageSkeleton />;
+  }
   const detail = detailQuery.data;
   const liveDeployment =
     detail.deployments.find(
@@ -100,5 +92,36 @@ export function SiteLayout({
         {children}
       </SitesPageShell>
     </SiteContext>
+  );
+}
+
+function SiteLoadError({ error, organizationSlug }: SiteLoadErrorProps) {
+  const t = useTranslations("sites.detail");
+  if (error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE") {
+    return (
+      <SitesPageShell>
+        <SitesUnavailableState />
+      </SitesPageShell>
+    );
+  }
+  const state =
+    error instanceof ORPCError && error.code === "NOT_FOUND"
+      ? "notFound"
+      : "loadFailed";
+  return (
+    <SitesPageShell>
+      <EmptyState
+        action={
+          <Link
+            className={buttonVariants({ variant: "outline" })}
+            href={`/${organizationSlug}/sites?view=all`}
+          >
+            {t("backToSites")}
+          </Link>
+        }
+        description={t(`${state}.description`)}
+        title={t(`${state}.title`)}
+      />
+    </SitesPageShell>
   );
 }

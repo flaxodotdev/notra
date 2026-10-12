@@ -4,12 +4,21 @@ import type { SiteRepositoryRef, SiteSection } from "@/types/sites";
 export function siteHref(
   organizationSlug: string,
   siteId: string,
-  section: SiteSection = "overview"
+  section: SiteSection = "overview",
+  projectId?: string
 ): string {
   const path =
     SITE_SECTIONS.find((candidate) => candidate.section === section)?.path ??
     "";
-  return `/${organizationSlug}/sites/${siteId}${path}`;
+  const href = `/${organizationSlug}/sites/${siteId}${path}`;
+  return projectId ? `${href}?project=${encodeURIComponent(projectId)}` : href;
+}
+
+export function siteIdFromPath(pathname: string): string {
+  const candidate = pathname.split("/");
+  return candidate[2] === "sites" && candidate[3]?.startsWith("site_")
+    ? candidate[3]
+    : "";
 }
 
 export function siteDeploymentHref(

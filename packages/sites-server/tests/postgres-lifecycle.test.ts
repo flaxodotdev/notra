@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 
 import { Effect } from "effect";
 
+import { seedSiteProject } from "./utils/site-project";
+
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 if (!databaseUrl) {
   test.skip("PostgreSQL lifecycle regressions require SITES_TEST_DATABASE_URL", () => {});
@@ -144,6 +146,7 @@ if (!databaseUrl) {
     await db.insert(sites).values({
       id: siteId,
       organizationId,
+      projectId: await seedSiteProject(organizationId),
       name: "Server audit",
       slug: crypto.randomUUID().slice(0, 8),
       publicOrigin: "https://example.notra.site",
@@ -181,6 +184,7 @@ if (!databaseUrl) {
     await db.insert(sites).values({
       id: foreignSiteId,
       organizationId,
+      projectId: `${organizationId}-project`,
       name: "Foreign synthetic site",
       slug: crypto.randomUUID().slice(0, 8),
       publicOrigin: "https://foreign.notra.site",
@@ -264,6 +268,7 @@ if (!databaseUrl) {
       ids.map((id) => ({
         id,
         organizationId,
+        projectId: `${organizationId}-project`,
         name: "Server audit",
         slug: crypto.randomUUID().slice(0, 8),
         publicOrigin: "https://example.notra.site",
@@ -306,6 +311,7 @@ if (!databaseUrl) {
       ids.map((id) => ({
         id,
         organizationId,
+        projectId: `${organizationId}-project`,
         name: "Server audit",
         slug: crypto.randomUUID().slice(0, 8),
         publicOrigin: "https://example.notra.site",

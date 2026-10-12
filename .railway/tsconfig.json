@@ -5,5 +5,5 @@
     "noEmit": true,
     "types": ["bun-types"]
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts", "../infra/observability/railway.test.ts"]
 }

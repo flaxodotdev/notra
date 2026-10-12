@@ -26,6 +26,11 @@ const siteMountsInputSchema = z
 
 export const siteScopeInputSchema = z.object({ organizationId, siteId });
 
+export const listSitesInputSchema = z.object({
+  organizationId,
+  projectId: z.string().min(1),
+});
+
 const analyticsDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const siteAnalyticsInputSchema = siteScopeInputSchema.extend({
@@ -56,7 +61,7 @@ export const createSiteInputSchema = z.object({
   mounts: siteMountsInputSchema,
   previewVisibility: z.enum(["public", "protected"]).default("protected"),
   publishMode: z.enum(["pull_request", "direct"]).default("pull_request"),
-  projectId: z.string().min(1).optional(),
+  projectId: z.string().min(1),
 });
 
 export const updateSiteInputSchema = siteScopeInputSchema.extend({

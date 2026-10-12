@@ -36,6 +36,7 @@ if (!process.env.NOTRA_DEPLOY_SURFACE_TEST_WORKER) {
     repository: { owner: "example", name: "blog" },
     productionBranch: "main",
     rootDirectory: "apps/blog",
+    projectId: "project",
   };
   mock.module("@tanstack/react-query", () => ({
     useQuery: () => ({

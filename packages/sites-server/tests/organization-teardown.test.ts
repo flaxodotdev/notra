@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 
 import { deferred } from "./utils/deferred";
+import { seedSiteProject } from "./utils/site-project";
 
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 
@@ -164,6 +165,9 @@ if (!databaseUrl) {
         createdAt: new Date(),
       }))
     );
+    await Promise.all(
+      [organizationId, otherOrganizationId].map(seedSiteProject)
+    );
     hosted = await db
       .insert(sites)
       .values(
@@ -172,6 +176,7 @@ if (!databaseUrl) {
           return {
             id,
             organizationId: orgId,
+            projectId: `${orgId}-project`,
             name: "Synthetic hosted site",
             slug: id,
             publicOrigin: `https://${id}.notra.site`,
@@ -478,6 +483,7 @@ if (!databaseUrl) {
           await tx.insert(sites).values({
             id,
             organizationId,
+            projectId: `${organizationId}-project`,
             name: "Concurrent site",
             slug: id,
             publicOrigin: `https://${id}.notra.site`,

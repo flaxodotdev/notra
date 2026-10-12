@@ -1,7 +1,9 @@
+import { MODEL_PRICING } from "@notra/ai/billing/token-pricing";
 import {
   OPENROUTER_MODEL_ALIASES,
   OPENROUTER_UNSUPPORTED_MODELS,
   VERCEL_NAMESPACE_PREFIX,
+  VERCEL_SERVED_MODEL_ALIASES,
   VERCEL_UNSUPPORTED_MODELS,
 } from "@notra/ai/constants/router";
 import type { GatewayId } from "@notra/ai/types/router";
@@ -36,6 +38,19 @@ export function fromOpenRouterModelId(modelId: string): string {
 
 export function toVercelModelId(modelId: string): string {
   return modelId;
+}
+
+export function fromVercelServedModelId(modelId: string): string {
+  const neutral = stripVercelNamespace(modelId);
+  const model = fromOpenRouterModelId(neutral);
+  if (Object.hasOwn(VERCEL_SERVED_MODEL_ALIASES, model)) {
+    return VERCEL_SERVED_MODEL_ALIASES[model] ?? neutral;
+  }
+  return Object.hasOwn(OPENROUTER_MODEL_ALIASES, model) ||
+    Object.hasOwn(MODEL_PRICING, model) ||
+    Object.hasOwn(MODEL_PRICING, `vercel/${model}`)
+    ? model
+    : neutral;
 }
 
 export function isModelSupported(gateway: GatewayId, modelId: string): boolean {

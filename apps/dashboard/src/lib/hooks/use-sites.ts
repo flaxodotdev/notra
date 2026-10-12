@@ -37,11 +37,11 @@ export function useSitesStatus(organizationId: string) {
   );
 }
 
-export function useSitesList(organizationId: string) {
+export function useSitesList(organizationId: string, projectId: string) {
   return useQuery(
     dashboardOrpc.sites.list.queryOptions({
-      input: { organizationId },
-      enabled: organizationId.length > 0,
+      input: { organizationId, projectId },
+      enabled: organizationId.length > 0 && projectId.length > 0,
       refetchInterval: (query: SitePollingQuery<SiteListResult>) => {
         const latest = (query.state.data?.sites ?? []).flatMap((site) =>
           site.latestDeployment ? [site.latestDeployment] : []
@@ -59,7 +59,7 @@ export function useSiteDetail(organizationId: string, siteId: string) {
   return useQuery(
     dashboardOrpc.sites.get.queryOptions({
       input: { organizationId, siteId },
-      enabled: organizationId.length > 0,
+      enabled: organizationId.length > 0 && siteId.length > 0,
       refetchInterval: (query: SitePollingQuery<SiteDetail>) =>
         hasDeploymentInProgress(query.state.data?.deployments ?? [])
           ? SITE_ACTIVE_POLL_INTERVAL_MS

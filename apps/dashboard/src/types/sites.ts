@@ -158,7 +158,7 @@ export type SiteCreateFieldErrors = Partial<Record<SiteInputField, string>>;
 export interface SiteCreateTarget {
   organizationId: string;
   repositoryId: string;
-  projectId: string | null;
+  projectId: string;
 }
 
 export interface SiteSettingsPatch {

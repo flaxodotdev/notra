@@ -21,6 +21,21 @@ export const OPENROUTER_PRIVACY_PROVIDER_ROUTING = {
 
 export const VERCEL_NAMESPACE_PREFIX = "vercel/";
 
+// Vendor response IDs with reviewed, unambiguous canonical identities.
+export const VERCEL_SERVED_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "gpt-5.4": "openai/gpt-5.4",
+  "gpt-5.4-mini": "openai/gpt-5.4-mini",
+  "gpt-5.4-nano": "openai/gpt-5.4-nano",
+  "gpt-5.6-sol": "openai/gpt-5.6-sol",
+  "gpt-6-luna": "openai/gpt-6-luna",
+  "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+  "claude-opus-4-6": "anthropic/claude-opus-4.6",
+  "claude-haiku-4-5": "anthropic/claude-haiku-4.5",
+  "claude-sonnet-5": "anthropic/claude-sonnet-5",
+  "claude-opus-5-5": "anthropic/claude-opus-5.5",
+  "claude-opus-5.5": "anthropic/claude-opus-5.5",
+};
+
 export const OPENROUTER_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "google/gemini-3-flash": "google/gemini-3-flash-preview",
   "meta/llama-4-maverick": "meta-llama/llama-4-maverick",

@@ -22,7 +22,9 @@
     "./types/*": "./src/types/*.ts",
     "./demo-mode": "./src/demo-mode.ts",
     "./demo-clock": "./src/demo-clock.ts",
-    "./constants/demo": "./src/constants/demo.ts"
+    "./constants/demo": "./src/constants/demo.ts",
+    "./account-api-key": "./src/account-api-key.ts",
+    "./constants/account-api-key": "./src/constants/account-api-key.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo"

@@ -109,7 +109,7 @@ const deleteProjectRoute = createRoute({
   operationId: "deleteProject",
   summary: "Delete a GEO project and all of its GEO data",
   description:
-    "Cascades to the project's GEO settings, prompts, sequences, competitors, scans, checks and reports, and cancels any pending scheduled scan. Agent feedback is kept but detached. The organization's last project cannot be deleted.",
+    "Cascades to the project's GEO settings, prompts, sequences, competitors, scans, checks and reports, and cancels any pending scheduled scan. Agent feedback is kept but detached. The organization's last project cannot be deleted. Projects with hosted Sites cannot be deleted; delete their Sites first.",
   request: { params: projectParamsSchema },
   responses: {
     200: {

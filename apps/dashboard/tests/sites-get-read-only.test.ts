@@ -40,7 +40,7 @@ if (process.env.NOTRA_SITES_GET_READ_ONLY_TEST_WORKER !== "1") {
     id: "site_readonly",
     activeProductionDeploymentId: null,
     organizationId: "org-readonly",
-    projectId: null,
+    projectId: "project-readonly",
     name: "Read-only site",
     slug: "readonly",
     repositoryId: null,

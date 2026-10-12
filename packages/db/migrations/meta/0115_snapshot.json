@@ -1,5 +1,5 @@
 {
-  "id": "209bc770-4850-42d0-b79b-39ed3cc241ce",
+  "id": "b01b223e-8009-4011-83a1-6551f765ae99",
   "prevId": "bef46485-9cde-444a-ae3c-964966aba7b5",
   "version": "7",
   "dialect": "postgresql",
@@ -2873,36 +2873,6 @@
         "last_generation_error": {
           "name": "last_generation_error",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_filename": {
-          "name": "source_pdf_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_storage_key": {
-          "name": "source_pdf_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_url": {
-          "name": "source_pdf_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_text": {
-          "name": "source_pdf_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_pdf_uploaded_at": {
-          "name": "source_pdf_uploaded_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -13427,7 +13397,7 @@
           "name": "project_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "name": {
           "name": "name",
@@ -13615,6 +13585,27 @@
           "method": "btree",
           "with": {}
         },
+        "sites_org_project_idx": {
+          "name": "sites_org_project_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "sites_slug_uidx": {
           "name": "sites_slug_uidx",
           "columns": [
@@ -13691,7 +13682,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "sites_repository_id_github_integrations_id_fk": {

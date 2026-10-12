@@ -13,6 +13,7 @@ import {
   getOperationalContext,
   runWithOperationalContext,
 } from "@notra/ai/utils/operational-context";
+import { resolveRequestId } from "@notra/ai/utils/request-id";
 import {
   type DrainContext,
   EvlogError,
@@ -30,10 +31,15 @@ export function setLogFlushScheduler(scheduler: LogFlushScheduler): void {
 }
 
 export async function flushLogs(): Promise<void> {
-  await Promise.all([runtime.aiDrain?.flush(), runtime.geoDrain?.flush()]);
+  await Promise.all([
+    runtime.aiDrain?.flush(),
+    runtime.geoDrain?.flush(),
+    runtime.otlpDrain?.flush(),
+  ]);
 }
 
 function routeDrain(ctx: DrainContext) {
+  runtime.otlpDrain?.(ctx);
   if (isGeoLogEvent(ctx.event)) {
     runtime.geoDrain?.(ctx);
   } else {
@@ -47,7 +53,9 @@ function routeDrain(ctx: DrainContext) {
 }
 
 const drain: EvlogDrain | undefined =
-  runtime.aiDrain || runtime.geoDrain ? routeDrain : undefined;
+  runtime.aiDrain || runtime.geoDrain || runtime.otlpDrain
+    ? routeDrain
+    : undefined;
 
 export { log, createError, useRequestLogger as useLogger };
 
@@ -79,11 +87,7 @@ export function withEvlog<TArgs extends unknown[], TReturn>(
       evlogRequestIntegration.start(request, { drain });
     trackRequestLoggerEmit(logger);
     const loggerRequestId = logger.getContext().requestId;
-    const requestId =
-      parent?.requestId ??
-      (typeof loggerRequestId === "string"
-        ? loggerRequestId
-        : crypto.randomUUID());
+    const requestId = resolveRequestId(parent?.requestId, loggerRequestId);
     logger.set({ requestId });
     const startHeader = request?.headers.get("x-evlog-start");
     if (startHeader) {

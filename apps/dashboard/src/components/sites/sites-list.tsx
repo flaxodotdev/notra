@@ -92,7 +92,7 @@ function SiteListCard({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const latest = site.latestDeployment;
   const title = commitTitle(latest?.commitMessage ?? null);
-  const href = siteHref(organizationSlug, site.id);
+  const href = siteHref(organizationSlug, site.id, "overview", site.projectId);
   const status = latest ? (
     <Tooltip>
       <TooltipTrigger className="focus-visible:outline-ring inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2">
@@ -181,7 +181,12 @@ function SiteListCard({
           <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2">
             <Link
               className="hover:text-foreground relative z-10 inline-flex min-w-0 flex-1 basis-full items-center gap-2 text-xs sm:basis-48"
-              href={siteHref(organizationSlug, site.id, "deployments")}
+              href={siteHref(
+                organizationSlug,
+                site.id,
+                "deployments",
+                site.projectId
+              )}
             >
               <HugeiconsIcon
                 aria-hidden="true"

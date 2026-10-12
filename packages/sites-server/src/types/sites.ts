@@ -28,7 +28,7 @@ export type SiteUpdateValues = Partial<typeof sites.$inferInsert>;
 export interface CreateSiteInput {
   organizationId: string;
   userId: string;
-  projectId?: string | null;
+  projectId: string;
   name: string;
   slug?: string;
   repositoryId: string;

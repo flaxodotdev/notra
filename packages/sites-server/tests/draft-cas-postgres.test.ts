@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import type { SaveSiteDraftInput } from "../src/types/editor";
 import type { Site } from "../src/types/sites";
+import { seedSiteProject } from "./utils/site-project";
 
 function deferred() {
   let resolve = () => {};
@@ -173,6 +174,7 @@ if (!databaseUrl) {
       .values({
         id: `${organizationId}-site`,
         organizationId,
+        projectId: await seedSiteProject(organizationId),
         name: "Synthetic",
         slug: crypto.randomUUID().slice(0, 8),
         publicOrigin: "https://synthetic.example.test",

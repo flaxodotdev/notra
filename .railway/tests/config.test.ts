@@ -6,6 +6,7 @@ import aiTraffic, { partial } from "../ai-traffic.ts";
 import { importedVariables } from "../constants/imported-variables.ts";
 import { demoTarget, productionTarget } from "../constants/targets.ts";
 import demo from "../demo.ts";
+import observability from "../observability.ts";
 
 test("demo reuses only the existing API and dashboard", async () => {
   const definition = await demo(createRailwayContext(demoTarget), project);
@@ -117,6 +118,7 @@ test.each([
 test.each([
   { name: "demo", program: demo, target: demoTarget },
   { name: "AI traffic", program: aiTraffic, target: productionTarget },
+  { name: "observability", program: observability, target: productionTarget },
 ])(
   "$name rejects missing or incorrect Railway context",
   ({ program, target }) => {
@@ -138,6 +140,7 @@ test.each([
 test.each([
   { name: "demo", program: demo, target: demoTarget },
   { name: "AI traffic", program: aiTraffic, target: productionTarget },
+  { name: "observability", program: observability, target: productionTarget },
 ])(
   "$name accepts exact CLI IDs without optional names",
   async ({ program, target }) => {

@@ -650,6 +650,30 @@
     "shared": {
       "editApiKey": "API-Schlüssel bearbeiten",
       "deleteApiKey": "API-Schlüssel löschen"
+    },
+    "emptyState": {
+      "title": "Noch keine API-Schlüssel",
+      "description": "Erstelle einen Schlüssel, um die Inhalte dieser Organisation per Skript, SDK oder MCP-Client zu lesen und zu bearbeiten."
+    },
+    "account": {
+      "title": "Account-API-Schlüssel",
+      "description": "Persönliche Schlüssel, die in jeder Organisation funktionieren, in der du Mitglied bist. Wähle sie mit dem Header <code>X-Notra-Organization-Id</code> aus.",
+      "createKey": "Account-Schlüssel erstellen",
+      "emptyTitle": "Noch keine Account-API-Schlüssel",
+      "emptyDescription": "Nutze einen Account-Schlüssel für persönliche Automatisierung über mehrere Workspaces. Für geteilte Systeme sind Organisations-Schlüssel gedacht.",
+      "createTitle": "Account-API-Schlüssel erstellen",
+      "createDescription": "Dieser Schlüssel funktioniert in jeder Organisation, in der du Mitglied bist.",
+      "editTitle": "Account-API-Schlüssel bearbeiten",
+      "viewTitle": "Account-API-Schlüssel anzeigen",
+      "namePlaceholder": "z. B. Persönliche Automatisierung",
+      "deleteTitle": "Account-API-Schlüssel löschen?",
+      "toasts": {
+        "created": "Account-API-Schlüssel erstellt",
+        "updated": "Account-API-Schlüssel aktualisiert",
+        "deleted": "Account-API-Schlüssel gelöscht"
+      },
+      "loadFailedTitle": "Account-API-Schlüssel konnten nicht geladen werden",
+      "loadFailedDescription": "Deine Schlüssel sind weiterhin da. Versuche es noch einmal."
     }
   },
   "feedback": {
@@ -948,6 +972,7 @@
       "writerPlanFailed": "Der Inhaltsplan konnte nicht erstellt oder gespeichert werden. Bitte versuche es erneut.",
       "promptAlreadyTracked": "Dieser Prompt wird bereits getrackt",
       "lastProjectDelete": "Du kannst dein letztes Projekt nicht löschen. Erstelle zuerst ein weiteres.",
+      "projectHasSitesDelete": "Dieses Projekt hat gehostete Sites. Lösche seine Sites, bevor du das Projekt löschst.",
       "createBrandIdentityFirst": "Erstelle zuerst eine Markenidentität",
       "noGroundedEngines": "Mit deinen Datenschutzeinstellungen sind keine KI-Engines mit Websuche verfügbar",
       "createConversationFailed": "Konversation konnte nicht erstellt werden",
@@ -7040,6 +7065,14 @@
     "title": "Sites",
     "description": "Blogs und Changelogs, gebaut und gehostet aus deinem GitHub-Repository",
     "newSite": "Neue Site",
+    "projectRequired": {
+      "title": "Wähle ein Projekt",
+      "description": "Erstelle oder wähle ein Projekt in der Seitenleiste, um seine Sites zu verwalten."
+    },
+    "projectLoadFailed": {
+      "title": "Projekte konnten nicht geladen werden",
+      "description": "Lade die Seite neu, um es erneut zu versuchen."
+    },
     "empty": {
       "title": "Noch keine Sites",
       "description": "Hoste Blog und Changelog aus einem GitHub-Repo. Jeder Push geht live, jeder Pull Request bekommt eine Vorschau."
@@ -7123,6 +7156,10 @@
     },
     "new": {
       "title": "Neue Site",
+      "project": "Projekt: {name}",
+      "projectLoading": "Projekt wird geladen…",
+      "projectRequired": "Erstelle oder wähle ein Projekt in der Seitenleiste, bevor du eine Site erstellst.",
+      "projectLoadFailed": "Projekte konnten nicht geladen werden. Lade die Seite neu, um es erneut zu versuchen.",
       "description": "Importiere ein Repository. Jeder Push auf den Produktions-Branch geht live.",
       "private": "Privates Repository",
       "name": "Name der Site",

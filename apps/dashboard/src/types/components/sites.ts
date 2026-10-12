@@ -41,6 +41,22 @@ export interface SitesPageShellProps {
   children: ReactNode;
 }
 
+export interface ProjectSitesListProps {
+  organizationId: string;
+  organizationSlug: string;
+  projectId: string;
+  showAll: boolean;
+}
+
+export interface SiteCreateProjectProps {
+  organizationId: string;
+}
+
+export interface SiteLoadErrorProps {
+  organizationSlug: string;
+  error: unknown;
+}
+
 export interface SiteDeploymentTimelineProps {
   deployment: SiteDeploymentRecord;
   log: string | null;
@@ -588,6 +604,7 @@ export interface SiteCreateDeployProps {
   site: Pick<
     SiteRecord,
     | "id"
+    | "projectId"
     | "name"
     | "liveUrl"
     | "repository"

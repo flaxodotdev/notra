@@ -6,9 +6,9 @@ import { Effect } from "effect";
 
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 if (!databaseUrl) {
-  test.skip("Site identity project deletion requires synthetic PostgreSQL", () => {});
+  test.skip("Project deletion with Sites requires synthetic PostgreSQL", () => {});
 } else if (process.env.NOTRA_SITE_PROJECT_DELETE_TEST_WORKER !== "1") {
-  test("project deletion invalidates site identities before and after nullable FK updates", () => {
+  test("project deletion blocks hosted Sites without orphaning them", () => {
     const url = new URL(databaseUrl);
     expect(url.hostname).toBe("127.0.0.1");
     expect(url.pathname).toBe("/notra_server_audit");
@@ -33,155 +33,123 @@ if (!databaseUrl) {
   const { brandSettings, organizations, projects, siteDeployments, sites } =
     await import("@notra/db/schema");
   const { eq } = await import("drizzle-orm");
-  const cache = new Map<string, unknown>();
   const deletedKeys: string[] = [];
   mock.module("@notra/ai/utils/redis", () => ({
     redis: {
-      get: async (key: string) => cache.get(key) ?? null,
-      set: async (key: string, value: unknown) => {
-        cache.set(key, value);
-      },
+      get: async () => null,
+      set: async () => {},
       del: async (...keys: string[]) => {
         deletedKeys.push(...keys);
-        for (const key of keys) {
-          cache.delete(key);
-        }
       },
     },
   }));
   const { deleteGeoProject } = await import("../src/geo/projects");
-  const { loadIngestSite, loadOrganizationSitePrefixes } =
-    await import("../src/ingest/sites");
-  const { isGeoIngestIdentityActive } = await import("../src/ingest/identity");
-  const {
-    GEO_INGEST_SITE_CACHE_PREFIX,
-    GEO_INGEST_ORGANIZATION_SITES_CACHE_PREFIX,
-  } = await import("../src/constants/geo");
   afterAll(async () => {
     await Reflect.get(db, "$client").end();
   });
 
-  test("cached explicit and default project identities resolve the remaining project without changing published coverage", async () => {
+  test("attached Sites block deletion; other project's Sites and last-project policy are preserved", async () => {
     const organizationId = `project-site-${crypto.randomUUID()}`;
     const brandId = `${organizationId}-brand`;
-    const oldProjectId = `${organizationId}-old`;
-    const remainingProjectId = `${organizationId}-remaining`;
-    const ids = [`${organizationId}-assigned`, `${organizationId}-default`];
+    const owningProjectId = `${organizationId}-owning`;
+    const emptyProjectId = `${organizationId}-empty`;
+    const siteId = `${organizationId}-site`;
     try {
       await db.insert(organizations).values({
         id: organizationId,
-        name: "Synthetic site projects",
+        name: "Synthetic",
         slug: organizationId,
         createdAt: new Date(),
       });
       await db.insert(brandSettings).values({
         id: brandId,
         organizationId,
-        websiteUrl: "https://old.example.test",
+        websiteUrl: "https://example.test",
       });
-      await db.insert(projects).values([
-        {
-          id: oldProjectId,
-          organizationId,
-          name: "Old",
-          brandSettingsId: brandId,
-          createdAt: new Date("2025-01-01"),
-        },
-        {
-          id: remainingProjectId,
-          organizationId,
-          name: "Remaining",
-          brandSettingsId: brandId,
-          createdAt: new Date("2025-02-01"),
-        },
-      ]);
-      for (const [index, id] of ids.entries()) {
-        await db.insert(sites).values({
+      await db.insert(projects).values(
+        [owningProjectId, emptyProjectId].map((id) => ({
           id,
           organizationId,
-          projectId: index === 0 ? oldProjectId : null,
-          name: "Synthetic site",
-          slug: crypto.randomUUID().slice(0, 8),
-          publicOrigin: "https://desired.example.test",
-          mounts: { blog: "/desired" },
-        });
-        await db.insert(siteDeployments).values({
-          id: `${id}-live`,
-          siteId: id,
-          organizationId,
-          kind: "production",
-          trigger: "manual",
-          status: "ready",
-          generation: 1,
-          branch: "main",
-          commitSha: "a".repeat(40),
-          configHash: "synthetic",
-          target: {
-            publicOrigin: "https://published.example.test",
-            mounts: { blog: "/blog" },
-            noindex: false,
-            branding: true,
-          },
-        });
-        await db
-          .update(sites)
-          .set({ activeProductionDeploymentId: `${id}-live` })
-          .where(eq(sites.id, id));
-        expect(await loadIngestSite(id)).toMatchObject({
-          projectId: oldProjectId,
-          hosts: ["published.example.test"],
-          mounts: ["/blog"],
-        });
-      }
-      const beforePrefixes = await loadOrganizationSitePrefixes(organizationId);
-      await Effect.runPromise(deleteGeoProject(organizationId, oldProjectId));
-      for (const id of ids) {
-        expect(
-          deletedKeys.filter(
-            (key) => key === `${GEO_INGEST_SITE_CACHE_PREFIX}:${id}`
-          )
-        ).toHaveLength(2);
-        expect(await loadIngestSite(id)).toMatchObject({
-          projectId: remainingProjectId,
-          hosts: ["published.example.test"],
-          mounts: ["/blog"],
-        });
-        const current = await db.query.sites.findFirst({
-          where: eq(sites.id, id),
-        });
-        expect(current?.projectId).toBeNull();
-        expect(current?.activeProductionDeploymentId).toBe(`${id}-live`);
-      }
-      expect(deletedKeys).toContain(
-        `${GEO_INGEST_ORGANIZATION_SITES_CACHE_PREFIX}:${organizationId}`
+          name: id,
+          brandSettingsId: brandId,
+        }))
       );
-      expect(await loadOrganizationSitePrefixes(organizationId)).toEqual(
-        beforePrefixes
+      await db.insert(sites).values({
+        id: siteId,
+        organizationId,
+        projectId: owningProjectId,
+        name: "Synthetic",
+        slug: crypto.randomUUID().slice(0, 8),
+        publicOrigin: "https://example.test",
+        mounts: { blog: "/blog" },
+      });
+      await db.insert(siteDeployments).values({
+        id: `${siteId}-live`,
+        siteId,
+        organizationId,
+        kind: "production",
+        trigger: "manual",
+        status: "ready",
+        generation: 1,
+        branch: "main",
+        commitSha: "a".repeat(40),
+        configHash: "synthetic",
+        target: {
+          publicOrigin: "https://example.test",
+          mounts: { blog: "/blog" },
+          noindex: false,
+          branding: true,
+        },
+      });
+      await db
+        .update(sites)
+        .set({ activeProductionDeploymentId: `${siteId}-live` })
+        .where(eq(sites.id, siteId));
+      const before = await db.query.sites.findFirst({
+        where: eq(sites.id, siteId),
+      });
+      const failure = await Effect.runPromise(
+        deleteGeoProject(organizationId, owningProjectId).pipe(Effect.flip)
       );
+      expect(failure).toMatchObject({
+        _tag: "GeoProjectDeleteBlockedError",
+        reason: "has_sites",
+      });
       expect(
-        await isGeoIngestIdentityActive({
-          organizationId,
-          projectId: oldProjectId,
-          generation: 0,
-          site: {
-            id: ids[0] ?? "",
-            hosts: ["published.example.test"],
-            mounts: ["/blog"],
-          },
-        })
-      ).toBe(false);
+        await db.query.sites.findFirst({ where: eq(sites.id, siteId) })
+      ).toEqual(before);
       expect(
-        await isGeoIngestIdentityActive({
-          organizationId,
-          projectId: remainingProjectId,
-          generation: 0,
-          site: {
-            id: ids[0] ?? "",
-            hosts: ["published.example.test"],
-            mounts: ["/blog"],
-          },
+        await db.query.projects.findFirst({
+          where: eq(projects.id, owningProjectId),
         })
-      ).toBe(true);
+      ).toBeDefined();
+      expect(
+        await db.query.siteDeployments.findFirst({
+          where: eq(siteDeployments.id, `${siteId}-live`),
+        })
+      ).toBeDefined();
+      expect(deletedKeys).toEqual([]);
+      expect(
+        await Effect.runPromise(
+          deleteGeoProject(organizationId, emptyProjectId)
+        )
+      ).toEqual({ id: emptyProjectId, success: true });
+      expect(
+        await db.query.projects.findFirst({
+          where: eq(projects.id, emptyProjectId),
+        })
+      ).toBeUndefined();
+      expect(
+        await Effect.runPromise(
+          deleteGeoProject(organizationId, owningProjectId).pipe(Effect.flip)
+        )
+      ).toMatchObject({ reason: "last_project" });
+      await db.delete(sites).where(eq(sites.id, siteId));
+      expect(
+        await Effect.runPromise(
+          deleteGeoProject(organizationId, owningProjectId).pipe(Effect.flip)
+        )
+      ).toMatchObject({ reason: "last_project" });
     } finally {
       await db
         .delete(organizations)

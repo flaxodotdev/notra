@@ -200,7 +200,12 @@ export function SiteCreateDeploy({
               </a>
               <Link
                 className={buttonVariants({ size: "sm" })}
-                href={siteHref(organizationSlug, site.id)}
+                href={siteHref(
+                  organizationSlug,
+                  site.id,
+                  "overview",
+                  site.projectId
+                )}
               >
                 {t("openSite")}
               </Link>

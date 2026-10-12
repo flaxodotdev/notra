@@ -2,14 +2,13 @@ import { db } from "@notra/db/drizzle";
 import { brandSettings, geoSettings, projects, sites } from "@notra/db/schema";
 import type { GeoCheckScope } from "@notra/db/types/geo-checks";
 import { bumpGeoCheckGeneration } from "@notra/db/utils/geo-check-cache";
-import { and, asc, count, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import {
   GEO_PROJECTS_OLDEST_ORDER,
   GEO_PROJECT_RESPONSE_COLUMNS,
 } from "../constants/geo-projects";
-import { invalidateIngestSiteCaches } from "../ingest/sites";
 import type {
   GeoProjectScope,
   GeoProjectsResponse,
@@ -181,28 +180,6 @@ export const updateGeoProject = Effect.fn("geo.projectUpdate")(function* (
   return toGeoProject(row);
 });
 
-// Sites whose cached ingest identity may point at the project: pinned ones,
-// plus unpinned ones that fall back to the organization's oldest project.
-function projectSitesCondition(organizationId: string, projectId: string) {
-  return and(
-    eq(sites.organizationId, organizationId),
-    or(eq(sites.projectId, projectId), isNull(sites.projectId))
-  );
-}
-
-function invalidateSiteCaches(
-  siteIds: Iterable<string>,
-  organizationId: string
-) {
-  return Effect.promise(() =>
-    Promise.all(
-      Array.from(siteIds, (id) =>
-        invalidateIngestSiteCaches(id, organizationId).catch(() => undefined)
-      )
-    )
-  );
-}
-
 /**
  * Deletes a project and everything hanging off it.
  *
@@ -219,6 +196,8 @@ function invalidateSiteCaches(
  *   organization independently of any project.
  * - The scan schedule needs no teardown: the cron sweep reads `geo_settings`
  *   live, and the settings row cascades away with the project.
+ * - Hosted Sites block deletion. They are never orphaned or removed here;
+ *   the project FK also restricts deletion if a concurrent Site is created.
  * - The organization's last project cannot be deleted: `resolveGeoScope` falls
  *   back to the oldest project, so removing the final one leaves every GEO
  *   read unresolvable. The count is re-taken inside the deleting transaction
@@ -267,15 +246,6 @@ export const deleteGeoProject = Effect.fn("geo.projectDelete")(function* (
     );
   }
 
-  const affectedSites = yield* geoDb("project site lookup failed", () =>
-    db
-      .select({ id: sites.id })
-      .from(sites)
-      .where(projectSitesCondition(organizationId, projectId))
-  );
-  const affectedSiteIds = new Set(affectedSites.map(({ id }) => id));
-  yield* invalidateSiteCaches(affectedSiteIds, organizationId);
-
   const outcome = yield* geoDb("project delete failed", () =>
     db.transaction(async (tx) => {
       await Effect.runPromise(lockGeoOrganization(tx, organizationId));
@@ -307,9 +277,15 @@ export const deleteGeoProject = Effect.fn("geo.projectDelete")(function* (
       const currentSites = await tx
         .select({ id: sites.id })
         .from(sites)
-        .where(projectSitesCondition(organizationId, projectId));
-      for (const { id } of currentSites) {
-        affectedSiteIds.add(id);
+        .where(
+          and(
+            eq(sites.organizationId, organizationId),
+            eq(sites.projectId, projectId)
+          )
+        )
+        .limit(1);
+      if (currentSites.length) {
+        return "has_sites" as const;
       }
       const deleted = await tx
         .delete(projects)
@@ -324,14 +300,13 @@ export const deleteGeoProject = Effect.fn("geo.projectDelete")(function* (
     })
   );
 
-  if (outcome === "last_project") {
+  if (outcome === "last_project" || outcome === "has_sites") {
     return yield* Effect.fail(
-      new GeoProjectDeleteBlockedError({ projectId, reason: "last_project" })
+      new GeoProjectDeleteBlockedError({ projectId, reason: outcome })
     );
   }
 
   if (outcome === "deleted") {
-    yield* invalidateSiteCaches(affectedSiteIds, organizationId);
     // The project's checks went with it (cascade); org-wide aggregates must
     // stop counting them now, not when their cache entries expire.
     yield* Effect.promise(() => bumpGeoCheckGeneration([organizationId]));

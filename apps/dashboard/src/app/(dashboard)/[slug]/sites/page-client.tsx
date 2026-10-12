@@ -17,10 +17,13 @@ import {
   EMPTY_STATE_TABLE_COLUMNS,
   EMPTY_STATE_TABLE_ROWS,
 } from "@/constants/empty-state";
+import { useActiveProject } from "@/lib/hooks/use-active-project";
 import { useSitesList, useSitesOrganizationId } from "@/lib/hooks/use-sites";
 import { cn } from "@/lib/utils";
+import type { ProjectSitesListProps } from "@/types/components/sites";
 import type { SitesPageClientProps } from "@/types/sites";
 import { siteHref } from "@/utils/site-links";
+import { resolvedSiteProjectId } from "@/utils/site-project";
 
 import { SitesPageSkeleton } from "./skeleton";
 
@@ -30,8 +33,47 @@ export default function PageClient({
 }: SitesPageClientProps) {
   const t = useTranslations("sites");
   const organizationId = useSitesOrganizationId(organizationSlug);
-  const listQuery = useSitesList(organizationId);
-  const newSiteHref = `/${organizationSlug}/sites/new`;
+  const activeProject = useActiveProject();
+  const projectId = resolvedSiteProjectId(activeProject);
+
+  if (activeProject.isError || (activeProject.isResolved && !projectId)) {
+    const state = activeProject.isError
+      ? "projectLoadFailed"
+      : "projectRequired";
+    return (
+      <SitesPageShell>
+        <PageHeading description={t("description")} title={t("title")} />
+        <EmptyState
+          description={t(`${state}.description`)}
+          title={t(`${state}.title`)}
+        />
+      </SitesPageShell>
+    );
+  }
+
+  if (!projectId) {
+    return <SitesPageSkeleton />;
+  }
+
+  return (
+    <ProjectSitesList
+      organizationId={organizationId}
+      organizationSlug={organizationSlug}
+      projectId={projectId}
+      showAll={showAll}
+    />
+  );
+}
+
+function ProjectSitesList({
+  organizationId,
+  organizationSlug,
+  projectId,
+  showAll,
+}: ProjectSitesListProps) {
+  const t = useTranslations("sites");
+  const listQuery = useSitesList(organizationId, projectId);
+  const newSiteHref = `/${organizationSlug}/sites/new?project=${encodeURIComponent(projectId)}`;
 
   if (!listQuery.data) {
     if (listQuery.isError) {
@@ -51,7 +93,17 @@ export default function PageClient({
   const { configured, sites } = listQuery.data;
   const [onlySite, ...otherSites] = sites;
   if (configured && !showAll && onlySite && otherSites.length === 0) {
-    return <Navigate replace to={siteHref(organizationSlug, onlySite.id)} />;
+    return (
+      <Navigate
+        replace
+        to={siteHref(
+          organizationSlug,
+          onlySite.id,
+          "overview",
+          onlySite.projectId
+        )}
+      />
+    );
   }
   const newSiteButton = (
     <Link

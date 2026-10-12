@@ -24,7 +24,13 @@ export async function toGeoOrpcError(failure: GeoRouterError): Promise<Error> {
     case "GeoProjectCreateFailedError":
       return badRequest(t("common.labels.failedToCreateProject"));
     case "GeoProjectDeleteBlockedError":
-      return badRequest(t("errors.geo.lastProjectDelete"));
+      return badRequest(
+        t(
+          failure.reason === "has_sites"
+            ? "errors.geo.projectHasSitesDelete"
+            : "errors.geo.lastProjectDelete"
+        )
+      );
     case "GeoBrandIdentityNotFoundError":
       return notFound("Brand identity not found");
     case "GeoBrandIdentityMissingError":

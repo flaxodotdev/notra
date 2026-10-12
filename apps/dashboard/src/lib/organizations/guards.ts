@@ -10,6 +10,7 @@ import {
   organizationActionMessage,
 } from "@/lib/organizations/action-messages";
 import type { AuthSessionData } from "@/types/auth/session";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 
 const MANAGER_ROLES: readonly string[] = ["owner", "admin"];
 
@@ -64,6 +65,7 @@ export const requireMembership = Effect.fn(
     );
   }
 
+  recordAuthorizedOrganization(undefined, organizationId, session.user.id);
   return membership;
 });
 

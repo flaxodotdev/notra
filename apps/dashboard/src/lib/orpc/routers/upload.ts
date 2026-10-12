@@ -30,6 +30,7 @@ import {
   recordChatAttachment,
 } from "@/lib/upload/server";
 import { validateUpload } from "@/lib/upload/validate";
+import { recordAuthorizedOrganization } from "@/utils/rpc-telemetry";
 
 import {
   assertNotDemo,
@@ -108,6 +109,7 @@ export const uploadRouter = {
         const tErrors = await getTranslations("errors.upload");
         throw forbidden(tErrors("noOrganizationAccess"));
       }
+      recordAuthorizedOrganization(context.headers, orgId, context.user.id);
 
       const sourceUrl = new URL(input.sourceUrl);
       const isAllowedSource =
@@ -188,6 +190,7 @@ export const uploadRouter = {
         const tErrors = await getTranslations("errors.upload");
         throw forbidden(tErrors("noOrganizationAccess"));
       }
+      recordAuthorizedOrganization(context.headers, orgId, context.user.id);
 
       let sanitized: string;
       try {

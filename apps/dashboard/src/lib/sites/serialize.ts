@@ -31,6 +31,7 @@ export function serializeSite(
 ) {
   return {
     id: site.id,
+    projectId: site.projectId,
     name: site.name,
     slug: site.slug,
     status: site.status,

@@ -38,7 +38,7 @@ export function siteCreateInput(
     },
     previewVisibility: form.previewVisibility,
     publishMode: form.publishMode,
-    projectId: projectId ?? undefined,
+    projectId,
   };
 }
 

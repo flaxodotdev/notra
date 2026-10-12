@@ -159,7 +159,9 @@ if (!process.env.NOTRA_SITES_FLAG_TEST_WORKER) {
     await expect(call(sitesRouter.status, org, client)).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
-    await expect(call(sitesRouter.list, org, client)).rejects.toMatchObject({
+    await expect(
+      call(sitesRouter.list, { ...org, projectId: "project-demo" }, client)
+    ).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
     await expect(
@@ -180,6 +182,7 @@ if (!process.env.NOTRA_SITES_FLAG_TEST_WORKER) {
         sitesRouter.create,
         {
           ...org,
+          projectId: "project-demo",
           name: "Demo",
           repositoryId: "repo_demo",
           mounts: { blog: "/blog" },

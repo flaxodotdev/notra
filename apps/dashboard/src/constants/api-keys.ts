@@ -99,3 +99,6 @@ export const API_KEY_EXPIRATION_MS = {
   "60d": 60 * 24 * 60 * 60 * 1000,
   "90d": 90 * 24 * 60 * 60 * 1000,
 } as const;
+
+/** Header row plus enough body for the empty state's icon, copy and button. */
+export const API_KEYS_EMPTY_TABLE_HEIGHT = 320;

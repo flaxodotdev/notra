@@ -10,6 +10,7 @@ import type { SiteDomain } from "../src/types/domains";
 import type { R2PutOptions } from "../src/types/r2";
 import type { Site } from "../src/types/sites";
 import { deferred } from "./utils/deferred";
+import { seedSiteProject } from "./utils/site-project";
 
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -251,12 +252,16 @@ if (!databaseUrl) {
         createdAt: new Date(),
       }))
     );
+    await Promise.all(
+      [organizationId, otherOrganizationId].map(seedSiteProject)
+    );
     const inserted = await db
       .insert(sites)
       .values(
         [organizationId, otherOrganizationId].map((organizationId) => ({
           id: crypto.randomUUID(),
           organizationId,
+          projectId: `${organizationId}-project`,
           name: "Synthetic",
           slug: crypto.randomUUID(),
           publicOrigin: "https://alias.notra.site",
@@ -500,6 +505,7 @@ if (!databaseUrl) {
       .values({
         id: crypto.randomUUID(),
         organizationId: newSite.organizationId,
+        projectId: newSite.projectId,
         name: "Synthetic",
         slug: crypto.randomUUID(),
         publicOrigin: newSite.publicOrigin,

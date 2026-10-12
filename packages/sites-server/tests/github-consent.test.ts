@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import type { Site } from "../src/types/sites";
+import { seedSiteProject } from "./utils/site-project";
 
 const databaseUrl = process.env.SITES_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -111,6 +112,7 @@ if (!databaseUrl) {
       .values({
         id: `${organizationId}-site`,
         organizationId,
+        projectId: await seedSiteProject(organizationId),
         name: "Synthetic consent",
         slug: crypto.randomUUID().slice(0, 8),
         repositoryId: integrationId,

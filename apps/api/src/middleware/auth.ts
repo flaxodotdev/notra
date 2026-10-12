@@ -1,13 +1,20 @@
 import type { createDb } from "@notra/db/drizzle";
 import { members, organizations, users } from "@notra/db/schema";
+import { parseAccountApiKeyUserId } from "@notra/utils/account-api-key";
 import {
+  isUnscopedApiPath,
   LEGACY_API_READ_SCOPE,
   LEGACY_API_WRITE_SCOPE,
 } from "@notra/utils/api-scopes";
+import { ACCOUNT_API_KEY_ORGANIZATION_HEADERS } from "@notra/utils/constants/account-api-key";
 import { readOAuthConsentGrant } from "@notra/utils/oauth-consent";
 import { Unkey } from "@unkey/api";
+import type {
+  Identity,
+  V2KeysVerifyKeyResponseData,
+} from "@unkey/api/models/components";
 import { NotFoundException, WorkOS } from "@workos-inc/node";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import {
   createRemoteJWKSet,
@@ -18,7 +25,7 @@ import {
 
 import { API_AUTH_KINDS } from "../constants/analytics";
 import type { ApiAuthKind } from "../types/analytics";
-import type { AuthData } from "../types/auth";
+import type { AccountApiKeyAuthData, AuthData } from "../types/auth";
 import {
   API_URL,
   AUTH_GUIDE_URL,
@@ -48,6 +55,10 @@ const OAUTH_AUDIENCES = [
   "https://mcp.usenotra.com",
   "https://mcp.usenotra.com/mcp",
 ] as const;
+// Workspace-scoped MCP connections (`/mcp/{workspace}`) get tokens for their
+// own resource URL; same segment rule as the MCP server.
+const SCOPED_MCP_AUDIENCE_REGEX =
+  /^https:\/\/mcp\.usenotra\.com\/mcp\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const SCOPE_SEPARATOR_REGEX = /\s+/;
 const WORKOS_ID_CACHE_MAX_SIZE = 1000;
 const WORKOS_ID_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -232,7 +243,10 @@ function isAllowedAudience(
   }
 
   const audiences = Array.isArray(aud) ? aud : [aud];
-  return audiences.some((audience) => allowed.has(audience));
+  return audiences.some(
+    (audience) =>
+      allowed.has(audience) || SCOPED_MCP_AUDIENCE_REGEX.test(audience)
+  );
 }
 
 function getRemoteJwks(jwksUrl: string): ReturnType<typeof createRemoteJWKSet> {
@@ -450,6 +464,103 @@ function getRecovery(status: AuthFailureStatus) {
   return "The authentication service is temporarily unavailable. Retry with exponential backoff.";
 }
 
+function getRequestedOrganizationId(c: Context): string | null {
+  for (const header of ACCOUNT_API_KEY_ORGANIZATION_HEADERS) {
+    const value = c.req.header(header)?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+async function resolveAccountKeyAuth(
+  c: Context,
+  verified: V2KeysVerifyKeyResponseData & { identity: Identity },
+  userId: string
+): Promise<AuthResult> {
+  const membershipRows = await c.get("db").query.members.findMany({
+    where: eq(members.userId, userId),
+    columns: { organizationId: true },
+    with: { organizations: { columns: { slug: true } } },
+    orderBy: [asc(members.createdAt), asc(members.organizationId)],
+  });
+  const memberOrgIds = membershipRows.map((row) => row.organizationId);
+  const requestedOrganization = getRequestedOrganizationId(c);
+
+  // Membership is read on every request, so leaving an organization revokes
+  // the key there immediately.
+  let organizationId: string | undefined;
+  if (requestedOrganization) {
+    // The header takes an organization id or slug, so configs can use the
+    // readable slug.
+    organizationId = membershipRows.find(
+      (row) =>
+        row.organizationId === requestedOrganization ||
+        row.organizations?.slug === requestedOrganization
+    )?.organizationId;
+  } else if (
+    memberOrgIds.length === 1 ||
+    (memberOrgIds.length > 0 && isUnscopedApiPath(c.req.path))
+  ) {
+    organizationId = memberOrgIds[0];
+  } else if (memberOrgIds.length > 1) {
+    return {
+      success: false,
+      error:
+        "Organization selection required: send X-Notra-Organization-Id for the workspace this request should act on",
+      status: 403,
+      kind: API_AUTH_KINDS.UNKEY,
+    };
+  }
+
+  if (!organizationId) {
+    return {
+      success: false,
+      error: "Workspace access revoked",
+      status: 403,
+      kind: API_AUTH_KINDS.UNKEY,
+    };
+  }
+
+  const auth: AccountApiKeyAuthData = {
+    ...verified,
+    userId,
+    isAccountKey: true,
+    identity: { ...verified.identity, externalId: organizationId },
+  };
+  c.set("auth", auth);
+  return { success: true, auth };
+}
+
+// An organization key always acts in its own workspace. Naming another one in
+// the selection header would otherwise silently act on the key's workspace.
+async function checkOrganizationKeySelection(
+  c: Context,
+  organizationId: string
+): Promise<AuthResult | null> {
+  const requestedOrganization = getRequestedOrganizationId(c);
+  if (!requestedOrganization || requestedOrganization === organizationId) {
+    return null;
+  }
+
+  const organization = await c.get("db").query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+    columns: { slug: true },
+  });
+  if (organization?.slug === requestedOrganization) {
+    return null;
+  }
+
+  return {
+    success: false,
+    error:
+      "This API key belongs to a different workspace than X-Notra-Organization-Id names",
+    status: 403,
+    kind: API_AUTH_KINDS.UNKEY,
+  };
+}
+
 async function verifyRequestAuth(
   c: Context,
   options: AuthOptions = {}
@@ -514,13 +625,40 @@ async function verifyRequestAuth(
       };
     }
 
-    if (!result.data.identity?.externalId) {
+    const verifiedIdentity = result.data.identity;
+    if (!verifiedIdentity?.externalId) {
       return {
         success: false,
         error: "Missing or invalid API key",
         status: 401,
         kind: API_AUTH_KINDS.UNKEY,
       };
+    }
+
+    const accountUserId = parseAccountApiKeyUserId(verifiedIdentity.externalId);
+    if (accountUserId) {
+      try {
+        return await resolveAccountKeyAuth(
+          c,
+          { ...result.data, identity: verifiedIdentity },
+          accountUserId
+        );
+      } catch {
+        return {
+          success: false,
+          error: "Service unavailable",
+          status: 503,
+          kind: API_AUTH_KINDS.UNKEY,
+        };
+      }
+    }
+
+    const mismatch = await checkOrganizationKeySelection(
+      c,
+      verifiedIdentity.externalId
+    );
+    if (mismatch) {
+      return mismatch;
     }
 
     c.set("auth", result.data);

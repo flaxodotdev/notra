@@ -40,7 +40,18 @@ export function SiteListMenuItems({
     variant === "context" ? ContextMenuSeparator : DropdownMenuSeparator;
   return (
     <>
-      <Item render={<Link href={siteHref(organizationSlug, site.id)} />}>
+      <Item
+        render={
+          <Link
+            href={siteHref(
+              organizationSlug,
+              site.id,
+              "overview",
+              site.projectId
+            )}
+          />
+        }
+      >
         <HugeiconsIcon
           aria-hidden="true"
           icon={DashboardSquare01Icon}
@@ -75,7 +86,11 @@ export function SiteListMenuItems({
       </Item>
       <Separator />
       <Item
-        render={<Link href={siteHref(organizationSlug, site.id, "editor")} />}
+        render={
+          <Link
+            href={siteHref(organizationSlug, site.id, "editor", site.projectId)}
+          />
+        }
       >
         <HugeiconsIcon
           aria-hidden="true"
@@ -86,7 +101,14 @@ export function SiteListMenuItems({
       </Item>
       <Item
         render={
-          <Link href={siteHref(organizationSlug, site.id, "deployments")} />
+          <Link
+            href={siteHref(
+              organizationSlug,
+              site.id,
+              "deployments",
+              site.projectId
+            )}
+          />
         }
       >
         <HugeiconsIcon
@@ -97,7 +119,16 @@ export function SiteListMenuItems({
         {tTabs("deployments")}
       </Item>
       <Item
-        render={<Link href={siteHref(organizationSlug, site.id, "settings")} />}
+        render={
+          <Link
+            href={siteHref(
+              organizationSlug,
+              site.id,
+              "settings",
+              site.projectId
+            )}
+          />
+        }
       >
         <HugeiconsIcon
           aria-hidden="true"

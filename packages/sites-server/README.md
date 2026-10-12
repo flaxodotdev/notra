@@ -229,6 +229,103 @@ already started deployment do not reserve a second slot.
 
 ## Verification
 
+### Required projects (migration 0115)
+
+Sites belong to projects and remain shared with all organization members. A
+project with Sites cannot be deleted; remove its Sites explicitly first. Public
+URLs, Site IDs, deployments and stored assets are unchanged by this migration.
+
+Before deploying, inventory **all** unassigned Sites in the target database,
+including those eligible for automatic backfill:
+
+```sql
+SELECT id AS site_id, organization_id
+FROM sites
+WHERE project_id IS NULL
+ORDER BY organization_id, id;
+```
+
+Then run this read-only preflight to identify Sites needing explicit assignment:
+
+```sql
+SELECT s.id AS site_id, s.organization_id,
+       count(p.id) AS non_sample_projects,
+       array_agg(p.id ORDER BY p.id) FILTER (WHERE p.id IS NOT NULL) AS candidates
+FROM sites s
+LEFT JOIN projects p ON p.organization_id = s.organization_id AND NOT p.is_sample
+WHERE s.project_id IS NULL
+GROUP BY s.id, s.organization_id
+HAVING count(p.id) <> 1;
+```
+
+The migration runs within Drizzle's migration transaction. It backfills only
+unassigned Sites whose organization has exactly one non-sample project. It never
+changes an existing assignment. Zero or multiple non-sample projects abort the
+entire migration with unresolved Site IDs, organization IDs and candidate counts.
+Do not select the first/oldest project or create placeholder projects to proceed.
+An operator must choose the intended existing same-organization project (or
+create a genuine project via the application) and explicitly assign each Site.
+Follow the maintenance sequence below before applying assignments or migration:
+
+```sql
+UPDATE sites s
+SET project_id = p.id
+FROM projects p
+WHERE s.id = '<unresolved-site-id>'
+  AND s.project_id IS NULL
+  AND p.id = '<chosen-project-id>'
+  AND p.organization_id = s.organization_id
+RETURNING s.id, s.organization_id, s.project_id;
+```
+
+Confirm exactly one returned row per assignment, rerun the preflight, then retry
+migration 0115 through the normal migration runner. For manual SQL execution wrap
+the entire migration in `BEGIN` / `COMMIT`; never run individual statements in
+autocommit mode. No R2 cleanup or serving-state changes are required.
+
+**Maintenance sequence: explicit assignment and automatic backfill**
+
+An unassigned Site's ingestion identity falls back to the organization's oldest
+project, including sample projects. That cached project can differ from either
+the chosen manual assignment or the migration's sole non-sample project.
+
+1. Run the inventory and preflight above. Include every unassigned Site in the
+   affected set, not just ambiguous Sites; automatic backfill also changes
+   ingestion identity.
+2. Before any assignment, quiesce Site analytics ingress for the affected Sites
+   on **all active paths and replicas**: the dedicated ingest service and the
+   dashboard compatibility handler, including direct and proxied endpoints.
+   Use operator-controlled routing or maintenance controls; there is no assumed
+   pause environment flag. Drain accepted/in-flight requests, background work
+   and queued events before proceeding. Keep public Sites online: do not suspend
+   Sites or change R2/serving state. See the
+   [AI traffic ingestion runbook](../../apps/ai-traffic-ingest/README.md) for
+   routing and graceful drain behavior.
+3. Apply required same-organization assignments with the SQL above, confirm one
+   returned row each, and rerun the preflight. Run migration 0115 through the
+   normal transactional migration runner, including automatic backfill. Preserve
+   the transaction requirements above. If assignment, migration or verification
+   fails, keep ingress quiesced until corrected.
+4. Before resuming, choose **one** cache-clearing approach:
+   - Call `invalidateIngestSiteCaches(siteId, organizationId)` from
+     `packages/geo-core/src/ingest/sites.ts` for every affected Site in an
+     environment configured for the target database and shared Redis. Confirm
+     successful deletion of the affected `geo:ingest-site:v2:<siteId>` identity
+     and `geo:ingest-organization-sites:v2:<organizationId>` prefix-cache keys.
+     Then drain/restart **every ingestion-capable process/replica**, including
+     dashboard instances, to clear process memory. Calling the helper in a
+     migration runner clears only that runner's local memory; deployment alone
+     does not evict shared Redis.
+   - Keep ingress quiesced for **at least 6 minutes after the last committed
+     assignment or migration**. The active shared identity TTL is 300 seconds
+     and process memory lasts 60 seconds; a process can refresh from stale Redis
+     just before Redis expiry, so allow the full 360 seconds.
+5. While ingress is still quiesced, verify that each affected analytics-enabled
+   Site resolves to its database project on every ingestion path/replica. Resume
+   only after those checks pass, then smoke-check newly ingested page-view and
+   engagement attribution in the assigned project. This procedure does not
+   rewrite historical analytics.
+
 Run `bun test tests` in this package. PostgreSQL integration suites additionally
 require `SITES_TEST_DATABASE_URL` pointing to the synthetic local database
 `postgresql://postgres@127.0.0.1:55447/notra_server_audit`, initialized with the
