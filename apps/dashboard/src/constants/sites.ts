@@ -8,9 +8,12 @@ import {
   Rocket01Icon,
   RefreshIcon,
   Settings01Icon,
+  Cancel01Icon,
+  Clock01Icon,
+  Loading03Icon,
+  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import type { AgentFeedbackStatus } from "@notra/db/types/agent-feedback";
 
 import type {
   SiteDeploymentFilters,
@@ -19,6 +22,7 @@ import type {
   SiteDeploymentTrigger,
   SiteDomainChipStatus,
   SiteSectionConfig,
+  SiteStatusBadgeConfig,
 } from "@/types/sites";
 
 export const SITES_NAV_LINK = "/sites";
@@ -105,26 +109,19 @@ export const SITE_MANUAL_TRIGGER_ICONS: Partial<
   config: Settings01Icon,
 };
 
-/** Ring icon per deployment status, drawn by the agent feedback status icon. */
-export const SITE_STATUS_ICONS: Record<
+export const SITE_STATUS_BADGES: Record<
   SiteDeploymentStatus,
-  { icon: AgentFeedbackStatus; className: string }
+  SiteStatusBadgeConfig
 > = {
-  queued: { icon: "new", className: "text-muted-foreground" },
-  building: {
-    icon: "triaged",
-    className: "text-warning motion-safe:animate-pulse",
-  },
-  uploading: {
-    icon: "triaged",
-    className: "text-warning motion-safe:animate-pulse",
-  },
-  ready: { icon: "resolved", className: "text-success" },
-  failed: { icon: "archived", className: "text-destructive" },
-  superseded: { icon: "archived", className: "text-muted-foreground" },
-  skipped: { icon: "archived", className: "text-muted-foreground" },
-  canceled: { icon: "archived", className: "text-muted-foreground" },
-  expired: { icon: "archived", className: "text-muted-foreground" },
+  queued: { variant: "info", icon: Clock01Icon },
+  building: { variant: "warning", icon: Loading03Icon },
+  uploading: { variant: "warning", icon: Loading03Icon },
+  ready: { variant: "success", icon: Tick02Icon, square: true },
+  failed: { variant: "destructive", icon: Cancel01Icon, square: true },
+  superseded: { variant: "secondary" },
+  skipped: { variant: "secondary" },
+  canceled: { variant: "secondary" },
+  expired: { variant: "secondary" },
 };
 
 export const SITE_DEPLOYMENT_ROW_HEIGHT = 48;
@@ -177,6 +174,8 @@ export const SITES_PAGE_SKELETON_ROWS = 3;
 
 export const SITE_PREVIEW_VIEWPORT_WIDTH = 1280;
 export const SITE_PREVIEW_VIEWPORT_HEIGHT = 800;
+export const SITE_PREVIEW_REACHABILITY_TIMEOUT_MS = 8000;
+export const SITE_PREVIEW_REACHABILITY_STALE_MS = 60_000;
 
 export const SITE_OVERVIEW_LINK_CLASS =
   "text-foreground decoration-foreground/25 hover:decoration-foreground min-w-0 truncate underline underline-offset-4 transition-colors duration-150";
@@ -204,3 +203,6 @@ export const SITE_DEPLOYMENT_SUMMARY_SURFACE_CLASS =
   "bg-background shadow-lift grid gap-6 rounded-[14px] border p-5 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]";
 export const SITE_DEPLOYMENT_LOG_SURFACE_CLASS =
   "bg-background shadow-lift overflow-hidden rounded-[14px] border";
+
+export const SITE_SETTINGS_PANEL_CLASSNAME =
+  "h-[var(--collapsible-panel-height)] overflow-hidden outline-none transition-[height,opacity] duration-normal ease-emphasized motion-reduce:transition-none data-[ending-style]:h-0 data-[ending-style]:opacity-0 data-[starting-style]:h-0 data-[starting-style]:opacity-0";

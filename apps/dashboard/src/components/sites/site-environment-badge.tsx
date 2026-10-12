@@ -11,25 +11,22 @@ import type { SiteEnvironmentBadgeProps } from "@/types/components/sites";
 export function SiteEnvironmentBadge({
   kind,
   previewKey,
-  live,
   className,
 }: SiteEnvironmentBadgeProps) {
   const t = useTranslations("sites.kinds");
-  const current = kind === "production" && live;
   return (
     <Badge
       className={cn("max-w-full", className)}
-      variant={current ? "default" : "outline"}
+      shape="rounded"
+      size="md"
+      variant="secondary"
     >
       <HugeiconsIcon
         aria-hidden="true"
-        className={current ? undefined : "text-muted-foreground"}
         icon={SITE_ENVIRONMENT_ICONS[kind]}
-        strokeWidth={2}
+        strokeWidth={1.5}
       />
-      <span
-        className={cn("min-w-0 truncate", !current && "text-muted-foreground")}
-      >
+      <span className="min-w-0 truncate" title={previewKey ?? undefined}>
         {previewKey ?? t(kind)}
       </span>
     </Badge>

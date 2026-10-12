@@ -18,6 +18,7 @@ import {
   takeExhaustedSiteJobs,
 } from "./jobs";
 import { failDeployment, runDeploymentPipeline } from "./pipeline";
+import { SandboxRequestError } from "./schemas/sandbox";
 import {
   reconcileProductionProjection,
   removePreviewDeployment,
@@ -176,6 +177,19 @@ export async function runSiteJob(jobId: string): Promise<SiteJobOutcome> {
     const message = errorMessage(error);
     console.error("sites.job_failed", {
       jobId,
+      siteId: job.siteId,
+      deploymentId: job.deploymentId,
+      attempt: job.attempts,
+      maxAttempts: job.maxAttempts,
+      sandbox:
+        error instanceof SandboxRequestError
+          ? {
+              operation: error.operation,
+              status: error.status,
+              requestId: error.requestId,
+              responseBody: error.responseBody,
+            }
+          : undefined,
       error: error instanceof Error ? error.stack : message,
     });
     const permanent = error instanceof SitePermanentBuildError;

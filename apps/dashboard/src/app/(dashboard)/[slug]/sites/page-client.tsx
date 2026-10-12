@@ -3,14 +3,15 @@
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PageHeading } from "@notra/ui/components/shared/page-heading";
+import { Navigate } from "@tanstack/react-router";
 import { useTranslations } from "use-intl";
 
 import { buttonVariants } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { EmptyStateTablePreview } from "@/components/empty-state-preview";
 import Link from "@/components/framework/link";
+import { SitesList } from "@/components/sites/sites-list";
 import { SitesPageShell } from "@/components/sites/sites-page-shell";
-import { SitesTable } from "@/components/sites/sites-table";
 import { SitesUnavailableState } from "@/components/sites/sites-unavailable-state";
 import {
   EMPTY_STATE_TABLE_COLUMNS,
@@ -19,10 +20,14 @@ import {
 import { useSitesList, useSitesOrganizationId } from "@/lib/hooks/use-sites";
 import { cn } from "@/lib/utils";
 import type { SitesPageClientProps } from "@/types/sites";
+import { siteHref } from "@/utils/site-links";
 
 import { SitesPageSkeleton } from "./skeleton";
 
-export default function PageClient({ organizationSlug }: SitesPageClientProps) {
+export default function PageClient({
+  organizationSlug,
+  showAll = false,
+}: SitesPageClientProps) {
   const t = useTranslations("sites");
   const organizationId = useSitesOrganizationId(organizationSlug);
   const listQuery = useSitesList(organizationId);
@@ -44,6 +49,10 @@ export default function PageClient({ organizationSlug }: SitesPageClientProps) {
   }
 
   const { configured, sites } = listQuery.data;
+  const [onlySite, ...otherSites] = sites;
+  if (configured && !showAll && onlySite && otherSites.length === 0) {
+    return <Navigate replace to={siteHref(organizationSlug, onlySite.id)} />;
+  }
   const newSiteButton = (
     <Link
       className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
@@ -86,7 +95,7 @@ export default function PageClient({ organizationSlug }: SitesPageClientProps) {
           title={t("empty.title")}
         />
       ) : (
-        <SitesTable
+        <SitesList
           organizationId={organizationId}
           organizationSlug={organizationSlug}
           sites={sites}

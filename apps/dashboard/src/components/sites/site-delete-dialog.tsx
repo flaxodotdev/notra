@@ -44,7 +44,7 @@ export function SiteDeleteDialog({
     onSuccess: async () => {
       toast.success(t("done", { name: siteName }));
       onOpenChange(false);
-      router.push(`/${organizationSlug}/sites`);
+      router.push(`/${organizationSlug}/sites?view=all`);
       await invalidateSites();
     },
     onError: (error) => {

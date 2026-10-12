@@ -26,7 +26,7 @@ import { SiteMeta } from "@/components/sites/site-meta";
 import { SitePreviewDeleteDialog } from "@/components/sites/site-preview-delete-dialog";
 import { SitePreviewRowMenu } from "@/components/sites/site-preview-row-menu";
 import { SiteRelativeTime } from "@/components/sites/site-relative-time";
-import { SiteStatusDot } from "@/components/sites/site-status-dot";
+import { SiteStatusBadge } from "@/components/sites/site-status-badge";
 import {
   SITE_TABLE_COMPACT_EMPTY_HEIGHT,
   SITE_TABLE_EMPTY_HEIGHT,
@@ -142,8 +142,9 @@ export function SitePreviewsTable({
   const statusColumn: TableColumn<SitePreviewRow> = {
     key: "status",
     header: tCommon("labels.status"),
-    width: "6.75rem",
-    cell: (row) => <SiteStatusDot status={row.status} />,
+    width: "9rem",
+    minWidth: "7rem",
+    cell: (row) => <SiteStatusBadge status={row.status} />,
   };
 
   const commitColumn: TableColumn<SitePreviewRow> = {
@@ -180,11 +181,7 @@ export function SitePreviewsTable({
     collapsePriority: 2,
     cell: (row) => {
       if (!row.visibility) {
-        return compact ? (
-          <SiteStatusDot status={row.status} />
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        );
+        return <span className="text-muted-foreground">-</span>;
       }
       const isProtected = row.visibility === "protected";
       return (
@@ -237,7 +234,14 @@ export function SitePreviewsTable({
   };
 
   const columns = compact
-    ? [previewColumn, commitColumn, accessColumn, updatedColumn, actionsColumn]
+    ? [
+        previewColumn,
+        statusColumn,
+        commitColumn,
+        accessColumn,
+        updatedColumn,
+        actionsColumn,
+      ]
     : [
         previewColumn,
         statusColumn,

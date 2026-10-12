@@ -125,7 +125,12 @@ export function createSitesUiRoutes(organization: AnyRoute) {
         title: { namespace: "sites", key: "title" },
         pendingComponent: SitesLoading,
         preload: Sites.preload,
-        component: ({ params }) => <Sites organizationSlug={params.slug} />,
+        component: ({ params, searchParams }) => (
+          <Sites
+            organizationSlug={params.slug}
+            showAll={searchParams.view === "all"}
+          />
+        ),
       }),
       createUiRoute({
         parent: sites,

@@ -117,7 +117,7 @@ export function SiteVisitorsCard() {
                 </div>
               ) : null}
               <dt className="text-muted-foreground text-xs">{stat.label}</dt>
-              <dd className="flex items-center gap-2">
+              <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <AnimatedNumber
                   className="text-xl font-semibold tabular-nums"
                   value={stat.value}

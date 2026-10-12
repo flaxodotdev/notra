@@ -1,5 +1,5 @@
 import { BOX_BASE_URL } from "@notra/ai/constants/repo-image";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Clock, Effect, Exit, Schema } from "effect";
 import {
   FetchHttpClient,
   Headers,
@@ -9,6 +9,8 @@ import {
 
 import {
   SANDBOX_CLEANUP_TIMEOUT_MS,
+  SANDBOX_ERROR_RESPONSE_BYTES,
+  SANDBOX_ERROR_RESPONSE_TIMEOUT_MS,
   SANDBOX_MAX_RESPONSE_BYTES,
   SANDBOX_REQUEST_TIMEOUT_MS,
 } from "../constants/sandbox";
@@ -35,6 +37,7 @@ export const sandboxRequestEffect = Effect.fn("Sites.Sandbox.request")(
       diagnostic?: string
     ) => void
   ) {
+    const deadline = (yield* Clock.currentTimeMillis) + timeoutMs;
     const transport = yield* FetchHttpClient.Fetch;
     const redactedHeaders = yield* Headers.CurrentRedactedNames;
     const client = HttpClient.withScope(yield* HttpClient.HttpClient);
@@ -42,6 +45,14 @@ export const sandboxRequestEffect = Effect.fn("Sites.Sandbox.request")(
     let status: number | null = null;
     const failure = (message: string) =>
       new SandboxRequestError({ operation, status, message });
+    const timedOut = () =>
+      Effect.fail(
+        new SandboxRequestError({
+          operation,
+          status: null,
+          message: `Sandbox ${operation} timed out`,
+        })
+      );
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
         void fetched?.body?.cancel().catch(() => undefined);
@@ -135,12 +146,59 @@ export const sandboxRequestEffect = Effect.fn("Sites.Sandbox.request")(
             ? error.reason.cause.message
             : "Sandbox request failed"
         )
-      )
+      ),
+      Effect.interruptible,
+      Effect.timeoutOrElse({ duration: timeoutMs, orElse: timedOut })
     );
     status = response.status;
+    const remainingMs = Math.max(
+      0,
+      deadline - (yield* Clock.currentTimeMillis)
+    );
     if (status < 200 || status >= 300) {
+      const requestId = redactBuildLog(
+        fetched?.headers.get("x-request-id") ??
+          fetched?.headers.get("x-upstash-request-id") ??
+          "",
+        [apiKey]
+      ).slice(0, SANDBOX_ERROR_RESPONSE_BYTES);
+      const capped = fetched
+        ? yield* readBodyUpToEffect(fetched, SANDBOX_ERROR_RESPONSE_BYTES).pipe(
+            Effect.interruptible,
+            Effect.timeoutOrElse({
+              duration: Math.min(
+                SANDBOX_ERROR_RESPONSE_TIMEOUT_MS,
+                remainingMs
+              ),
+              orElse: () => Effect.succeed(null),
+            }),
+            Effect.catch(() => Effect.succeed(null))
+          )
+        : null;
+      // Never retain a partial response: truncation can split a credential.
+      let responseBody =
+        capped === null && fetched
+          ? "[Provider error response could not be read]"
+          : "";
+      if (capped?.exceeded) {
+        responseBody =
+          "[Provider error response exceeds diagnostic size limit]";
+      } else if (capped) {
+        responseBody = redactBuildLog(new TextDecoder().decode(capped.bytes), [
+          apiKey,
+        ])
+          .trim()
+          .slice(0, SANDBOX_ERROR_RESPONSE_BYTES);
+      }
+      const summary = `Sandbox rejected ${operation} (${status})`;
       return yield* Effect.fail(
-        failure(`Sandbox rejected ${operation} (${status})`)
+        new SandboxRequestError({
+          operation,
+          status,
+          message: `${summary}${requestId ? ` [request ID: ${requestId}]` : ""}${responseBody ? `: ${responseBody}` : ""}`,
+          responseBody: responseBody || undefined,
+          requestId: requestId || undefined,
+        })
       );
     }
     if (!fetched) {
@@ -153,7 +211,9 @@ export const sandboxRequestEffect = Effect.fn("Sites.Sandbox.request")(
       );
     }
     const capped = yield* readBodyUpToEffect(fetched, maxBytes).pipe(
-      Effect.mapError(() => failure("Sandbox response could not be read"))
+      Effect.mapError(() => failure("Sandbox response could not be read")),
+      Effect.interruptible,
+      Effect.timeoutOrElse({ duration: remainingMs, orElse: timedOut })
     );
     if (capped.exceeded) {
       return yield* Effect.fail(
@@ -162,35 +222,9 @@ export const sandboxRequestEffect = Effect.fn("Sites.Sandbox.request")(
     }
     return capped.bytes;
   },
-  (
-    program,
-    _apiKey: string,
-    operation: string,
-    _path: string,
-    _method: "GET" | "POST" | "DELETE",
-    _body?: string | FormData,
-    _maxBytes?: number,
-    timeoutMs: number = SANDBOX_REQUEST_TIMEOUT_MS,
-    _onLateAllocation?: (
-      id: string | null,
-      cleaned: boolean,
-      diagnostic?: string
-    ) => void
-  ) =>
+  (program) =>
     program.pipe(
       Effect.scoped,
-      Effect.interruptible,
-      Effect.timeoutOrElse({
-        duration: timeoutMs,
-        orElse: () =>
-          Effect.fail(
-            new SandboxRequestError({
-              operation,
-              status: null,
-              message: `Sandbox ${operation} timed out`,
-            })
-          ),
-      }),
       Effect.provide(FetchHttpClient.layer),
       Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch)
     )
