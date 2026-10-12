@@ -371,7 +371,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "BearerAuth", {
   scheme: "bearer",
   bearerFormat: "API Key",
   description:
-    "Send your API key in the Authorization header as Bearer API_KEY. Account API keys work in every workspace you belong to: send X-Notra-Organization-Id with the workspace id or slug to choose one. It is required when you belong to more than one workspace; organization keys ignore it.",
+    "Send your API key in the Authorization header as Bearer API_KEY. Account API keys work in every workspace you belong to: send X-Notra-Organization-Id with the workspace id or slug to choose one. It is required when you belong to more than one workspace. Organization keys only accept their own workspace there.",
 });
 
 app.openAPIRegistry.registerComponent("parameters", "OrganizationSelector", {
@@ -379,7 +379,7 @@ app.openAPIRegistry.registerComponent("parameters", "OrganizationSelector", {
   in: "header",
   required: false,
   description:
-    "Workspace id or slug an account API key acts on. Required when the key's user belongs to more than one workspace; ignored by organization keys and OAuth tokens.",
+    "Workspace id or slug an account API key acts on. Required when the key's user belongs to more than one workspace. Organization keys reject any other workspace; OAuth tokens ignore it.",
   schema: { type: "string" },
 });
 

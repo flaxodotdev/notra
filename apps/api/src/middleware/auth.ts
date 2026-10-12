@@ -526,6 +526,34 @@ async function resolveAccountKeyAuth(
   return { success: true, auth };
 }
 
+// An organization key always acts in its own workspace. Naming another one in
+// the selection header would otherwise silently act on the key's workspace.
+async function checkOrganizationKeySelection(
+  c: Context,
+  organizationId: string
+): Promise<AuthResult | null> {
+  const requestedOrganization = getRequestedOrganizationId(c);
+  if (!requestedOrganization || requestedOrganization === organizationId) {
+    return null;
+  }
+
+  const organization = await c.get("db").query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+    columns: { slug: true },
+  });
+  if (organization?.slug === requestedOrganization) {
+    return null;
+  }
+
+  return {
+    success: false,
+    error:
+      "This API key belongs to a different workspace than X-Notra-Organization-Id names",
+    status: 403,
+    kind: API_AUTH_KINDS.UNKEY,
+  };
+}
+
 async function verifyRequestAuth(
   c: Context,
   options: AuthOptions = {}
@@ -616,6 +644,14 @@ async function verifyRequestAuth(
           kind: API_AUTH_KINDS.UNKEY,
         };
       }
+    }
+
+    const mismatch = await checkOrganizationKeySelection(
+      c,
+      verifiedIdentity.externalId
+    );
+    if (mismatch) {
+      return mismatch;
     }
 
     c.set("auth", result.data);
