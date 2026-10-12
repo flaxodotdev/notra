@@ -19,7 +19,11 @@ import { toast } from "sonner";
 import { useTranslations } from "use-intl";
 
 import { BRAND_GUIDELINE_POLL_INTERVAL_MS } from "@/constants/brand-guidelines";
-import type { BrandGuidelinesResponse } from "@/types/hooks/brand-guidelines";
+import type {
+  AttachGuidelineSourcePdfInput,
+  BrandGuidelinesResponse,
+  DiscardGuidelineSourcePdfInput,
+} from "@/types/hooks/brand-guidelines";
 
 import { dashboardOrpc } from "../orpc/query";
 
@@ -58,9 +62,8 @@ export function useBrandGuidelines(organizationId: string, voiceId: string) {
       enabled: !!organizationId && !!voiceId,
     }),
     refetchInterval: (query) => {
-      // Only `generating` indicates an active workflow. `queued` is the
-      // never-generated initial state (including PDF-only rows) and must not
-      // poll forever.
+      // A PDF-only row stays `queued` without a workflow, so only poll while
+      // generating.
       const status = query.state.data?.guideline?.status;
       return status === "generating" ? BRAND_GUIDELINE_POLL_INTERVAL_MS : false;
     },
@@ -227,7 +230,7 @@ export function useAttachGuidelineSourcePdf(
   organizationId: string,
   voiceId: string
 ) {
-  return useGuidelineMutation<{ filename: string; key: string }>({
+  return useGuidelineMutation<AttachGuidelineSourcePdfInput>({
     mutationFn: (input) =>
       dashboardOrpc.brand.guidelines.attachSourcePdf.call({
         organizationId,
@@ -259,7 +262,7 @@ export function useDiscardGuidelineSourcePdf(
   voiceId: string
 ) {
   return useMutation({
-    mutationFn: (input: { key: string }) =>
+    mutationFn: (input: DiscardGuidelineSourcePdfInput) =>
       dashboardOrpc.brand.guidelines.discardSourcePdf.call({
         organizationId,
         voiceId,

@@ -187,3 +187,21 @@ export interface BrandGuidelineGenerationStepInput {
 export type BrandGuidelineWorkflowStepResult =
   | { success: true }
   | { success: false; error: string };
+
+export interface AttachBrandGuidelineSourcePdfInput {
+  brandSettingsId: string;
+  filename: string;
+  key: string;
+  organizationId: string;
+}
+
+export interface DiscardBrandGuidelineSourcePdfInput {
+  key: string;
+  organizationId: string;
+}
+
+export type BrandGuidelinePdfErrorKey =
+  | "invalidFile"
+  | "noText"
+  | "readFailed"
+  | "unavailable";

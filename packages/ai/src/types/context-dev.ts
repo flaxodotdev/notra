@@ -136,19 +136,9 @@ export interface ContextDevBrandSearchResponse {
   results: ContextDevBrandSearchResult[];
 }
 
-export interface ContextDevParsePdfInput {
-  url: string;
-  ocr?: boolean;
-  timeoutMS?: number;
-}
-
-export interface ContextDevParsePdfResponse {
+export interface ContextDevParseResponse {
   markdown?: string | null;
-  text?: string | null;
-  pages?: Array<{
-    markdown?: string | null;
-    text?: string | null;
-  } | null> | null;
+  type?: string;
 }
 
 export interface ContextDevStyleguideResponse {

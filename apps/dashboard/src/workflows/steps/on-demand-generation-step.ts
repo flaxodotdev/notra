@@ -2,11 +2,11 @@ import "@/workflows/runtime";
 import { getGitHubToolRepositoryContextByIntegrationId } from "@notra/ai/integrations/github";
 import { getLinearToolContextByIntegrationId } from "@notra/ai/integrations/linear";
 import { getValidToneProfile } from "@notra/ai/schemas/tone";
+import { loadBrandGuidelineSourceInstructions } from "@notra/ai/utils/load-brand-guideline-source";
 import type { PostSourceMetadata } from "@notra/db/schema";
 import { flushPostHogServer } from "@notra/posthog/server";
 import { createRequestLogger } from "evlog";
 
-import { loadBrandGuidelineSourceInstructionsSafely } from "@/lib/brand-guidelines";
 import {
   buildDataPointRestrictionInstructions,
   buildSelectedItemsInstructions,
@@ -64,8 +64,9 @@ export async function runOnDemandGeneration(
     buildDataPointRestrictionInstructions(dataPoints);
   const selectedItemsInstructions =
     buildSelectedItemsInstructions(selectedItems);
-  const guidelineInstructions =
-    await loadBrandGuidelineSourceInstructionsSafely(brand?.id);
+  const guidelineInstructions = await loadBrandGuidelineSourceInstructions(
+    brand?.id
+  );
   const customInstructions = [
     brand?.customInstructions?.trim() || "",
     guidelineInstructions,

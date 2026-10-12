@@ -10,12 +10,13 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  BRAND_GUIDELINE_PDF_FILENAME_MAX_LENGTH,
   BRAND_GUIDELINE_PDF_MIME_TYPE,
   MAX_BRAND_GUIDELINE_PDF_FILE_SIZE,
 } from "@notra/schemas/constants/dashboard/upload";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useFormatter, useTranslations } from "use-intl";
+import { useFormatter, useNow, useTranslations } from "use-intl";
 
 import { Button, buttonVariants } from "@/components/button";
 import {
@@ -25,16 +26,18 @@ import {
 } from "@/lib/hooks/use-brand-guidelines";
 import { uploadFile } from "@/lib/upload/client";
 import { cn } from "@/lib/utils";
-import type { GuidelinesPanelProps } from "@/types/brand-identity";
-import type { BrandGuideline } from "@/types/hooks/brand-guidelines";
+import type { GuidelinesSourcePdfSectionProps } from "@/types/brand-identity";
+import { isPdfFile } from "@/utils/brand-guideline-pdf";
+import { latest } from "@/utils/latest-date";
 
 export function GuidelinesSourcePdfSection({
   guideline,
   organizationId,
   voiceId,
-}: GuidelinesPanelProps & { guideline: BrandGuideline | null }) {
+}: GuidelinesSourcePdfSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const format = useFormatter();
+  const now = useNow({ updateInterval: 60_000 });
   const tPdf = useTranslations("brand.guidelines.pdf");
   const maxMb = MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024;
   const [isUploading, setIsUploading] = useState(false);
@@ -43,10 +46,6 @@ export function GuidelinesSourcePdfSection({
   const discard = useDiscardGuidelineSourcePdf(organizationId, voiceId);
   const isBusy = isUploading || attach.isPending || remove.isPending;
   const filename = guideline?.sourcePdfFilename ?? null;
-
-  const isPdfFile = (file: File) =>
-    file.type === BRAND_GUIDELINE_PDF_MIME_TYPE ||
-    (file.type === "" && file.name.toLowerCase().endsWith(".pdf"));
 
   const onFile = async (file: File | undefined) => {
     if (!file) {
@@ -60,7 +59,11 @@ export function GuidelinesSourcePdfSection({
       toast.error(tPdf("tooLarge", { maxMb }));
       return;
     }
-    if (file.name.trim().length === 0 || file.name.length > 200) {
+    const filename = file.name.trim();
+    if (
+      filename.length === 0 ||
+      filename.length > BRAND_GUIDELINE_PDF_FILENAME_MAX_LENGTH
+    ) {
       toast.error(tPdf("badFilename"));
       return;
     }
@@ -69,28 +72,21 @@ export function GuidelinesSourcePdfSection({
     let uploadedKey: string | null = null;
     try {
       const uploaded = await uploadFile({
-        file,
+        file:
+          file.type === BRAND_GUIDELINE_PDF_MIME_TYPE
+            ? file
+            : new File([file], file.name, {
+                type: BRAND_GUIDELINE_PDF_MIME_TYPE,
+              }),
         type: "brand_guideline_pdf",
       });
       uploadedKey = uploaded.key;
-      await attach.mutateAsync({
-        filename: file.name.trim(),
-        key: uploaded.key,
-      });
+      await attach.mutateAsync({ filename, key: uploaded.key });
       uploadedKey = null;
       toast.success(tPdf("saved"));
     } catch (error) {
-      // Best-effort discard of the orphaned upload on attach failure.
-      const orphanKey =
-        uploadedKey ??
-        (typeof error === "object" &&
-        error !== null &&
-        "uploadKey" in error &&
-        typeof error.uploadKey === "string"
-          ? error.uploadKey
-          : null);
-      if (orphanKey) {
-        discard.mutateAsync({ key: orphanKey }).catch(() => undefined);
+      if (uploadedKey) {
+        discard.mutate({ key: uploadedKey });
       }
       toast.error(error instanceof Error ? error.message : tPdf("saveFailed"));
     } finally {
@@ -109,9 +105,6 @@ export function GuidelinesSourcePdfSection({
           icon={File01Icon}
         />
         <h2 className="text-sm font-semibold">{tPdf("title")}</h2>
-        <span className="text-muted-foreground text-xs tabular-nums">
-          {filename ? 1 : 0}
-        </span>
       </div>
 
       <input
@@ -140,18 +133,19 @@ export function GuidelinesSourcePdfSection({
             <div className="flex items-center justify-between gap-2 border-t p-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{filename}</p>
-                <p className="text-muted-foreground truncate text-xs">
-                  {guideline?.sourcePdfUploadedAt
-                    ? format.relativeTime(
-                        new Date(guideline.sourcePdfUploadedAt)
-                      )
-                    : tPdf("untitled")}
-                </p>
+                {guideline?.sourcePdfUploadedAt ? (
+                  <p className="text-muted-foreground truncate text-xs">
+                    {format.relativeTime(
+                      new Date(guideline.sourcePdfUploadedAt),
+                      latest(now, guideline.sourcePdfUploadedAt)
+                    )}
+                  </p>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 {guideline?.sourcePdfUrl ? (
                   <a
-                    aria-label={tPdf("open", { filename: filename ?? "" })}
+                    aria-label={tPdf("open", { filename })}
                     className={cn(
                       buttonVariants({ size: "icon-sm", variant: "ghost" })
                     )}
@@ -175,7 +169,7 @@ export function GuidelinesSourcePdfSection({
                   <HugeiconsIcon className="size-3.5" icon={Edit02Icon} />
                 </Button>
                 <Button
-                  aria-label={tPdf("remove", { filename: filename ?? "" })}
+                  aria-label={tPdf("remove", { filename })}
                   disabled={isBusy}
                   onClick={() => {
                     remove.mutate(undefined, {
@@ -199,9 +193,11 @@ export function GuidelinesSourcePdfSection({
               </div>
             </div>
             {guideline?.sourcePdfPreview ? (
-              <p className="text-muted-foreground line-clamp-3 border-t px-3 py-2 text-xs">
-                {guideline.sourcePdfPreview}
-              </p>
+              <div className="border-t px-3 py-2">
+                <p className="text-muted-foreground line-clamp-3 text-xs">
+                  {guideline.sourcePdfPreview}
+                </p>
+              </div>
             ) : null}
           </div>
         ) : (

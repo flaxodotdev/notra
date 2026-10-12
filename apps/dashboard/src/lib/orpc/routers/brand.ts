@@ -999,14 +999,8 @@ export const brandRouter = {
           if (error instanceof ORPCError) {
             throw error;
           }
-          console.error("Failed to attach brand guideline PDF", {
-            organizationId: input.organizationId,
-            voiceId: input.voiceId,
-            key: input.key,
-            error,
-          });
           throw internalServerError(
-            "Failed to read the brand guideline PDF",
+            "Failed to attach the brand guideline PDF",
             error
           );
         }

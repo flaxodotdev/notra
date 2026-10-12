@@ -1089,6 +1089,12 @@
       "logoSourceNotAllowed": "Logo source is not allowed",
       "logoFetchFailed": "Could not fetch the logo image"
     },
+    "brandGuidelinePdf": {
+      "invalidFile": "This isn't a valid brand guideline PDF",
+      "noText": "We couldn't find any text in this PDF. Export it as a text-based PDF and try again.",
+      "readFailed": "We couldn't read this PDF. Try again or export it again.",
+      "unavailable": "PDF upload isn't available right now"
+    },
     "comments": {
       "replyNotAllowed": "Replies are limited to five levels and cannot target deleted comments",
       "notAuthor": "You can only change your own comments",
@@ -1452,7 +1458,7 @@
         "uploadLabel": "Upload brand guideline PDF",
         "sizeHint": "PDF, max {maxMb} MB",
         "notPdf": "Upload a PDF file",
-        "tooLarge": "Brand guideline PDF must be less than {maxMb}MB",
+        "tooLarge": "This PDF is too large. The limit is {maxMb} MB.",
         "badFilename": "PDF filename must be between 1 and 200 characters",
         "saved": "Brand guideline PDF saved",
         "saveFailed": "Failed to save the PDF",
@@ -1460,8 +1466,7 @@
         "removeFailed": "Failed to remove the PDF",
         "replace": "Replace guideline PDF",
         "remove": "Remove {filename}",
-        "open": "Open {filename}",
-        "untitled": "PDF"
+        "open": "Open {filename}"
       },
       "tokens": {
         "title": "UI Tokens"

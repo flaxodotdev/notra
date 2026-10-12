@@ -1,9 +1,19 @@
-export const BRAND_GUIDELINE_SOURCE_TEXT_LIMIT = 24_000;
+import {
+  BRAND_GUIDELINE_SOURCE_TEXT_LIMIT,
+  BRAND_GUIDELINE_SOURCE_TRUNCATION_MARKER,
+  EXCESS_BLANK_LINES_REGEX,
+  HORIZONTAL_WHITESPACE_RUN_REGEX,
+  LINE_BREAK_REGEX,
+} from "@notra/ai/constants/brand-guideline-source";
 
-const WHITESPACE_RUN = /\s+/g;
-
+// Keeps the markdown structure (headings, lists, tables) of the parsed PDF and
+// only collapses runs of spaces and blank lines.
 export function normalizeBrandGuidelineSourceText(value: string) {
-  return value.replace(WHITESPACE_RUN, " ").trim();
+  return value
+    .replace(LINE_BREAK_REGEX, "\n")
+    .replace(HORIZONTAL_WHITESPACE_RUN_REGEX, " ")
+    .replace(EXCESS_BLANK_LINES_REGEX, "\n\n")
+    .trim();
 }
 
 export function limitBrandGuidelineSourceText(value: string) {
@@ -12,11 +22,13 @@ export function limitBrandGuidelineSourceText(value: string) {
     return normalized;
   }
 
-  return `${normalized.slice(0, BRAND_GUIDELINE_SOURCE_TEXT_LIMIT).trimEnd()}\n[Truncated]`;
+  return `${normalized.slice(0, BRAND_GUIDELINE_SOURCE_TEXT_LIMIT).trimEnd()}${BRAND_GUIDELINE_SOURCE_TRUNCATION_MARKER}`;
 }
 
+// Swaps angle brackets for look-alikes so the document can never close its
+// wrapper tag. Same length, so the character limit still holds.
 function escapeBrandGuidelineDelimiters(value: string) {
-  return value.replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
+  return value.replaceAll("<", "‹").replaceAll(">", "›");
 }
 
 export function formatBrandGuidelineSourceInstructions(

@@ -4,7 +4,6 @@ import z from "zod";
 import {
   ALLOWED_CHAT_MIME_TYPES,
   MAX_AVATAR_FILE_SIZE,
-  BRAND_GUIDELINE_PDF_MIME_TYPE,
   MAX_BRAND_ASSET_FILE_SIZE,
   MAX_BRAND_GUIDELINE_PDF_FILE_SIZE,
   MAX_CHAT_FILE_SIZE,
@@ -51,7 +50,7 @@ export const uploadBrandAssetSchema = z.object({
 
 export const uploadBrandGuidelinePdfSchema = z.object({
   type: z.literal("brand_guideline_pdf"),
-  fileType: z.literal(BRAND_GUIDELINE_PDF_MIME_TYPE),
+  fileType: z.coerce.string().nonempty(),
   fileSize: z.coerce
     .number()
     .int()

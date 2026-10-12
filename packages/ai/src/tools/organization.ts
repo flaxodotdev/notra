@@ -2,8 +2,8 @@ import type {
   AvailableGitHubIntegration,
   OrganizationToolConfig,
 } from "@notra/ai/types/organization";
-import { formatBrandGuidelineSourceInstructions } from "@notra/ai/utils/brand-guideline-source";
 import { toolDescription } from "@notra/ai/utils/description";
+import { loadBrandGuidelineSourceInstructions } from "@notra/ai/utils/load-brand-guideline-source";
 import {
   isAvailableGitHubIntegration,
   isAvailableGranolaIntegration,
@@ -16,7 +16,6 @@ import {
 } from "@notra/ai/utils/organization";
 import { db } from "@notra/db/drizzle";
 import {
-  brandGuidelines,
   brandSettings,
   githubIntegrations,
   granolaIntegrations,
@@ -76,10 +75,7 @@ export function createListBrandIdentitiesTool(
 export function createGetBrandIdentityTool(
   config: OrganizationToolConfig
 ): Tool {
-  // Intentionally uncached: guideline PDFs are attached/removed from the
-  // dashboard at any time, and the cached wrapper reads before checking
-  // shouldCache, so any TTL would serve a stale guidelineDocument.
-  // The underlying queries are cheap single-row lookups.
+  // Uncached so a newly attached or removed guideline PDF shows up at once.
   return tool({
     description: toolDescription({
       toolName: "getBrandIdentity",
@@ -119,18 +115,8 @@ export function createGetBrandIdentityTool(
         return { brandIdentity: null, found: false };
       }
 
-      let guidelineDocument: string | null = null;
-      try {
-        const guideline = await db.query.brandGuidelines.findFirst({
-          where: eq(brandGuidelines.brandSettingsId, identity.id),
-          columns: { sourcePdfText: true },
-        });
-        guidelineDocument =
-          formatBrandGuidelineSourceInstructions(guideline?.sourcePdfText) ||
-          null;
-      } catch {
-        guidelineDocument = null;
-      }
+      const guidelineDocument =
+        (await loadBrandGuidelineSourceInstructions(identity.id)) || null;
 
       return {
         brandIdentity: {

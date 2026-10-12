@@ -8,8 +8,7 @@ import type {
   ContextDevErrorResponse,
   ContextDevFetchWebpageInput,
   ContextDevFetchWebpageResponse,
-  ContextDevParsePdfInput,
-  ContextDevParsePdfResponse,
+  ContextDevParseResponse,
   ContextDevScrapingResult,
   ContextDevScreenshotInput,
   ContextDevScreenshotResponse,
@@ -34,6 +33,7 @@ import {
   BRAND_ANALYSIS_WWW_PREFIX,
   BRAND_SEARCH_TYPO_TOLERANCE,
   COMPETITORS_TIMEOUT_MS,
+  CONTEXT_DEV_PARSE_TIMEOUT_MS,
 } from "../constants/context-dev";
 import { demoContextDevResponse } from "./demo-context-dev";
 import { httpErrorKind } from "./http-error-kind";
@@ -555,54 +555,23 @@ export async function searchBrands(
   );
 }
 
-export function normalizeParsePdfResponse(
-  response: ContextDevParsePdfResponse | null | undefined
-): string {
-  if (!response) {
-    return "";
-  }
-  const pages = Array.isArray(response.pages) ? response.pages : [];
-  const pageText = pages
-    .map((page) => page?.markdown || page?.text || "")
-    .filter((text) => text.length > 0)
-    .join("\n");
-  const text = pageText || response.markdown || response.text || "";
-  return text.trim();
-}
-
-export interface ContextDevParsePdfResult {
-  text: string;
-  pageCount: number | null;
-}
-
-// PDF text extraction via context.dev Parse (pdfs-and-ocr): the file must
-// already be publicly reachable, so callers pass the uploaded file URL.
-// Throws on transport errors and empty results; callers fall back to local
-// parsing when the service is unavailable. pageCount is null when the
-// response carries whole-document text only, so callers enforce their own
-// page limits when a count is available.
+/**
+ * Converts a PDF to markdown with context.dev Parse. The endpoint takes the
+ * raw file bytes; a JSON body would be parsed as the document itself.
+ */
 export async function parsePdfDocument(
-  input: ContextDevParsePdfInput
-): Promise<ContextDevParsePdfResult> {
-  const response = await requestContextDev<ContextDevParsePdfResponse>(
-    "/parse",
+  bytes: Uint8Array<ArrayBuffer>
+): Promise<string> {
+  const response = await requestContextDev<ContextDevParseResponse>(
+    "/parse?extension=pdf",
     {
-      body: JSON.stringify({
-        url: input.url,
-        ocr: input.ocr ?? true,
-        timeoutMS: input.timeoutMS ?? 30_000,
-      }),
+      body: bytes,
+      headers: { "Content-Type": "application/pdf" },
       method: "POST",
+      signal: AbortSignal.timeout(CONTEXT_DEV_PARSE_TIMEOUT_MS),
     }
   );
-  const text = normalizeParsePdfResponse(response);
-  if (!text) {
-    throw new Error("PDF parse returned no text");
-  }
-  return {
-    text,
-    pageCount: Array.isArray(response.pages) ? response.pages.length : null,
-  };
+  return response.markdown?.trim() ?? "";
 }
 
 export async function retrieveStyleguide(

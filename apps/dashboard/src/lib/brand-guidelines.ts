@@ -1,9 +1,6 @@
-import { GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import type { ContextDevScreenshotResponse } from "@notra/ai/types/context-dev";
-import {
-  formatBrandGuidelineSourceInstructions,
-  limitBrandGuidelineSourceText,
-} from "@notra/ai/utils/brand-guideline-source";
+import { limitBrandGuidelineSourceText } from "@notra/ai/utils/brand-guideline-source";
 import {
   captureScreenshot,
   isContextDevConfigured,
@@ -11,6 +8,7 @@ import {
   retrieveBrand,
   retrieveStyleguide,
 } from "@notra/ai/utils/context-dev";
+import { logError } from "@notra/ai/utils/server-log";
 import { db } from "@notra/db/drizzle";
 import {
   brandGuidelineAssets,
@@ -21,7 +19,7 @@ import {
   brandGuidelineTokens,
 } from "@notra/db/schema";
 import { MAX_BRAND_GUIDELINE_PDF_FILE_SIZE } from "@notra/schemas/constants/dashboard/upload";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import {
   BRAND_GUIDELINE_DESKTOP_SCREENSHOT_CONFIG,
@@ -29,11 +27,19 @@ import {
   BRAND_GUIDELINE_SCREENSHOT_WAIT_MS,
   BRAND_GUIDELINE_TRAILING_SLASH_REGEX,
 } from "@/constants/brand-guidelines";
+import { getTranslations } from "@/lib/i18n/server";
 import { getR2Config } from "@/lib/upload/r2";
 import type {
+  AttachBrandGuidelineSourcePdfInput,
   BrandGuidelineGenerationStepInput,
+  BrandGuidelinePdfErrorKey,
+  DiscardBrandGuidelineSourcePdfInput,
   NormalizedScreenshot,
 } from "@/types/brand-guidelines";
+import {
+  hasPdfSignature,
+  isGuidelinePdfKeyForOrganization,
+} from "@/utils/brand-guideline-pdf";
 import {
   dedupeColors,
   extractAssets,
@@ -47,10 +53,6 @@ import {
   normalizeBrandGuidelineSourceUrl,
   serializeGuidelinesResponse,
 } from "@/utils/brand-guidelines";
-import {
-  extractPdfText,
-  MAX_BRAND_GUIDELINE_PDF_PAGES,
-} from "@/utils/extract-pdf-text";
 
 function getScreenshotResponseHeight(response: ContextDevScreenshotResponse) {
   return typeof response.screenshot === "object"
@@ -482,193 +484,97 @@ export async function markBrandGuidelinesFailed(input: {
 }
 
 export class BrandGuidelineSourcePdfValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BrandGuidelineSourcePdfValidationError";
+  override name = "BrandGuidelineSourcePdfValidationError";
+}
+
+async function guidelinePdfError(key: BrandGuidelinePdfErrorKey) {
+  const t = await getTranslations("errors.brandGuidelinePdf");
+  return new BrandGuidelineSourcePdfValidationError(t(key));
+}
+
+async function assertGuidelinePdfKey(organizationId: string, key: string) {
+  if (!isGuidelinePdfKeyForOrganization(organizationId, key)) {
+    throw await guidelinePdfError("invalidFile");
   }
 }
 
-function assertGuidelinePdfKey(organizationId: string, key: string) {
-  const prefix = `organization/${organizationId}/brand-guidelines/`;
-  if (
-    !(
-      key.startsWith(prefix) &&
-      key.toLowerCase().endsWith(".pdf") &&
-      !key.includes("..")
-    )
-  ) {
-    throw new BrandGuidelineSourcePdfValidationError(
-      "Invalid brand guideline file"
+async function deleteGuidelinePdfIfUnreferenced(key: string) {
+  try {
+    const referencing = await db.query.brandGuidelines.findFirst({
+      where: eq(brandGuidelines.sourcePdfStorageKey, key),
+      columns: { id: true },
+    });
+    if (referencing) {
+      return;
+    }
+    const { bucketName, client } = getR2Config();
+    await client.send(
+      new DeleteObjectCommand({ Bucket: bucketName, Key: key })
     );
+  } catch (error) {
+    logError("Failed to delete brand guideline PDF", error, { key });
   }
 }
 
-function assertGuidelinePdfFilename(filename: string) {
-  const trimmed = filename.trim();
-  if (!trimmed || trimmed.length > 200) {
-    throw new BrandGuidelineSourcePdfValidationError(
-      "PDF filename must be between 1 and 200 characters"
-    );
-  }
-  if (!trimmed.toLowerCase().endsWith(".pdf")) {
-    throw new BrandGuidelineSourcePdfValidationError(
-      "Brand guideline file must be a PDF"
-    );
-  }
-}
-
-async function deleteStoredGuidelinePdf(key: string | null) {
-  if (!key) {
-    return;
+async function readGuidelinePdfText(key: string) {
+  if (!isContextDevConfigured()) {
+    throw await guidelinePdfError("unavailable");
   }
 
   const { bucketName, client } = getR2Config();
-  await client.send(
-    new DeleteObjectCommand({
-      Bucket: bucketName,
-      Key: key,
-    })
+  const object = await client.send(
+    new GetObjectCommand({ Bucket: bucketName, Key: key })
   );
-}
-
-async function isGuidelinePdfReferenced(key: string | null) {
-  if (!key) {
-    return false;
+  if (
+    !object.Body ||
+    (object.ContentLength ?? 0) > MAX_BRAND_GUIDELINE_PDF_FILE_SIZE
+  ) {
+    throw await guidelinePdfError("invalidFile");
   }
-  const referencing = await db.query.brandGuidelines.findFirst({
-    where: eq(brandGuidelines.sourcePdfStorageKey, key),
-    columns: { id: true },
-  });
-  return !!referencing;
-}
-
-async function deleteStoredGuidelinePdfIfUnreferenced(key: string | null) {
-  if (!key) {
-    return;
-  }
-  if (await isGuidelinePdfReferenced(key)) {
-    console.warn("Skipping guideline PDF delete: still referenced", { key });
-    return;
-  }
-  await deleteStoredGuidelinePdf(key);
-}
-
-async function readGuidelinePdfText(
-  bytes: Uint8Array,
-  publicUrl: string
-): Promise<string> {
-  if (isContextDevConfigured()) {
-    try {
-      const parsed = await parsePdfDocument({ url: publicUrl });
-      if (
-        parsed.pageCount !== null &&
-        parsed.pageCount > MAX_BRAND_GUIDELINE_PDF_PAGES
-      ) {
-        throw new BrandGuidelineSourcePdfValidationError(
-          `This PDF has ${parsed.pageCount} pages. Export a shorter guideline under ${MAX_BRAND_GUIDELINE_PDF_PAGES} pages and try again.`
-        );
-      }
-      return parsed.text;
-    } catch (error) {
-      if (error instanceof BrandGuidelineSourcePdfValidationError) {
-        throw error;
-      }
-      console.error("Context PDF parse failed, using local extraction", {
-        error,
-      });
-    }
-  }
-  return extractPdfText(bytes);
-}
-
-export async function attachBrandGuidelineSourcePdf(input: {
-  brandSettingsId: string;
-  filename: string;
-  key: string;
-  organizationId: string;
-}) {
-  assertGuidelinePdfKey(input.organizationId, input.key);
-  assertGuidelinePdfFilename(input.filename);
-  const { bucketName, client, publicUrl } = getR2Config();
-  const response = await client.send(
-    new GetObjectCommand({
-      Bucket: bucketName,
-      Key: input.key,
-    })
-  );
-  if (!response.Body) {
-    await deleteStoredGuidelinePdf(input.key).catch((error) => {
-      console.error("Failed to delete orphaned guideline PDF", {
-        key: input.key,
-        error,
-      });
-    });
-    throw new BrandGuidelineSourcePdfValidationError("Uploaded PDF is empty");
+  const bytes = new Uint8Array(await object.Body.transformToByteArray());
+  if (
+    bytes.byteLength > MAX_BRAND_GUIDELINE_PDF_FILE_SIZE ||
+    !hasPdfSignature(bytes)
+  ) {
+    throw await guidelinePdfError("invalidFile");
   }
 
-  const bytes = await response.Body.transformToByteArray();
-  if (bytes.byteLength > MAX_BRAND_GUIDELINE_PDF_FILE_SIZE) {
-    await deleteStoredGuidelinePdf(input.key).catch((error) => {
-      console.error("Failed to delete oversize guideline PDF", {
-        key: input.key,
-        error,
-      });
-    });
-    throw new BrandGuidelineSourcePdfValidationError(
-      `Brand guideline PDF must be less than ${MAX_BRAND_GUIDELINE_PDF_FILE_SIZE / 1024 / 1024}MB`
-    );
-  }
-  const sourcePdfUrl = `${publicUrl.replace(BRAND_GUIDELINE_TRAILING_SLASH_REGEX, "")}/${input.key}`;
-  let text = "";
+  let markdown: string;
   try {
-    text = limitBrandGuidelineSourceText(
-      await readGuidelinePdfText(bytes, sourcePdfUrl)
-    );
+    markdown = await parsePdfDocument(bytes);
   } catch (error) {
-    await deleteStoredGuidelinePdf(input.key).catch((cleanupError) => {
-      console.error("Failed to delete guideline PDF after extraction failure", {
-        key: input.key,
-        error: cleanupError,
-      });
-    });
-    if (error instanceof BrandGuidelineSourcePdfValidationError) {
-      throw error;
-    }
-    throw new BrandGuidelineSourcePdfValidationError(
-      error instanceof Error ? error.message : "Failed to read the PDF"
-    );
+    logError("Failed to parse brand guideline PDF", error, { key });
+    throw await guidelinePdfError("readFailed");
   }
+
+  const text = limitBrandGuidelineSourceText(markdown);
   if (!text) {
-    await deleteStoredGuidelinePdf(input.key).catch((cleanupError) => {
-      console.error("Failed to delete guideline PDF with no text", {
-        key: input.key,
-        error: cleanupError,
-      });
-    });
-    throw new BrandGuidelineSourcePdfValidationError(
-      "This PDF has no extractable text. Export it as a text-based PDF and try again."
-    );
+    throw await guidelinePdfError("noText");
   }
+  return text;
+}
 
-  const now = new Date();
-  const values = {
-    sourcePdfFilename: input.filename.trim(),
-    sourcePdfStorageKey: input.key,
-    sourcePdfText: text,
-    sourcePdfUploadedAt: now,
-    sourcePdfUrl,
-    updatedAt: now,
-  };
+export async function attachBrandGuidelineSourcePdf(
+  input: AttachBrandGuidelineSourcePdfInput
+) {
+  await assertGuidelinePdfKey(input.organizationId, input.key);
 
-  // Serialize replaces per voice: read, upsert, and winner check run under
-  // one advisory lock so a concurrent replace cannot slip between the
-  // re-read and the cleanup and orphan the loser's file. R2 deletes stay
-  // outside the lock.
-  let outcome:
-    | { ok: false; error: unknown }
-    | { ok: true; replacedKey: string | null; won: boolean };
+  let replacedKey: string | null;
   try {
-    outcome = await db.transaction(async (tx) => {
+    const text = await readGuidelinePdfText(input.key);
+    const now = new Date();
+    const values = {
+      sourcePdfFilename: input.filename.trim(),
+      sourcePdfStorageKey: input.key,
+      sourcePdfText: text,
+      sourcePdfUploadedAt: now,
+      sourcePdfUrl: `${getR2Config().publicUrl.replace(BRAND_GUIDELINE_TRAILING_SLASH_REGEX, "")}/${input.key}`,
+      updatedAt: now,
+    };
+
+    // The lock serializes concurrent replaces per voice so each one knows
+    // exactly which key it replaced.
+    replacedKey = await db.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`brand-guideline-pdf:${input.brandSettingsId}`}))`
       );
@@ -676,82 +582,31 @@ export async function attachBrandGuidelineSourcePdf(input: {
         where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
         columns: { id: true, sourcePdfStorageKey: true },
       });
-      try {
-        await tx
-          .insert(brandGuidelines)
-          .values({
-            id: existing?.id ?? crypto.randomUUID(),
-            brandSettingsId: input.brandSettingsId,
-            createdAt: now,
-            // PDF-only rows have never generated: keep `queued` so the UI
-            // shows the "No guidelines yet / Generate" empty state.
-            status: "queued",
-            ...values,
-          })
-          .onConflictDoUpdate({
-            target: brandGuidelines.brandSettingsId,
-            set: values,
-          });
-      } catch (error) {
-        return { ok: false as const, error };
-      }
-      const current = await tx.query.brandGuidelines.findFirst({
-        where: eq(brandGuidelines.brandSettingsId, input.brandSettingsId),
-        columns: { sourcePdfStorageKey: true },
-      });
-      return {
-        ok: true as const,
-        replacedKey: existing?.sourcePdfStorageKey ?? null,
-        won: current?.sourcePdfStorageKey === input.key,
-      };
+      await tx
+        .insert(brandGuidelines)
+        .values({
+          id: existing?.id ?? crypto.randomUUID(),
+          brandSettingsId: input.brandSettingsId,
+          createdAt: now,
+          // A PDF-only row has never generated, so it keeps the empty state.
+          status: "queued",
+          ...values,
+        })
+        .onConflictDoUpdate({
+          target: brandGuidelines.brandSettingsId,
+          set: values,
+        });
+      return existing?.sourcePdfStorageKey ?? null;
     });
   } catch (error) {
-    // The row state is unknown here (the upsert may have committed before
-    // the failure), so only delete when nothing references the key.
-    await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
-      (cleanupError) => {
-        console.error("Failed to delete guideline PDF after DB failure", {
-          key: input.key,
-          error: cleanupError,
-        });
-      }
-    );
+    // The key may belong to another voice of the same org, so only delete
+    // it when no row references it.
+    await deleteGuidelinePdfIfUnreferenced(input.key);
     throw error;
   }
 
-  if (!outcome.ok) {
-    await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
-      (cleanupError) => {
-        console.error("Failed to delete guideline PDF after DB failure", {
-          key: input.key,
-          error: cleanupError,
-        });
-      }
-    );
-    throw outcome.error;
-  }
-
-  if (!outcome.won) {
-    await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch(
-      (cleanupError) => {
-        console.error("Failed to delete superseded guideline PDF", {
-          key: input.key,
-          error: cleanupError,
-        });
-      }
-    );
-    return getBrandGuidelines(input.brandSettingsId);
-  }
-
-  if (outcome.replacedKey && outcome.replacedKey !== input.key) {
-    await deleteStoredGuidelinePdfIfUnreferenced(outcome.replacedKey).catch(
-      (cleanupError) => {
-        console.error("Failed to delete replaced guideline PDF", {
-          key: outcome.replacedKey,
-          error: cleanupError,
-        });
-      }
-    );
+  if (replacedKey && replacedKey !== input.key) {
+    await deleteGuidelinePdfIfUnreferenced(replacedKey);
   }
 
   return getBrandGuidelines(input.brandSettingsId);
@@ -762,13 +617,11 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
     where: eq(brandGuidelines.brandSettingsId, brandSettingsId),
     columns: { id: true, sourcePdfStorageKey: true },
   });
-  if (!existing) {
+  if (!existing?.sourcePdfStorageKey) {
     return getBrandGuidelines(brandSettingsId);
   }
 
-  const stillStoredKey = existing.sourcePdfStorageKey
-    ? eq(brandGuidelines.sourcePdfStorageKey, existing.sourcePdfStorageKey)
-    : isNull(brandGuidelines.sourcePdfStorageKey);
+  // Compare-and-set on the key so a concurrent replace is never cleared.
   const cleared = await db
     .update(brandGuidelines)
     .set({
@@ -779,61 +632,23 @@ export async function removeBrandGuidelineSourcePdf(brandSettingsId: string) {
       sourcePdfUrl: null,
       updatedAt: new Date(),
     })
-    .where(and(eq(brandGuidelines.id, existing.id), stillStoredKey))
+    .where(
+      and(
+        eq(brandGuidelines.id, existing.id),
+        eq(brandGuidelines.sourcePdfStorageKey, existing.sourcePdfStorageKey)
+      )
+    )
     .returning({ id: brandGuidelines.id });
-  if (cleared.length === 0) {
-    return getBrandGuidelines(brandSettingsId);
+  if (cleared.length > 0) {
+    await deleteGuidelinePdfIfUnreferenced(existing.sourcePdfStorageKey);
   }
-  // DB is already cleared: never fail the removal on a flaky R2 delete.
-  await deleteStoredGuidelinePdfIfUnreferenced(
-    existing.sourcePdfStorageKey
-  ).catch((error) => {
-    console.error("Failed to delete removed guideline PDF", {
-      key: existing.sourcePdfStorageKey,
-      error,
-    });
-  });
   return getBrandGuidelines(brandSettingsId);
 }
 
-export async function discardBrandGuidelineSourcePdf(input: {
-  key: string;
-  organizationId: string;
-}) {
-  // Deletes an uploaded PDF that was never attached.
-  assertGuidelinePdfKey(input.organizationId, input.key);
-  await deleteStoredGuidelinePdfIfUnreferenced(input.key).catch((error) => {
-    console.error("Failed to discard unattached guideline PDF", {
-      key: input.key,
-      error,
-    });
-  });
-}
-
-async function loadBrandGuidelineSourceInstructions(
-  brandSettingsId: string | undefined
+/** Deletes an uploaded PDF whose attach never happened. */
+export async function discardBrandGuidelineSourcePdf(
+  input: DiscardBrandGuidelineSourcePdfInput
 ) {
-  if (!brandSettingsId) {
-    return "";
-  }
-
-  const row = await db.query.brandGuidelines.findFirst({
-    where: eq(brandGuidelines.brandSettingsId, brandSettingsId),
-    columns: { sourcePdfText: true },
-  });
-  return formatBrandGuidelineSourceInstructions(row?.sourcePdfText);
-}
-
-export async function loadBrandGuidelineSourceInstructionsSafely(
-  brandSettingsId: string | undefined
-) {
-  try {
-    return await loadBrandGuidelineSourceInstructions(brandSettingsId);
-  } catch (error) {
-    console.error("Failed to load brand guideline source", {
-      brandSettingsId,
-      error,
-    });
-    return "";
-  }
+  await assertGuidelinePdfKey(input.organizationId, input.key);
+  await deleteGuidelinePdfIfUnreferenced(input.key);
 }

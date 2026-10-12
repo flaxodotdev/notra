@@ -1089,6 +1089,12 @@
       "logoSourceNotAllowed": "Diese Logo-Quelle ist nicht erlaubt",
       "logoFetchFailed": "Das Logo konnte nicht abgerufen werden"
     },
+    "brandGuidelinePdf": {
+      "invalidFile": "Das ist kein gültiges Brand-Guideline-PDF",
+      "noText": "In diesem PDF wurde kein Text gefunden. Exportiere es als textbasiertes PDF und versuche es erneut.",
+      "readFailed": "Dieses PDF konnte nicht gelesen werden. Versuche es erneut oder exportiere es neu.",
+      "unavailable": "PDF-Upload ist gerade nicht verfügbar"
+    },
     "comments": {
       "replyNotAllowed": "Antworten sind auf fünf Ebenen begrenzt und können sich nicht auf gelöschte Kommentare beziehen",
       "notAuthor": "Du kannst nur deine eigenen Kommentare ändern",
@@ -1460,8 +1466,7 @@
         "removeFailed": "Das PDF konnte nicht entfernt werden",
         "replace": "Richtlinien-PDF ersetzen",
         "remove": "{filename} entfernen",
-        "open": "{filename} öffnen",
-        "untitled": "PDF"
+        "open": "{filename} öffnen"
       },
       "tokens": {
         "title": "UI-Tokens"

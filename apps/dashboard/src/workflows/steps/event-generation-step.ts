@@ -1,10 +1,10 @@
 import "@/workflows/runtime";
 import { getGitHubToolRepositoryContextByIntegrationId } from "@notra/ai/integrations/github";
 import { getValidToneProfile } from "@notra/ai/schemas/tone";
+import { loadBrandGuidelineSourceInstructions } from "@notra/ai/utils/load-brand-guideline-source";
 import type { PostSourceMetadata } from "@notra/db/schema";
 import { flushPostHogServer } from "@notra/posthog/server";
 
-import { loadBrandGuidelineSourceInstructionsSafely } from "@/lib/brand-guidelines";
 import { generateEventBasedContent } from "@/lib/workflows/event/handlers";
 import type { EventGenerationStepInput } from "@/types/workflows/event-generation";
 import type { EventGenerationResult } from "@/types/workflows/workflows";
@@ -23,8 +23,9 @@ export async function runEventGeneration(
     chargeAiCredits,
   } = input;
 
-  const guidelineInstructions =
-    await loadBrandGuidelineSourceInstructionsSafely(brand?.id);
+  const guidelineInstructions = await loadBrandGuidelineSourceInstructions(
+    brand?.id
+  );
   const customInstructions = [
     brand?.customInstructions ?? "",
     guidelineInstructions,

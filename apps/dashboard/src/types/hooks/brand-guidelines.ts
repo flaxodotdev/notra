@@ -116,3 +116,12 @@ export interface BrandGuidelinesResponse {
   screenshots: BrandGuidelineScreenshot[];
   tokens: BrandGuidelineToken[];
 }
+
+export interface AttachGuidelineSourcePdfInput {
+  filename: string;
+  key: string;
+}
+
+export interface DiscardGuidelineSourcePdfInput {
+  key: string;
+}
