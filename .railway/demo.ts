@@ -1,9 +1,10 @@
 import { defineRailway, github, preserve, project, service } from "railway/iac";
 
+import { demoTarget } from "./constants/targets.ts";
+import { assertTarget } from "./utils/assert-target.ts";
+
 export default defineRailway((ctx) => {
-  if (ctx.projectName !== "notra-demo" || ctx.environment !== "production") {
-    throw new Error("Demo IaC requires notra-demo / production.");
-  }
+  assertTarget(ctx, demoTarget);
 
   const demoApi = service("demo-api", {
     source: github("usenotra/notra", { branch: null, rootDirectory: "/" }),
