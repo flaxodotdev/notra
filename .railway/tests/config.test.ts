@@ -3,16 +3,12 @@ import { expect, test } from "bun:test";
 import { createRailwayContext, project } from "railway/iac";
 
 import aiTraffic, { partial } from "../ai-traffic.ts";
+import { importedVariables } from "../constants/imported-variables.ts";
+import { demoTarget, productionTarget } from "../constants/targets.ts";
 import demo from "../demo.ts";
 
 test("demo reuses only the existing API and dashboard", async () => {
-  const definition = await demo(
-    createRailwayContext({
-      projectName: "notra-demo",
-      environment: "production",
-    }),
-    project
-  );
+  const definition = await demo(createRailwayContext(demoTarget), project);
   const resources = definition.resources?.flat() ?? [];
 
   expect(definition.name).toBe("notra-demo");
@@ -47,10 +43,7 @@ test("demo reuses only the existing API and dashboard", async () => {
 
 test("AI traffic owns only ingest and retains its two replicas", async () => {
   const definition = await aiTraffic(
-    createRailwayContext({
-      projectName: "notra-prod",
-      environment: "production",
-    }),
+    createRailwayContext(productionTarget),
     project
   );
   const resources = definition.resources?.flat() ?? [];
@@ -83,15 +76,12 @@ test("AI traffic owns only ingest and retains its two replicas", async () => {
 });
 
 test.each([
-  { name: "demo", program: demo, projectName: "notra-demo" },
-  { name: "AI traffic", program: aiTraffic, projectName: "notra-prod" },
+  { name: "demo", program: demo, target: demoTarget },
+  { name: "AI traffic", program: aiTraffic, target: productionTarget },
 ])(
   "$name preserves variables and does not restore autodeploys",
-  async ({ program, projectName }) => {
-    const definition = await program(
-      createRailwayContext({ projectName, environment: "production" }),
-      project
-    );
+  async ({ program, target }) => {
+    const definition = await program(createRailwayContext(target), project);
 
     for (const resource of definition.resources?.flat() ?? []) {
       expect(resource.type).toBe("service");
@@ -109,6 +99,13 @@ test.each([
           UPSTASH_REDIS_REST_TOKEN: { type: "preserve" },
           UPSTASH_REDIS_REST_URL: { type: "preserve" },
         });
+        expect(Object.keys(resource.variables ?? {}).sort()).toEqual(
+          [
+            ...importedVariables[
+              resource.name as keyof typeof importedVariables
+            ],
+          ].sort()
+        );
         for (const variable of Object.values(resource.variables ?? {})) {
           expect(variable).toEqual({ type: "preserve" });
         }
@@ -118,19 +115,43 @@ test.each([
 );
 
 test.each([
-  { name: "demo", program: demo, projectName: "notra-demo" },
-  { name: "AI traffic", program: aiTraffic, projectName: "notra-prod" },
+  { name: "demo", program: demo, target: demoTarget },
+  { name: "AI traffic", program: aiTraffic, target: productionTarget },
 ])(
   "$name rejects missing or incorrect Railway context",
-  ({ program, projectName }) => {
+  ({ program, target }) => {
     for (const context of [
       {},
-      { projectName, environment: "staging" },
-      { projectName: "another-project", environment: "production" },
+      { ...target, projectId: "another-project" },
+      { ...target, environmentId: "another-environment" },
+      { ...target, environment: "staging" },
+      { ...target, projectName: "another-project" },
+      { projectName: target.projectName, environment: target.environment },
     ]) {
       expect(() => program(createRailwayContext(context), project)).toThrow(
-        "requires"
+        "before planning"
       );
     }
+  }
+);
+
+test.each([
+  { name: "demo", program: demo, target: demoTarget },
+  { name: "AI traffic", program: aiTraffic, target: productionTarget },
+])(
+  "$name accepts exact CLI IDs without optional names",
+  async ({ program, target }) => {
+    const expected = await program(createRailwayContext(target), project);
+    const idContext = createRailwayContext({
+      projectId: target.projectId,
+      environmentId: target.environmentId,
+    });
+    expect(await program(idContext, project)).toEqual(expected);
+    expect(
+      await program(
+        Object.assign(idContext, { projectName: null, environment: null }),
+        project
+      )
+    ).toEqual(expected);
   }
 );

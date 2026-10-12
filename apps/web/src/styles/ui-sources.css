@@ -188,6 +188,7 @@
 @source "../../../../packages/ui/src/constants/claude-chat-models.ts";
 @source "../../../../packages/ui/src/constants/codex-skin.ts";
 @source "../../../../packages/ui/src/constants/command-tabs.ts";
+@source "../../../../packages/ui/src/constants/dropdown.ts";
 @source "../../../../packages/ui/src/constants/framework-image.ts";
 @source "../../../../packages/ui/src/constants/gemini-models.ts";
 @source "../../../../packages/ui/src/constants/geo.ts";

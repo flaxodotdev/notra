@@ -1,0 +1,102 @@
+name: Railway infrastructure
+
+on:
+  pull_request:
+    paths:
+      - ".railway/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/railway-iac.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - ".railway/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/railway-iac.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: railway-iac-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install infrastructure dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check infrastructure types and safety guards
+        run: bun run railway:check
+
+  plan:
+    needs: validate
+    if: >-
+      github.repository == 'usenotra/notra' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: notra-demo
+            project_id: 48abcb3c-19e1-4c81-a7d3-e2c697c86832
+            environment_id: 2c9756ae-90db-4606-b420-470fd23151a3
+            file: demo.ts
+          - project: notra-prod
+            project_id: 557ca18d-9de8-40ad-9fca-cf3d165f3c44
+            environment_id: 276f8b24-ccd7-4bf3-a6b6-1dbe9f7fe5c6
+            file: ai-traffic.ts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install infrastructure dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.63.4
+
+      - name: Preview Railway changes without applying
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_CALLER: notra-railway-iac-plan
+          RAILWAY_AGENT_SESSION: railway-iac-${{ github.run_id }}-${{ matrix.project }}
+          RAILWAY_PROJECT_ID: ${{ matrix.project_id }}
+          RAILWAY_ENVIRONMENT_ID: ${{ matrix.environment_id }}
+          CONFIG_FILE: ${{ matrix.file }}
+        run: |
+          if [ -z "$RAILWAY_API_TOKEN" ]; then
+            echo "::error::Set RAILWAY_TOKEN to the existing Notra workspace token."
+            exit 1
+          fi
+          railway config plan --file ".railway/$CONFIG_FILE" --verbose

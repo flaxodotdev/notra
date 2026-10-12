@@ -21,6 +21,9 @@ coverage
 # Vercel
 .vercel
 
+# Railway saved plans may contain secrets
+/.railway-plans/
+
 # Build Outputs
 out/
 build

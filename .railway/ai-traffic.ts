@@ -1,11 +1,12 @@
 import { defineRailway, github, preserve, project, service } from "railway/iac";
 
+import { productionTarget } from "./constants/targets.ts";
+import { assertTarget } from "./utils/assert-target.ts";
+
 export const partial = "ai-traffic";
 
 export default defineRailway((ctx) => {
-  if (ctx.projectName !== "notra-prod" || ctx.environment !== "production") {
-    throw new Error("AI traffic IaC requires notra-prod / production.");
-  }
+  assertTarget(ctx, productionTarget);
 
   const ingest = service("ai-traffic-ingest", {
     source: github("usenotra/notra", { branch: null, rootDirectory: "/" }),

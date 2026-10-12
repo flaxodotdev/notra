@@ -43,18 +43,17 @@ Use the repository's Bun and Node versions, install with `bun install`, then:
 bun run railway:check
 ```
 
-This typechecks both definitions and runs the ownership, secret-preservation,
-source, and wrong-context regression checks. The root `bun run test` runs this
-check too, so existing code-quality CI covers it without infrastructure
-credentials. The `railway` SDK is pinned to 3.12.0, compatible with the repository's
-seven-day dependency release-age policy. Use Railway CLI 5.63.4 or newer for the
-live workflow.
+This typechecks both definitions and runs ownership, secret-preservation, source,
+and wrong-context regression checks. The root `bun run test` runs this check too.
+The SDK is pinned to 3.12.0; CI uses Railway CLI 5.63.4. There is only one SDK
+dependency and one test suite, both using the existing root package.
 
 ## Preview against the existing infrastructure
 
 Run from the repository root. Linking changes only the CLI's local context, not
-the infrastructure. Both definitions reject the wrong project or any environment
-other than `production`.
+the infrastructure. Both definitions require the existing project/environment IDs
+in `constants/targets.ts` and reject conflicting names when provided. IDs route
+CLI requests; service names, not embedded service IDs, identify the IaC resources.
 
 ```sh
 railway link --workspace Notra --project notra-demo --environment production
@@ -73,26 +72,50 @@ replacing a service, changing variables, removing a repository, restoring a bran
 or touching observability resources.
 
 For a read-only snapshot when updating a definition, link to the correct project
-and run `railway config pull --json`. Keep only the intended resources and retain
-the ownership boundary. Review a fresh plan after every edit. Avoid a plain
-`config pull` from this directory: it generates a default whole-project file.
+and run `railway config pull --json`. Keep only intended resources and retain
+the ownership boundary. Avoid a plain `config pull` here: it generates a default
+whole-project file. Do not use `--include-variables`, `--decrypt-variables`, or
+`--show-values` in normal imports or plans.
+
+## Read-only CI
+
+`Railway infrastructure` runs credential-free checks on PRs, main changes, and
+manual runs. Secret-bearing live plans run only from reviewed `main` revisions,
+on pushes or manual runs targeting `main`. All PRs get offline checks only;
+preview PR changes locally with the commands above before merging. The existing
+GitHub `RAILWAY_TOKEN` workspace
+secret is passed as `RAILWAY_API_TOKEN` to the CLI. It must not use `railway link`
+in CI: workspace-scoped credentials cannot do that command's account discovery.
+Instead the matrix sets `RAILWAY_PROJECT_ID` and `RAILWAY_ENVIRONMENT_ID` to the
+existing targets. The guard accepts their IDs even if the CLI supplies null names.
+
+Pending changes are printed with default value redaction, not applied. CI creates
+no plan artifacts and does not provision tokens or deployments. Nothing applies
+automatically after merging a PR.
 
 ## Adoption is a separate, explicitly approved step
 
-Committing or merging these files **does not apply** them. This change adds no
-apply workflow and has not claimed ownership of the ingest service remotely.
+These changes have not claimed ownership of the ingest service remotely. After
+explicit approval, link the intended project and save a fresh plan from the
+committed checkout:
 
-After reviewing a fresh no-change plan, an operator can adopt one definition with
-interactive `railway config apply --file .railway/demo.ts` or
-`railway config apply --file .railway/ai-traffic.ts`, using the matching link above.
+```sh
+mkdir -p .railway-plans
+railway link --workspace Notra --project notra-prod --environment production
+railway config plan --file .railway/ai-traffic.ts --out .railway-plans/ai-traffic.json
+# Review the exact plan before executing the next command.
+railway config apply --file .railway/ai-traffic.ts --plan .railway-plans/ai-traffic.json
+```
+
+Repeat for demo with `notra-demo`, `.railway/demo.ts`, and a separate plan file.
+Saved plans pin local files and remote configuration; re-plan if either changes.
+Plan files may contain secrets: `.railway-plans/` is git-ignored and excluded from
+Docker contexts. Never upload these artifacts or auto-confirm destructive changes.
+
 The first ingest apply records `ai-traffic` ownership even with no config changes.
-Verify ownership with `railway config partials list` afterward.
-
-Future changes can trigger redeployments. Coordinate any apply with the existing
-production release window; do not add an independent apply-on-merge job. If CI
-automation is added later, use a separately scoped token for each environment,
-read-only PR plans, and reviewed pinned plans (`config plan --out`, followed by
-`config apply --plan`). Keep potentially secret-bearing plan artifacts outside
-`.railway/`, private, and out of Git. Never auto-confirm destructive changes.
+Verify `railway config partials list` then shows only `service.ai-traffic-ingest`
+under that partial, retains `observability`, and a second plan has no changes.
+Confirm original service IDs and domains remain intact. Future changes can trigger
+redeployments; coordinate applies with the existing production release window.
 
 Reference: [Railway Infrastructure as Code](https://docs.railway.com/infrastructure-as-code).

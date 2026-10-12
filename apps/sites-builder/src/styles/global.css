@@ -102,6 +102,32 @@
     scroll-padding-top: 5rem;
   }
 
+  /* Tailwind v4 dropped the pointer cursor on buttons; restore it for every
+     clickable control, including ones created by client scripts. */
+  button,
+  summary,
+  select,
+  label[for],
+  label:has(input, select),
+  [role="button"],
+  [role="tab"],
+  [role="radio"],
+  [role="checkbox"],
+  [role="switch"],
+  [role="menuitem"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    cursor: pointer;
+  }
+
+  :is(button, select, input):disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   ::selection {
     background: color-mix(in oklab, var(--accent) 30%, transparent);
   }

@@ -444,6 +444,9 @@ variables; they do not apply on merge or replace the release workflow. See
 [the Railway IaC guide](.railway/README.md) for ownership boundaries and read-only
 plans. `bun run railway:check` checks the definitions without Railway credentials
 and also runs as part of the root test command.
+The `Railway infrastructure` workflow checks PRs without credentials and previews
+both live environments only from `main`. It never applies changes or replaces
+this release workflow.
 
 The production API at `api.usenotra.com` is hosted on Unkey Compute, not the
 Railway `demo-api` service. Its scheduled release is opt-in: add the GitHub Actions

@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  CreditCardIcon,
+  Settings01Icon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { BrailleLoader } from "@notra/ui/components/shared/braille-loader";
 import {
   ResponsiveAlertDialog,
@@ -104,6 +110,9 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@notra/ui/components/ui/dropdown-menu";
 import {
@@ -325,6 +334,13 @@ const colorGroups = [
       { name: "sidebar-ring", label: "Sidebar Ring" },
     ],
   },
+];
+
+const frequencyOptions = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "custom", label: "Custom" },
 ];
 
 const comboboxOptions = [
@@ -796,7 +812,7 @@ export default function DesignSystemClientPage() {
                 <CardDescription>Picker components.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Select defaultValue="weekly">
+                <Select defaultValue="weekly" items={frequencyOptions}>
                   <SelectTrigger className="w-48">
                     <SelectValue placeholder="Select frequency" />
                   </SelectTrigger>
@@ -872,17 +888,41 @@ export default function DesignSystemClientPage() {
                   <DropdownMenuTrigger render={<Button variant="outline" />}>
                     Open menu
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
+                  <DropdownMenuContent className="w-56">
                     <DropdownMenuGroup>
-                      <DropdownMenuItem>Profile</DropdownMenuItem>
-                      <DropdownMenuItem>Settings</DropdownMenuItem>
-                      <DropdownMenuItem>Billing</DropdownMenuItem>
+                      <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+                      <DropdownMenuItem>
+                        <HugeiconsIcon icon={UserIcon} strokeWidth={1.5} />
+                        Profile
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <HugeiconsIcon
+                          icon={Settings01Icon}
+                          strokeWidth={1.5}
+                        />
+                        Settings
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <HugeiconsIcon
+                          icon={CreditCardIcon}
+                          strokeWidth={1.5}
+                        />
+                        Billing
+                      </DropdownMenuItem>
                       <DropdownMenuItem>
                         Reports
                         <DropdownMenuShortcut>R</DropdownMenuShortcut>
                       </DropdownMenuItem>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Export</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          <DropdownMenuItem>Markdown</DropdownMenuItem>
+                          <DropdownMenuItem>HTML</DropdownMenuItem>
+                          <DropdownMenuItem disabled>
+                            PDF — coming soon
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
                     </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuCheckboxItem
@@ -903,6 +943,10 @@ export default function DesignSystemClientPage() {
                         Personal
                       </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive">
+                      Delete workspace
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <div className="text-muted-foreground text-xs">
