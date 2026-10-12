@@ -475,18 +475,23 @@ async function resolveAccountKeyAuth(
   const membershipRows = await c.get("db").query.members.findMany({
     where: eq(members.userId, userId),
     columns: { organizationId: true },
+    with: { organizations: { columns: { slug: true } } },
     orderBy: [asc(members.createdAt), asc(members.organizationId)],
   });
   const memberOrgIds = membershipRows.map((row) => row.organizationId);
-  const requestedOrgId = getRequestedOrganizationId(c);
+  const requestedOrganization = getRequestedOrganizationId(c);
 
   // Membership is read on every request, so leaving an organization revokes
   // the key there immediately.
   let organizationId: string | undefined;
-  if (requestedOrgId) {
-    organizationId = memberOrgIds.includes(requestedOrgId)
-      ? requestedOrgId
-      : undefined;
+  if (requestedOrganization) {
+    // The header takes an organization id or slug, so configs can use the
+    // readable slug.
+    organizationId = membershipRows.find(
+      (row) =>
+        row.organizationId === requestedOrganization ||
+        row.organizations?.slug === requestedOrganization
+    )?.organizationId;
   } else if (
     memberOrgIds.length === 1 ||
     (memberOrgIds.length > 0 && isUnscopedApiPath(c.req.path))
