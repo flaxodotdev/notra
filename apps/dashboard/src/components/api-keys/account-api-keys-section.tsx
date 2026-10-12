@@ -325,7 +325,10 @@ export function AccountApiKeysSection() {
     },
   ];
 
-  const isEmpty = !(isPending || isError) && keys.length === 0;
+  // A failed background refetch keeps the cached keys, so only an empty list
+  // turns into the load error.
+  const showLoadError = isError && keys.length === 0;
+  const isEmpty = !(isPending || showLoadError) && keys.length === 0;
   const visibleRows = isPending ? 2 : keys.length;
 
   return (
@@ -357,7 +360,7 @@ export function AccountApiKeysSection() {
         columns={columns}
         data={keys}
         emptyState={
-          isError ? (
+          showLoadError ? (
             <Empty className="py-0 md:py-0">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -405,7 +408,7 @@ export function AccountApiKeysSection() {
         }
         getRowId={(key) => key.keyId}
         height={
-          isEmpty || isError
+          isEmpty || showLoadError
             ? API_KEYS_EMPTY_TABLE_HEIGHT
             : (visibleRows + 1) * 48
         }
