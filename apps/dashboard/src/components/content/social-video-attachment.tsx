@@ -3,13 +3,14 @@
 import type { SocialVideoAttachment as SocialVideoDraft } from "@notra/schemas/dashboard/content";
 import { VideoIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import type { ContentVideoMimeType } from "@/constants/content-video";
 import { SOCIAL_VIDEO } from "@/constants/social-video";
 import { uploadFile } from "@/lib/upload/client";
-import { sniffContentVideoMime } from "@/utils/validate-content-video";
+import { validateContentVideo } from "@/utils/validate-content-video";
 
 interface SocialVideoAttachmentProps {
   value: SocialVideoDraft | null;
@@ -19,8 +20,9 @@ interface SocialVideoAttachmentProps {
 }
 
 async function sniffFile(file: File): Promise<ContentVideoMimeType> {
-  const head = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
-  return sniffContentVideoMime(head);
+  // EBML headers can exceed 4 KiB; the size gate bounds this full-file read.
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return validateContentVideo(bytes);
 }
 
 export function SocialVideoAttachment({
@@ -66,6 +68,8 @@ export function SocialVideoAttachment({
       });
       onChange({ key, url, mimeType, size: file.size });
     } catch (cause) {
+      // The dialog may have unmounted this input while the upload was running.
+      toast.error(t("videoUploadFailed"));
       setError(
         cause instanceof Error && cause.message
           ? cause.message

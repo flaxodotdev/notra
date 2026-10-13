@@ -135,7 +135,10 @@ function videoTooLargeMessage() {
 }
 
 // ponytail: no ffmpeg. A GitHub draft already rejects files over 10MB, so transcoding would not admit a larger clip.
-export function sniffContentVideoMime(bytes: Uint8Array): ContentVideoMimeType {
+export function validateContentVideo(bytes: Uint8Array): ContentVideoMimeType {
+  if (bytes.byteLength > MAX_CONTENT_VIDEO_BYTES) {
+    throw new Error(videoTooLargeMessage());
+  }
   if (isMp4(bytes)) {
     return "video/mp4";
   }
@@ -143,11 +146,4 @@ export function sniffContentVideoMime(bytes: Uint8Array): ContentVideoMimeType {
     return "video/webm";
   }
   throw new Error("Use an MP4 or WebM video");
-}
-
-export function validateContentVideo(bytes: Uint8Array): ContentVideoMimeType {
-  if (bytes.byteLength > MAX_CONTENT_VIDEO_BYTES) {
-    throw new Error(videoTooLargeMessage());
-  }
-  return sniffContentVideoMime(bytes);
 }

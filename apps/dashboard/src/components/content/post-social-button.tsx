@@ -99,7 +99,7 @@ export function PostSocialButton({
       return;
     }
     publishMutation.reset();
-    setVideoUploading(false);
+    // Closing doesn't cancel an upload; keep its guard across dialog remounts.
     setReferencedVoiceIds([]);
     setPublishedContent(null);
     setLocalDraft(content);
@@ -301,7 +301,7 @@ export function PostSocialButton({
         </div>
         {!published && (
           <SocialVideoAttachment
-            disabled={isLocked || saveVideo.isPending}
+            disabled={isLocked || videoUploading || saveVideo.isPending}
             onChange={handleVideoChange}
             onUploadingChange={setVideoUploading}
             value={video}

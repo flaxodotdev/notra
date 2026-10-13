@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { assertAllowedSocialMediaUrls } from "./media-urls";
+import { assertAllowedSocialMediaUrls, isOwnSocialVideo } from "./media-urls";
 
 const R2_HOST = "https://cdn.example.com";
 const APP_HOST = "https://app.example.com";
@@ -72,4 +72,27 @@ test("allows the configured R2 host, rejects app and other hosts", () => {
   expect(() =>
     assertAllowedSocialMediaUrls(["https://exa mple.com/a.mp4"])
   ).toThrow("Invalid media URL");
+});
+
+test("accepts uploaded video URLs under the configured public base path", () => {
+  const key = "organization/org_1/content/clip.mp4";
+  for (const base of [`${R2_HOST}/media`, `${R2_HOST}/media/`]) {
+    process.env.CLOUDFLARE_PUBLIC_URL = base;
+    const url = `${R2_HOST}/media/${key}`;
+    expect(() => assertAllowedSocialMediaUrls([url], "org_1")).not.toThrow();
+    expect(
+      isOwnSocialVideo({ key, url, mimeType: "video/mp4", size: 16 }, "org_1")
+    ).toBe(true);
+    for (const forbidden of [
+      `${R2_HOST}/media/organization/org_2/content/clip.mp4`,
+      `${R2_HOST}/${key}`,
+      `${R2_HOST}/media-other/${key}`,
+      `${R2_HOST}/media/organization/org_1/../org_2/content/clip.mp4`,
+      `${R2_HOST}/media/organization/org_1/%2e%2e/org_2/content/clip.mp4`,
+    ]) {
+      expect(() => assertAllowedSocialMediaUrls([forbidden], "org_1")).toThrow(
+        "Media URL belongs to another organization"
+      );
+    }
+  }
 });
