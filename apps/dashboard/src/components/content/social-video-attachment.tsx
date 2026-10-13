@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
+import { ContentVideoPlayer } from "@/components/content/editor/nodes/content-video-player";
 import type { ContentVideoMimeType } from "@/constants/content-video";
 import { SOCIAL_VIDEO } from "@/constants/social-video";
 import { uploadFile } from "@/lib/upload/client";
@@ -86,12 +87,10 @@ export function SocialVideoAttachment({
   if (value) {
     return (
       <div className="space-y-2">
-        {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- uploads do not include a caption file */}
-        <video
-          className="max-h-56 w-full rounded-lg border bg-black"
-          controls
-          preload="metadata"
+        <ContentVideoPlayer
+          key={value.url}
           src={value.url}
+          videoClassName="max-h-56"
         />
         {!disabled && (
           <Button onClick={() => onChange(null)} size="sm" variant="ghost">

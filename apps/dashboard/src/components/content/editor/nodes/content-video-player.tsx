@@ -13,6 +13,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
+import { cn } from "@/lib/utils";
+import type { ContentVideoPlayerProps } from "@/types/content/video-player";
 
 function formatClock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) {
@@ -24,7 +26,10 @@ function formatClock(seconds: number) {
   return `${minutes}:${rest.toString().padStart(2, "0")}`;
 }
 
-export function ContentVideoPlayer({ src }: { src: string }) {
+export function ContentVideoPlayer({
+  src,
+  videoClassName,
+}: ContentVideoPlayerProps) {
   const t = useTranslations("content.editor.video");
   const tCommon = useTranslations("common");
   const frameRef = useRef<HTMLDivElement>(null);
@@ -103,9 +108,11 @@ export function ContentVideoPlayer({ src }: { src: string }) {
         {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- uploads do not include a caption file */}
         <video
           aria-label={tCommon("labels.video")}
-          className={
-            fullscreen ? "h-full w-full object-contain" : "max-h-128 w-full"
-          }
+          className={cn(
+            fullscreen
+              ? "h-full w-full object-contain"
+              : ["max-h-128 w-full", videoClassName]
+          )}
           onDurationChange={(event) =>
             setDuration(event.currentTarget.duration)
           }
@@ -118,14 +125,18 @@ export function ContentVideoPlayer({ src }: { src: string }) {
           ref={videoRef}
           src={src}
         />
-        <div
-          aria-hidden
-          className="absolute inset-0 flex items-center justify-center"
+        <button
+          aria-label={playing ? t("pause") : t("play")}
+          className="focus-visible:outline-ring absolute inset-0 flex cursor-pointer items-center justify-center focus-visible:outline-2 focus-visible:-outline-offset-2"
           onClick={togglePlay}
           onMouseDown={(event) => event.preventDefault()}
+          type="button"
         >
           {playing ? null : (
-            <span className="bg-background/95 text-foreground ring-foreground/10 flex size-12 items-center justify-center rounded-full ring-1">
+            <span
+              aria-hidden
+              className="bg-background/95 text-foreground ring-foreground/10 flex size-12 items-center justify-center rounded-full ring-1"
+            >
               <HugeiconsIcon
                 className="ml-0.5 size-5"
                 icon={PlayIcon}
@@ -133,7 +144,7 @@ export function ContentVideoPlayer({ src }: { src: string }) {
               />
             </span>
           )}
-        </div>
+        </button>
       </div>
       <div className="border-border bg-background flex items-center gap-1.5 border-t px-2 py-1.5">
         <Button
@@ -160,7 +171,9 @@ export function ContentVideoPlayer({ src }: { src: string }) {
           aria-valuemax={Number.isFinite(duration) ? duration : 0}
           aria-valuemin={0}
           aria-valuenow={current}
-          className="accent-foreground h-1 min-w-0 flex-1 cursor-pointer"
+          aria-valuetext={`${formatClock(current)} / ${formatClock(duration)}`}
+          className="accent-foreground h-6 min-w-0 flex-1 cursor-pointer disabled:cursor-not-allowed"
+          disabled={!Number.isFinite(duration) || duration <= 0}
           max={Number.isFinite(duration) ? duration : 0}
           min={0}
           onChange={(event) => seek(event.target.value)}
