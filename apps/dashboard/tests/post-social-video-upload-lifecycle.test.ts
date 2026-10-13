@@ -13,6 +13,8 @@ import {
   type ReactNode,
 } from "react";
 
+import type { UploadFileProps } from "@/types/upload/client";
+
 if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
   test("social video upload lifecycle regressions run in isolation", () => {
     const result = spawnSync(
@@ -131,7 +133,7 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
   const uploaded = new Promise<{ key: string; url: string }>((resolve) => {
     completeUpload = resolve;
   });
-  const uploadFile = mock(() => {
+  const uploadFile = mock((_input: UploadFileProps) => {
     startUpload();
     return uploaded;
   });
@@ -196,15 +198,20 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
     tree.props.onOpenChange(true);
     tree = render();
     const uploadingAttachment = find(tree, SocialVideoAttachment);
-    const file = new File(
-      [new Uint8Array([0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109])],
-      "clip.mp4",
-      { type: "video/mp4" }
-    );
+    // A long EBML header and wrong browser MIME exercise full-file sniffing
+    // and normalization in the same upload lifecycle, without another harness.
+    const bytes = new Uint8Array(5016);
+    bytes.set([0x1a, 0x45, 0xdf, 0xa3, 0x53, 0x92]);
+    bytes.set([0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d], 6);
+    bytes.set([0xec, 0x53, 0x88], 13);
+    const file = new File([bytes], "clip.webm", {
+      type: "application/octet-stream",
+    });
     find(renderAttachment(uploadingAttachment), "input").props.onChange?.({
       target: { files: [file] },
     } as unknown as ChangeEvent<HTMLInputElement>);
     await started;
+    expect(uploadFile.mock.calls[0]?.[0].file.type).toBe("video/webm");
     tree = render();
     expect(find(tree, Button).props.disabled).toBe(true);
     tree.props.onOpenChange(false);
@@ -223,9 +230,9 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
     expect(uploadFile).toHaveBeenCalledTimes(1);
 
     const video = {
-      key: "organization/org-test/content/clip.mp4",
-      url: "https://cdn.example.com/organization/org-test/content/clip.mp4",
-      mimeType: "video/mp4" as const,
+      key: "organization/org-test/content/clip.webm",
+      url: "https://cdn.example.com/organization/org-test/content/clip.webm",
+      mimeType: "video/webm" as const,
       size: file.size,
     };
     completeUpload({ key: video.key, url: video.url });

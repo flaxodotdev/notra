@@ -7,9 +7,6 @@ const APP_HOST = "https://app.example.com";
 
 afterEach(() => {
   delete process.env.CLOUDFLARE_PUBLIC_URL;
-  delete process.env.APP_URL;
-  delete process.env.NEXT_PUBLIC_SITE_URL;
-  delete process.env.NEXT_PUBLIC_APP_URL;
 });
 
 test("passes through empty input without env", () => {
@@ -44,7 +41,6 @@ test("rejects another organization's objects on the shared host", () => {
 });
 test("allows the configured R2 host, rejects app and other hosts", () => {
   process.env.CLOUDFLARE_PUBLIC_URL = R2_HOST;
-  process.env.APP_URL = APP_HOST;
   expect(() =>
     assertAllowedSocialMediaUrls([`${R2_HOST}/organization/org_1/a.mp4`])
   ).not.toThrow();
@@ -57,12 +53,14 @@ test("allows the configured R2 host, rejects app and other hosts", () => {
   expect(() =>
     assertAllowedSocialMediaUrls(["https://evil.example.com/a.mp4"])
   ).toThrow("Media URL host is not allowed");
-  expect(() =>
-    assertAllowedSocialMediaUrls([
-      "ftp://cdn.example.com/organization/org_1/a.mp4",
-      "https://cdn.example.com:8443/organization/org_1/a.mp4",
-    ])
-  ).toThrow("Media URL host is not allowed");
+  for (const url of [
+    "ftp://cdn.example.com/organization/org_1/a.mp4",
+    "https://cdn.example.com:8443/organization/org_1/a.mp4",
+  ]) {
+    expect(() => assertAllowedSocialMediaUrls([url])).toThrow(
+      "Media URL host is not allowed"
+    );
+  }
   expect(() =>
     assertAllowedSocialMediaUrls(["//evil.example.com/a.mp4"])
   ).toThrow("Media URL must be an absolute URL");
