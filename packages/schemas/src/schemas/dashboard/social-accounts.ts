@@ -3,6 +3,11 @@ import { organizationIdSchema } from "@notra/schemas/dashboard/auth/organization
 // biome-ignore lint/performance/noNamespaceImport: Zod recommended way of importing
 import * as z from "zod";
 
+import {
+  PUBLISH_CONTENT_MAX_LENGTH,
+  PUBLISH_MEDIA_MAX_COUNT,
+} from "../../constants/dashboard/social-accounts";
+
 export const socialConnectPlatformSchema = z.enum(["twitter", "linkedin"]);
 
 export type SocialConnectPlatform = z.infer<typeof socialConnectPlatformSchema>;
@@ -17,11 +22,6 @@ export const socialConnectOAuthStateSchema = z.object({
 export type SocialConnectOAuthState = z.infer<
   typeof socialConnectOAuthStateSchema
 >;
-
-const PUBLISH_CONTENT_MAX_LENGTH = 25_000;
-
-/** Single video per post: X and LinkedIn accept at most one video. */
-const PUBLISH_MEDIA_MAX_COUNT = 1;
 
 const socialMediaUrlSchema = z.url().max(2048);
 

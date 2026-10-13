@@ -1,6 +1,6 @@
 "use client";
 
-import type { SocialVideoAttachment as SocialVideoDraft } from "@notra/schemas/dashboard/content";
+import type { SocialVideoAttachment as SocialVideoDraft } from "@notra/schemas/types/dashboard/content";
 import {
   ResponsiveDialog,
   ResponsiveDialogClose,

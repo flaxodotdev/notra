@@ -44,8 +44,6 @@ export const socialVideoAttachmentSchema = z.object({
   size: z.number().int().positive(),
 });
 
-export type SocialVideoAttachment = z.infer<typeof socialVideoAttachmentSchema>;
-
 export const sourceMetadataSchema = z
   .looseObject({
     triggerId: z.string().optional(),

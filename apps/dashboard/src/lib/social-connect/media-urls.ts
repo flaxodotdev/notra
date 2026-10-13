@@ -1,4 +1,4 @@
-import type { SocialVideoAttachment } from "@notra/schemas/dashboard/content";
+import type { SocialVideoAttachment } from "@notra/schemas/types/dashboard/content";
 
 import { getOptionalR2PublicUrl } from "@/lib/upload/r2";
 

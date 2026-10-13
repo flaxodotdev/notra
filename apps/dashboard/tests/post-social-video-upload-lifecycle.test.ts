@@ -2,7 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import type { SocialVideoAttachment as VideoDraft } from "@notra/schemas/dashboard/content";
+import type { SocialVideoAttachment as VideoDraft } from "@notra/schemas/types/dashboard/content";
 import {
   Children,
   isValidElement,

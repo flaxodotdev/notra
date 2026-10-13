@@ -1,6 +1,5 @@
 "use client";
 
-import type { SocialVideoAttachment as SocialVideoDraft } from "@notra/schemas/dashboard/content";
 import { VideoIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -8,23 +7,10 @@ import { useTranslations } from "use-intl";
 
 import { Button } from "@/components/button";
 import { ContentVideoPlayer } from "@/components/content/editor/nodes/content-video-player";
-import type { ContentVideoMimeType } from "@/constants/content-video";
 import { SOCIAL_VIDEO } from "@/constants/social-video";
 import { uploadFile } from "@/lib/upload/client";
+import type { SocialVideoAttachmentProps } from "@/types/content/post-social";
 import { validateContentVideo } from "@/utils/validate-content-video";
-
-interface SocialVideoAttachmentProps {
-  value: SocialVideoDraft | null;
-  onChange: (video: SocialVideoDraft | null) => void;
-  disabled?: boolean;
-  onUploadingChange?: (uploading: boolean) => void;
-}
-
-async function sniffFile(file: File): Promise<ContentVideoMimeType> {
-  // EBML headers can exceed 4 KiB; the size gate bounds this full-file read.
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  return validateContentVideo(bytes);
-}
 
 export function SocialVideoAttachment({
   value,
@@ -55,7 +41,10 @@ export function SocialVideoAttachment({
     }
     setUploadingState(true);
     try {
-      const mimeType = await sniffFile(file);
+      // EBML headers can exceed 4 KiB; the size gate bounds this full-file read.
+      const mimeType = validateContentVideo(
+        new Uint8Array(await file.arrayBuffer())
+      );
       // The presigned upload trusts `file.type` for validation and the
       // stored Content-Type — normalize to the sniffed bytes so a wrong
       // browser MIME can neither bypass the gate nor mistype the object.

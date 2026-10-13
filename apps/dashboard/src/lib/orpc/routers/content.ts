@@ -44,7 +44,6 @@ import {
 import type {
   ContentResponse,
   PostsResponse,
-  SocialVideoAttachment,
 } from "@notra/schemas/dashboard/content";
 import {
   contentInputSchema,
@@ -120,6 +119,10 @@ import type {
   RepositoryPreview,
   RepositoryPreviewFailure,
 } from "@/types/content/preview";
+import type {
+  ContentUpdateDataInput,
+  ContentUpdatePost,
+} from "@/types/content/update";
 import { resolveLookbackRange } from "@/utils/lookback";
 import { ratelimit } from "@/utils/ratelimit";
 
@@ -299,13 +302,8 @@ function formatFailureMessage(error: unknown): string {
 }
 
 export async function buildContentUpdateData(
-  existingPost: { title: string; status: "draft" | "published" },
-  input: {
-    markdown?: string;
-    status?: "draft" | "published";
-    title?: string;
-    socialVideo?: SocialVideoAttachment | null;
-  }
+  existingPost: ContentUpdatePost,
+  input: ContentUpdateDataInput
 ) {
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
 

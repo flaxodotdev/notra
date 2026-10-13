@@ -1,6 +1,6 @@
 "use client";
 
-import type { SocialVideoAttachment } from "@notra/schemas/dashboard/content";
+import type { SocialVideoAttachment } from "@notra/schemas/types/dashboard/content";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ContentApiResponse } from "@/types/hooks/content";
