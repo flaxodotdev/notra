@@ -25,6 +25,7 @@ export interface PostSocialButtonProps {
   contentId?: string;
   /** Video already saved on the post. */
   initialVideo?: SocialVideoAttachment | null;
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
 export interface SocialVideoAttachmentProps {

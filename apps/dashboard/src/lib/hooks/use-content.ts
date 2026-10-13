@@ -1,7 +1,12 @@
 "use client";
 
 import type { SocialVideoAttachment } from "@notra/schemas/types/dashboard/content";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import type { ContentApiResponse } from "@/types/hooks/content";
 
@@ -20,6 +25,9 @@ export function useContent(organizationId: string, contentId: string) {
 export function useSaveSocialVideo(organizationId: string, contentId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: dashboardOrpc.content.get.queryKey({
+      input: { organizationId, contentId },
+    }),
     mutationFn: (socialVideo: SocialVideoAttachment | null) =>
       dashboardOrpc.content.update.call({
         organizationId,
@@ -48,4 +56,18 @@ export function useSaveSocialVideo(organizationId: string, contentId: string) {
       return queryClient.invalidateQueries({ queryKey });
     },
   });
+}
+
+export function useIsSavingSocialVideo(
+  organizationId: string,
+  contentId: string
+) {
+  return (
+    useIsMutating({
+      mutationKey: dashboardOrpc.content.get.queryKey({
+        input: { organizationId, contentId },
+      }),
+      exact: true,
+    }) > 0
+  );
 }

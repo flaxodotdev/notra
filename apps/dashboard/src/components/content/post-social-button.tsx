@@ -57,6 +57,7 @@ export function PostSocialButton({
   from,
   contentId,
   initialVideo,
+  onUploadingChange,
 }: PostSocialButtonProps) {
   const t = useTranslations("content.postSocial");
   const tCommon2 = useTranslations("common");
@@ -81,8 +82,14 @@ export function PostSocialButton({
   // Posting while an upload runs would send the post without its video.
   const [videoUploading, setVideoUploading] = useState(false);
   const saveVideo = useSaveSocialVideo(organizationId, contentId ?? "");
+  const videoPending = videoUploading || saveVideo.isPending;
   const draft = onContentChange ? content : localDraft;
   const handleDraftChange = onContentChange ?? setLocalDraft;
+
+  const handleUploadingChange = (uploading: boolean) => {
+    setVideoUploading(uploading);
+    onUploadingChange?.(uploading);
+  };
 
   const label = SOCIAL_PLATFORM_LABELS[platform];
   const isTwitter = platform === "twitter";
@@ -121,12 +128,7 @@ export function PostSocialButton({
   };
 
   const handlePublish = () => {
-    if (
-      !(selectedAccount && draft.trim()) ||
-      isOverCharLimit ||
-      videoUploading ||
-      saveVideo.isPending
-    ) {
+    if (!(selectedAccount && draft.trim()) || isOverCharLimit || videoPending) {
       return;
     }
     const contentToPublish = draft;
@@ -301,9 +303,9 @@ export function PostSocialButton({
         </div>
         {!published && (
           <SocialVideoAttachment
-            disabled={isLocked || videoUploading || saveVideo.isPending}
+            disabled={isLocked || videoPending}
             onChange={handleVideoChange}
-            onUploadingChange={setVideoUploading}
+            onUploadingChange={handleUploadingChange}
             value={video}
           />
         )}
@@ -352,12 +354,7 @@ export function PostSocialButton({
                 render={<Button variant="outline">{tCommon("cancel")}</Button>}
               />
               <Button
-                disabled={
-                  !draft.trim() ||
-                  isOverCharLimit ||
-                  videoUploading ||
-                  saveVideo.isPending
-                }
+                disabled={!draft.trim() || isOverCharLimit || videoPending}
                 loading={publishMutation.isPending}
                 onClick={handlePublish}
               >

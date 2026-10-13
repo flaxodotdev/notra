@@ -172,12 +172,14 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
 
   test("an upload survives close/reopen without a text-only publish or second upload", async () => {
     const parentState: unknown[] = [];
+    const onUploadingChange = mock();
     const props = {
       platform: "twitter" as const,
       organizationId: "org-test",
       contentId: "post-test",
       content: "Test post",
       initialVideo: null as VideoDraft | null,
+      onUploadingChange,
     };
     const render = () => {
       states = parentState;
@@ -214,6 +216,7 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
     expect(uploadFile.mock.calls[0]?.[0].file.type).toBe("video/webm");
     tree = render();
     expect(find(tree, Button).props.disabled).toBe(true);
+    expect(onUploadingChange).toHaveBeenLastCalledWith(true);
     tree.props.onOpenChange(false);
     tree = render();
     tree.props.onOpenChange(true);
@@ -224,6 +227,8 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
     expect(find(tree, Button).props.disabled).toBe(true);
     find(tree, Button).props.onClick?.(click);
     expect(publish.mutate).not.toHaveBeenCalled();
+
+    expect(onUploadingChange).toHaveBeenLastCalledWith(true);
     const remounted = renderAttachment(reopenedAttachment);
     expect(find(remounted, "input").props.disabled).toBe(true);
     expect(find(remounted, Button).props.disabled).toBe(true);
@@ -239,6 +244,7 @@ if (!process.env.NOTRA_SOCIAL_VIDEO_LIFECYCLE_TEST_WORKER) {
     await uploaded;
     tree = render();
     expect(save.mutate).toHaveBeenCalledTimes(1);
+    expect(onUploadingChange).toHaveBeenLastCalledWith(false);
     expect(save.mutate.mock.calls[0]?.[0]).toEqual(video);
     expect(find(tree, SocialVideoAttachment).props.value).toEqual(video);
     expect(find(tree, Button).props.disabled).toBe(true);

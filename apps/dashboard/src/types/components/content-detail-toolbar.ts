@@ -10,6 +10,10 @@ export interface ContentDetailToolbarProps {
   organizationSlug: string;
 }
 
+export interface ContentDetailPublishActionsProps extends ContentDetailToolbarProps {
+  videoPending: boolean;
+}
+
 export type ContentDetailImageActionsProps = Pick<
   ContentDetailToolbarProps,
   "content" | "contentId" | "document" | "organizationId"

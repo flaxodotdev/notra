@@ -33,11 +33,13 @@ import {
   downloadImage,
   preloadImageExportCopy,
 } from "@/lib/content/image-export";
+import { useIsSavingSocialVideo } from "@/lib/hooks/use-content";
 import { usePostSchedule } from "@/lib/hooks/use-content-calendar";
 import { cn } from "@/lib/utils";
 import type {
   ContentDetailToolbarProps,
   ContentDetailImageActionsProps,
+  ContentDetailPublishActionsProps,
 } from "@/types/components/content-detail-toolbar";
 import type { ImageExportTarget } from "@/types/content/image-export";
 import {
@@ -262,7 +264,8 @@ function ContentDetailPublishActions({
   document,
   organizationId,
   organizationSlug,
-}: ContentDetailToolbarProps) {
+  videoPending,
+}: ContentDetailPublishActionsProps) {
   const tCommon2 = useTranslations("common");
   let publishLabel = tCommon2("labels.publish");
   if (document.isTogglingStatus) {
@@ -279,7 +282,8 @@ function ContentDetailPublishActions({
         document.isTogglingStatus ||
         document.isGeoArticleLoading ||
         document.hasChanges ||
-        document.isSaving
+        document.isSaving ||
+        videoPending
       }
       onClick={document.handleToggleStatus}
       size="sm"
@@ -307,7 +311,9 @@ function ContentDetailPublishActions({
         <ContentPublishButton
           contentId={contentId}
           contentType={content.contentType}
-          hasUnsavedChanges={document.hasChanges || document.isSaving}
+          hasUnsavedChanges={
+            document.hasChanges || document.isSaving || videoPending
+          }
           organizationId={organizationId}
           organizationSlug={organizationSlug}
           publishButton={publishButton}
@@ -321,6 +327,9 @@ function ContentDetailPublishActions({
 
 export function ContentDetailToolbar(props: ContentDetailToolbarProps) {
   const { content, contentId, document, organizationId } = props;
+  const [videoUploading, setVideoUploading] = useState(false);
+  const videoSaving = useIsSavingSocialVideo(organizationId, contentId);
+  const videoPending = videoUploading || videoSaving;
   const t = useTranslations("content.toolbar");
   const { data: scheduleData } = usePostSchedule(organizationId, contentId);
   // Posting by hand while a social send is pending would post it twice.
@@ -372,7 +381,7 @@ export function ContentDetailToolbar(props: ContentDetailToolbarProps) {
       {content.contentType === "image" ? (
         <ContentDetailImageActions {...props} />
       ) : (
-        <ContentDetailPublishActions {...props} />
+        <ContentDetailPublishActions {...props} videoPending={videoPending} />
       )}
       {(content.contentType === "linkedin_post" ||
         content.contentType === "twitter_post") &&
@@ -383,6 +392,7 @@ export function ContentDetailToolbar(props: ContentDetailToolbarProps) {
           from="editor"
           initialVideo={content.sourceMetadata?.socialVideo ?? null}
           onContentChange={document.setEditedMarkdown}
+          onUploadingChange={setVideoUploading}
           organizationId={organizationId}
           platform={
             content.contentType === "linkedin_post" ? "linkedin" : "twitter"
